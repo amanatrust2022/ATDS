@@ -21,7 +21,7 @@ import { Patient, PatientTest } from './store';
 export const getResultTemplate = (patient: Patient, completedTests: PatientTest[]) => {
   const regDate = new Date(patient.registeredAt).toLocaleDateString('en-NG');
   const reportingDate = completedTests[0]?.completedAt ? new Date(completedTests[0].completedAt).toLocaleDateString('en-NG') : '—';
-  const specimen = completedTests[0]?.specimen || '—';
+  const specimens = Array.from(new Set(completedTests.map(t => t.specimen))).filter(Boolean).join(', ') || '—';
   const investigationList = completedTests.map(t => t.testName).join(', ');
 
   const testSections = completedTests.map(t => {
@@ -34,7 +34,7 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
         <td>${r.unit || '—'}</td>
         <td>${r.range || '—'}</td>
       </tr>`).join('');
-    
+
     return `
       <div class="test-block">
         <div class="test-header">${t.testName}</div>
@@ -47,9 +47,9 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
       </div>`;
   }).join('');
 
-  const reportTitle = completedTests.every(t => t.department === 'lab') ? 'LABORATORY RESULT REPORT' : 
-                     completedTests.every(t => t.department === 'radiology') ? 'RADIOLOGY RESULT REPORT' : 
-                     'LABORATORY / RADIOLOGY RESULT REPORT';
+  const reportTitle = completedTests.every(t => t.department === 'lab') ? 'LABORATORY RESULT REPORT' :
+    completedTests.every(t => t.department === 'radiology') ? 'RADIOLOGY RESULT REPORT' :
+      'LABORATORY / RADIOLOGY RESULT REPORT';
 
   return `
     <!DOCTYPE html><html><head><title>Result - ${patient.slipNumber}</title>
@@ -90,7 +90,7 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
       <div><span class="pi-label">Requested Date;</span> ${regDate}</div>
       <div><span class="pi-label">Reporting Date;</span> ${reportingDate}</div>
       <div><span class="pi-label">Investigation(s);</span> ${investigationList}</div>
-      <div><span class="pi-label">Specimen;</span> ${specimen}</div>
+      <div><span class="pi-label">Specimen(s);</span> ${specimens}</div>
     </div>
     ${testSections}
     <div class="sig-section">
@@ -115,51 +115,55 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
  */
 export const getSlipTemplate = (patient: Patient) => {
   const regDate = new Date(patient.registeredAt).toLocaleDateString('en-NG');
+  const specimens = Array.from(new Set(patient.tests.map(t => t.specimen))).filter(Boolean).join(', ') || '—';
   const testRows = patient.tests.map(t => `
     <tr>
-      <td>${t.testName}</td>
-      <td style="text-align:center">${t.department === 'lab' ? 'Laboratory' : 'Radiology'}</td>
+      <td>${t.testName} ${t.specimen ? `<span style="font-size:10px; color:#666">(${t.specimen})</span>` : ''}</td>
+      <td style="text-align:right">${t.department === 'lab' ? 'Lab' : 'Radio'}</td>
     </tr>`).join('');
 
   return `
     <!DOCTYPE html><html><head><title>Patient Slip - ${patient.slipNumber}</title>
     <style>
-      body { font-family: Times New Roman, sans-serif; margin: 0; padding: 20px; font-size: 11pt; color: #000; min-width: 750px; }
-      .header { text-align: center; border-bottom: 2px solid #4472c4; padding-bottom: 12px; margin-bottom: 16px; margin-left: 0; margin-right: 0; padding-left: 0; padding-right: 0; }
-      .org-name-1 { font-size: 40pt; white-space: nowrap; color: #0563c1; margin: 0; padding: 0; line-height: 1; }
-      .org-name-2 { font-size: 26pt; white-space: nowrap; color: #0563c1; margin: 0; padding: 0; line-height: 1; }
-      .org-addr { font-size: 14pt; color: #222a35; margin: 0; padding: 0; line-height: 1; }
-      .org-contact { font-size: 14pt; color: #c00000; margin: 0; padding: 0; line-height: 1; }
-      .org-email { font-size: 14pt; margin: 0; padding: 0; line-height: 1; padding-bottom: 12px; }
-      .slip-title { font-size: 14pt; font-weight: bold; text-align: center; margin: 12px 0 16px; text-decoration: underline; text-transform: uppercase; }
-      .patient-info { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; font-size: 12pt; border: 1px solid #4472c4; padding: 12px; }
-      .pi-label { font-weight: bold; margin-right: 8px; }
-      table { width: 100%; border-collapse: collapse; margin-top: 16px; }
-      th { background: #4472c4; color: white; padding: 6px 8px; text-align: left; font-size: 11pt; }
-      td { padding: 5px 8px; border-bottom: 1px solid #eee; font-size: 11pt; }
-      .footer { margin-top: 20px; border-top: 1px solid #ccc; padding-top: 8px; font-size: 9pt; color: #888; text-align: center; border-color: #4472c4; }
+      @page { margin: 0; }
+      body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; margin: 0 auto; padding: 15px 10px; width: 80mm; font-size: 12px; color: #000; box-sizing: border-box; }
+      .header { text-align: center; border-bottom: 1px dashed #000; padding-bottom: 8px; margin-bottom: 10px; }
+      .org-name-1 { font-size: 16px; font-weight: bold; margin: 0; line-height: 1.2; }
+      .org-name-2 { font-size: 11px; font-weight: bold; margin: 0; margin-bottom: 4px; }
+      .org-addr { font-size: 10px; margin: 2px 0; }
+      .org-contact { font-size: 10px; margin: 0; }
+      .slip-title { font-size: 14px; font-weight: bold; text-align: center; margin: 10px 0; padding-bottom: 5px; }
+      .patient-info { margin-bottom: 10px; font-size: 12px; line-height: 1.5; }
+      .pi-row { display: flex; justify-content: space-between; }
+      .pi-label { font-weight: bold; }
+      .tests-header { font-weight: bold; border-bottom: 1px solid #000; padding-bottom: 2px; margin-top: 10px; }
+      table { width: 100%; border-collapse: collapse; margin-top: 5px; font-size: 12px; }
+      th { border-bottom: 1px solid #000; text-align: left; padding: 4px 0; }
+      td { padding: 4px 0; border-bottom: 1px dashed #ccc; }
+      .footer { margin-top: 15px; border-top: 1px dashed #000; padding-top: 10px; font-size: 10px; text-align: center; line-height: 1.4; }
     </style></head><body>
     <div class="header">
       <div class="org-name-1">AMANA TRUST DIAGNOSTICS</div>
-      <div class="org-name-2">AND CLINICAL SERVICES LIMITED</div>
-      <div class="org-addr">No 15, C Tudun Wada Bus Stop, Nasarawa LGA, Kano State.</div>
-      <div class="org-contact"><b>Phone;</b> +2348033390574, +2347032663898</div>
-      <div class="org-email"><b>Email;</b> <span style="color:#0563c1">amanatrust2022@gmail.com</span></div>
+      <div class="org-name-2">AND CLINICAL SERVICES LTD</div>
+      <div class="org-addr">No 15, C Tudun Wada Bus Stop,<br>Nasarawa LGA, Kano State.</div>
+      <div class="org-contact">Tel: 08033390574, 07032663898</div>
     </div>
-    <div class="slip-title">PATIENT INVESTIGATION REQUEST SLIP</div>
+    <div class="slip-title">INVESTIGATION SLIP</div>
     <div class="patient-info">
-      <div><span class="pi-label">Patient Name;</span> ${patient.name}</div>
-      <div><span class="pi-label">Patient ID;</span> ${patient.slipNumber}</div>
-      <div><span class="pi-label">Age;</span> ${patient.age}</div>
-      <div><span class="pi-label">Sex;</span> ${patient.sex}</div>
-      <div><span class="pi-label">Requested Date;</span> ${regDate}</div>
-      <div><span class="pi-label">Reporting Date;</span> —</div>
+      <div class="pi-row"><span class="pi-label">ID:</span> <span>${patient.slipNumber}</span></div>
+      <div class="pi-row"><span class="pi-label">Name:</span> <span>${patient.name}</span></div>
+      <div class="pi-row"><span class="pi-label">Age/Sex:</span> <span>${patient.age} / ${patient.sex}</span></div>
+      <div class="pi-row"><span class="pi-label">Date:</span> <span>${regDate}</span></div>
+      <div class="pi-row"><span class="pi-label">Specimen(s):</span> <span>${specimens}</span></div>
     </div>
-    <div class="patient-info" style="grid-template-columns: 1fr;">
-      <div><span class="pi-label">Investigation(s);</span> ${patient.tests.length} tests</div>
-      <div><span class="pi-label">Specimen;</span> ${patient.tests[0]?.specimen || '—'}</div>
+    <div class="tests-header">TESTS ORDERED (${patient.tests.length})</div>
+    <table>
+      <thead><tr><th>Test</th><th style="text-align:right">Dept</th></tr></thead>
+      <tbody>${testRows}</tbody>
+    </table>
+    <div class="footer">
+      Please proceed to the respective department with this slip<br>
+      Amana Trust  &copy; ${new Date().getFullYear()}
     </div>
-    <table><thead><tr><th>Test Name</th><th>Department</th></tr></thead><tbody>${testRows}</tbody></table>
-    <div class="footer">Please proceed to the respective department with this slip &bull; Amana Trust Diagnostics &copy; ${new Date().getFullYear()}</div>
     </body></html>`;
 };

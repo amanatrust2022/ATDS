@@ -1,8 +1,9 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import Header from './Header';
-import { Department, Patient, PatientTest, getPatients, getTestById, updatePatient } from '@/lib/store';
-import { RiTestTubeLine, RiRadarLine, RiCheckLine, RiMoreLine } from '@remixicon/react';
+import { Department, Patient, PatientTest, getTestById, fetchPatients, updateTestResult, subscribeToPatients } from '@/lib/store';
+import { RiTestTubeLine, RiRadarLine, RiCheckLine, RiMoreLine, RiLogoutCircleLine } from '@remixicon/react';
+import { useAuth } from '@/components/AuthProvider';
 
 interface Props { department: Department; }
 
@@ -23,13 +24,16 @@ export default function DepartmentPage({ department }: Props) {
   const borderColor = isLab ? 'var(--teal-200)' : '#c4b5fd';
   const textColor = isLab ? 'var(--teal-800)' : '#5b21b6';
 
-  const refresh = useCallback(() => setPatients(getPatients()), []);
+  const { profile, signOut } = useAuth();
+  const refresh = useCallback(async () => {
+    const data = await fetchPatients();
+    setPatients(data);
+  }, []);
 
   useEffect(() => {
     refresh();
-    window.addEventListener('amana_update', refresh);
-    const interval = setInterval(refresh, 3000);
-    return () => { window.removeEventListener('amana_update', refresh); clearInterval(interval); };
+    const unsubscribe = subscribeToPatients(refresh);
+    return () => { unsubscribe(); };
   }, [refresh]);
 
   const deptPatients = patients.filter(p =>
@@ -40,7 +44,7 @@ export default function DepartmentPage({ department }: Props) {
     n + p.tests.filter(t => t.department === department && t.status === 'pending').length, 0
   );
 
-  const openEntry = (patient: Patient, test: PatientTest) => {
+  const openEntry = async (patient: Patient, test: PatientTest) => {
     const testDef = getTestById(test.testId);
     const initResults = (testDef?.parameters || []).map(p => ({
       parameter: p.name, result: '', unit: p.unit, range: p.range, flag: '',
@@ -49,34 +53,37 @@ export default function DepartmentPage({ department }: Props) {
     setNotes('');
     setSelected({ patient, test });
 
-    // Mark as in_progress
-    const updated = { ...patient, tests: patient.tests.map(t =>
-      t.testId === test.testId ? { ...t, status: 'in_progress' as const } : t
-    )};
-    updatePatient(updated);
+    // Mark as in_progress in DB
+    if (test.status === 'pending') {
+      try {
+        await updateTestResult(test.id!, { status: 'in_progress' });
+      } catch (err) {
+        console.error('Failed to update status:', err);
+      }
+    }
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!selected) return;
     if (!professional.trim()) { alert('Please enter your name / staff ID'); return; }
     setSaving(true);
-    const updatedTest: PatientTest = {
-      ...selected.test,
-      status: 'completed',
-      results,
-      completedBy: professional,
-      completedAt: new Date().toISOString(),
-      notes,
-    };
-    const updatedPatient: Patient = {
-      ...selected.patient,
-      tests: selected.patient.tests.map(t => t.testId === selected.test.testId ? updatedTest : t),
-    };
-    updatePatient(updatedPatient);
-    setSaving(false);
-    setSuccessMsg(`Result for "${selected.test.testName}" sent to reception!`);
-    setSelected(null);
-    setTimeout(() => setSuccessMsg(''), 4000);
+    
+    try {
+      await updateTestResult(selected.test.id!, {
+        status: 'completed',
+        results,
+        completedBy: professional,
+        completedAt: new Date().toISOString(),
+        notes,
+      });
+      setSuccessMsg(`Result for "${selected.test.testName}" sent to reception!`);
+      setSelected(null);
+      setTimeout(() => setSuccessMsg(''), 4000);
+    } catch (err: any) {
+      alert('Failed to save result: ' + err.message);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const updateResult = (i: number, field: string, value: string) => {
@@ -92,6 +99,25 @@ export default function DepartmentPage({ department }: Props) {
         accentColor={accentColor}
         notifications={pendingCount}
       />
+
+      <div style={{ background: 'white', borderBottom: '1px solid var(--gray-300)', padding: '0 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ padding: '0.9rem 0', fontSize: '0.82rem', fontWeight: 600, color: 'var(--gray-500)' }}>
+          Active Session: <span style={{ color: textColor }}>{isLab ? 'Lab' : 'Radio'} Department</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--gray-800)' }}>{profile?.full_name}</div>
+            <div style={{ fontSize: '0.65rem', color: textColor, fontWeight: 600, textTransform: 'uppercase' }}>{profile?.role}</div>
+          </div>
+          <button 
+            onClick={() => signOut()}
+            style={{ background: 'var(--gray-100)', border: '1px solid var(--gray-300)', padding: '0.4rem', borderRadius: 'var(--radius)', cursor: 'pointer', color: 'var(--gray-600)' }}
+            title="Sign Out"
+          >
+            <RiLogoutCircleLine size={18} />
+          </button>
+        </div>
+      </div>
 
       {successMsg && (
         <div style={{
@@ -144,20 +170,11 @@ export default function DepartmentPage({ department }: Props) {
                 </div>
                 <div style={{ width: 200 }}>
                   <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--gray-700)', marginBottom: '0.3rem', textTransform: 'uppercase' }}>
-                    Specimen Used
+                    Specimen (Fixed)
                   </label>
-                  <input
-                    value={selected.test.specimen || ''}
-                    onChange={e => {
-                      const val = e.target.value;
-                      setSelected({
-                        ...selected,
-                        test: { ...selected.test, specimen: val }
-                      });
-                    }}
-                    placeholder="e.g. Blood"
-                    style={{ width: '100%', padding: '0.55rem 0.75rem', border: '1px solid var(--gray-300)', borderRadius: 'var(--radius)', fontSize: '0.82rem', fontFamily: 'var(--font-body)' }}
-                  />
+                  <div style={{ padding: '0.55rem 0.75rem', border: '1px solid var(--gray-200)', background: 'var(--gray-50)', borderRadius: 'var(--radius)', fontSize: '0.82rem', color: 'var(--gray-600)', fontWeight: 600 }}>
+                    {selected.test.specimen || '—'}
+                  </div>
                 </div>
               </div>
 

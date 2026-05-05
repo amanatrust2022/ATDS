@@ -7,10 +7,11 @@ import {
 } from '@remixicon/react';
 import Header from '@/components/Header';
 import {
-  Patient, PatientTest, TEST_CATALOGUE, getPatients, addPatient,
-  generateSlipNumber, getTestById
+  Patient, PatientTest, TEST_CATALOGUE, getTestById, fetchPatients, addPatient, generateSlipNumber, subscribeToPatients
 } from '@/lib/store';
 import { getResultTemplate, getSlipTemplate } from '@/lib/templates';
+import { useAuth } from '@/components/AuthProvider';
+import { RiLogoutCircleLine } from '@remixicon/react';
 
 type Tab = 'register' | 'queue' | 'results';
 
@@ -22,24 +23,29 @@ export default function ReceptionPage() {
   const [showResultModal, setShowResultModal] = useState<Patient | null>(null);
   const [searchQ, setSearchQ] = useState('');
   const [deptFilter, setDeptFilter] = useState<'all' | 'lab' | 'radiology'>('all');
+  const [testSearch, setTestSearch] = useState('');
   const [form, setForm] = useState({
-    name: '', age: '', sex: 'Male' as 'Male' | 'Female',
-    phone: '', address: '', referredBy: '', specimen: 'Blood',
+    firstName: '', surname: '', middleName: '', age: '', sex: 'Male' as 'Male' | 'Female',
+    phone: '', address: '', referredBy: '', referringFacility: '',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
 
-  const refresh = useCallback(() => setPatients(getPatients()), []);
+  const { profile, signOut } = useAuth();
+  const refresh = useCallback(async () => {
+    const data = await fetchPatients();
+    setPatients(data);
+  }, []);
 
   useEffect(() => {
     refresh();
-    window.addEventListener('amana_update', refresh);
-    const interval = setInterval(refresh, 3000);
-    return () => { window.removeEventListener('amana_update', refresh); clearInterval(interval); };
+    const unsubscribe = subscribeToPatients(refresh);
+    return () => { unsubscribe(); };
   }, [refresh]);
 
   const categories = Array.from(new Set(TEST_CATALOGUE.map(t => t.category)));
-  const testsByCategory = (cat: string) => TEST_CATALOGUE.filter(t => t.category === cat);
+  const testsByCategory = (cat: string) => TEST_CATALOGUE.filter(t => t.category === cat && t.name.toLowerCase().includes(testSearch.toLowerCase()));
+  const filteredCategories = categories.filter(cat => testsByCategory(cat).length > 0);
 
   const pendingPatients = patients.filter(p => p.tests.some(t => t.status !== 'completed'));
   const resultsPatients = patients.filter(p => p.tests.some(t => t.status === 'completed'));
@@ -51,35 +57,52 @@ export default function ReceptionPage() {
 
   const validate = () => {
     const e: Record<string, string> = {};
-    if (!form.name.trim()) e.name = 'Patient name is required';
+    if (!form.firstName.trim()) e.firstName = 'First name is required';
+    if (!form.surname.trim()) e.surname = 'Surname is required';
     if (!form.age.trim()) e.age = 'Age is required';
     if (!form.phone.trim()) e.phone = 'Phone number is required';
     if (selectedTests.length === 0) e.tests = 'Select at least one test';
     return e;
   };
 
-  const handleRegister = () => {
+  const handleRegister = async () => {
     const e = validate();
     setErrors(e);
     if (Object.keys(e).length > 0) return;
     setSaving(true);
-    const tests: PatientTest[] = selectedTests.map(tid => {
-      const t = getTestById(tid)!;
-      return { testId: t.id, testName: t.name, department: t.department, status: 'pending', specimen: form.specimen };
-    });
-    const patient: Patient = {
-      id: Date.now().toString(),
-      slipNumber: generateSlipNumber(),
-      registeredAt: new Date().toISOString(),
-      ...form,
-      tests,
-    };
-    addPatient(patient);
-    setSaving(false);
-    setShowSlipModal(patient);
-    setForm({ name: '', age: '', sex: 'Male', phone: '', address: '', referredBy: '', specimen: 'Blood' });
-    setSelectedTests([]);
-    setErrors({});
+    
+    try {
+      const slipNumber = await generateSlipNumber();
+      const tests: Omit<PatientTest, 'id' | 'patient_id'>[] = selectedTests.map(tid => {
+        const t = getTestById(tid)!;
+        return { testId: t.id, testName: t.name, department: t.department, status: 'pending', specimen: t.specimen };
+      });
+      
+      const patientData: Omit<Patient, 'id' | 'tests'> = {
+        slipNumber,
+        registeredAt: new Date().toISOString(),
+        name: [form.firstName, form.middleName, form.surname].filter(Boolean).join(' '),
+        ...form,
+      };
+
+      await addPatient(patientData, tests);
+      
+      // For local modal display only
+      const tempPatient: Patient = { 
+        id: 'temp', 
+        tests: tests as any, 
+        ...patientData 
+      };
+      
+      setShowSlipModal(tempPatient);
+      setForm({ firstName: '', surname: '', middleName: '', age: '', sex: 'Male', phone: '', address: '', referredBy: '', referringFacility: '' });
+      setSelectedTests([]);
+      setErrors({});
+    } catch (err: any) {
+      alert('Registration failed: ' + err.message);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const filtered = (tab === 'queue' ? pendingPatients : resultsPatients).filter(p => {
@@ -130,13 +153,26 @@ export default function ReceptionPage() {
             )}
           </button>
         ))}
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--gray-800)' }}>{profile?.full_name}</div>
+            <div style={{ fontSize: '0.65rem', color: 'var(--teal-600)', fontWeight: 600, textTransform: 'uppercase' }}>{profile?.role}</div>
+          </div>
+          <button 
+            onClick={() => signOut()}
+            style={{ background: 'var(--gray-100)', border: '1px solid var(--gray-300)', padding: '0.4rem', borderRadius: 'var(--radius)', cursor: 'pointer', color: 'var(--gray-600)' }}
+            title="Sign Out"
+          >
+            <RiLogoutCircleLine size={18} />
+          </button>
+        </div>
       </div>
 
-      <div style={{ flex: 1, padding: '1.5rem', maxWidth: 1100, margin: '0 auto', width: '100%' }}>
+      <div style={{ flex: 1, padding: '1.5rem', maxWidth: 1400, margin: '0 auto', width: '100%' }}>
 
         {/* ===== REGISTER TAB ===== */}
         {tab === 'register' && (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: '1.5rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '0.8fr 1fr 1fr', gap: '1.5rem', alignItems: 'start' }}>
 
             {/* Patient Form */}
             <div style={{ background: 'white', borderRadius: 'var(--radius-lg)', border: '1px solid var(--gray-300)', overflow: 'hidden' }}>
@@ -145,9 +181,17 @@ export default function ReceptionPage() {
                 <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.72rem', marginTop: '0.2rem' }}>Enter patient biodata</p>
               </div>
               <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
-                <Field label="Full Name *" error={errors.name}>
-                  <input style={inputStyle(!!errors.name)} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. Musa Ibrahim Bello" />
-                </Field>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
+                  <Field label="First Name *" error={errors.firstName}>
+                    <input style={inputStyle(!!errors.firstName)} value={form.firstName} onChange={e => setForm({ ...form, firstName: e.target.value })} placeholder="e.g. Musa" />
+                  </Field>
+                  <Field label="Middle Name" error={errors.middleName}>
+                    <input style={inputStyle(!!errors.middleName)} value={form.middleName} onChange={e => setForm({ ...form, middleName: e.target.value })} placeholder="e.g. Ibrahim" />
+                  </Field>
+                  <Field label="Surname *" error={errors.surname}>
+                    <input style={inputStyle(!!errors.surname)} value={form.surname} onChange={e => setForm({ ...form, surname: e.target.value })} placeholder="e.g. Bello" />
+                  </Field>
+                </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
                   <Field label="Age *" error={errors.age}>
                     <input style={inputStyle(!!errors.age)} value={form.age} onChange={e => setForm({ ...form, age: e.target.value })} placeholder="e.g. 35yrs" />
@@ -165,20 +209,14 @@ export default function ReceptionPage() {
                 <Field label="Address">
                   <input style={inputStyle(false)} value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} placeholder="Patient address" />
                 </Field>
-                <Field label="Referred By">
-                  <input style={inputStyle(false)} value={form.referredBy} onChange={e => setForm({ ...form, referredBy: e.target.value })} placeholder="Referring doctor / self" />
-                </Field>
-                <Field label="Specimen">
-                  <select style={inputStyle(false)} value={form.specimen} onChange={e => setForm({ ...form, specimen: e.target.value })}>
-                    <option>Blood</option>
-                    <option>Urine</option>
-                    <option>Stool</option>
-                    <option>Swab (HVS/Wound/Throat)</option>
-                    <option>Seminal Fluid</option>
-                    <option>Sputum</option>
-                    <option>Other</option>
-                  </select>
-                </Field>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                  <Field label="Referred By">
+                    <input style={inputStyle(false)} value={form.referredBy} onChange={e => setForm({ ...form, referredBy: e.target.value })} placeholder="Referring doctor / self" />
+                  </Field>
+                  <Field label="Referring Facility">
+                    <input style={inputStyle(false)} value={form.referringFacility} onChange={e => setForm({ ...form, referringFacility: e.target.value })} placeholder="Hospital / Clinic" />
+                  </Field>
+                </div>
                 {errors.tests && <div style={{ color: 'var(--red)', fontSize: '0.75rem', background: 'var(--red-light)', padding: '0.5rem 0.75rem', borderRadius: 'var(--radius)', border: '1px solid #f5c6cb', display: 'flex', alignItems: 'center', gap: '0.25rem' }}><RiErrorWarningLine size={14} /> {errors.tests}</div>}
                 <button
                   onClick={handleRegister}
@@ -199,21 +237,29 @@ export default function ReceptionPage() {
 
             {/* Test Selection */}
             <div style={{ background: 'white', borderRadius: 'var(--radius-lg)', border: '1px solid var(--gray-300)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-              <div style={{ background: 'var(--teal-800)', padding: '1rem 1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div>
-                  <h2 style={{ color: 'white', fontFamily: 'var(--font-display)', fontSize: '1rem', fontWeight: 600 }}>Select Tests</h2>
-                  <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.72rem', marginTop: '0.2rem' }}>
-                    {selectedTests.length} test{selectedTests.length !== 1 ? 's' : ''} selected
-                  </p>
+              <div style={{ background: 'var(--teal-800)', padding: '1rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div>
+                    <h2 style={{ color: 'white', fontFamily: 'var(--font-display)', fontSize: '1rem', fontWeight: 600 }}>Select Tests</h2>
+                    <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.72rem', marginTop: '0.2rem' }}>
+                      {selectedTests.length} test{selectedTests.length !== 1 ? 's' : ''} selected
+                    </p>
+                  </div>
+                  {selectedTests.length > 0 && (
+                    <button onClick={() => setSelectedTests([])} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: 'white', cursor: 'pointer', borderRadius: 0, padding: '0.3rem 0.7rem', fontSize: '0.72rem' }}>
+                      Clear all
+                    </button>
+                  )}
                 </div>
-                {selectedTests.length > 0 && (
-                  <button onClick={() => setSelectedTests([])} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: 'white', cursor: 'pointer', borderRadius: 0, padding: '0.3rem 0.7rem', fontSize: '0.72rem' }}>
-                    Clear all
-                  </button>
-                )}
+                <input 
+                  value={testSearch} 
+                  onChange={e => setTestSearch(e.target.value)} 
+                  placeholder="Search tests..." 
+                  style={{ ...inputStyle(false), padding: '0.4rem 0.6rem', fontSize: '0.75rem', background: 'white' }} 
+                />
               </div>
               <div style={{ flex: 1, overflowY: 'auto', padding: '0.75rem' }}>
-                {categories.map(cat => (
+                {filteredCategories.map(cat => (
                   <TestGroup 
                     key={cat} 
                     label={
@@ -248,6 +294,64 @@ export default function ReceptionPage() {
                   </div>
                 </div>
               )}
+            </div>
+
+            {/* Preview Block */}
+            <div style={{ background: 'white', borderRadius: 'var(--radius-lg)', border: '1px solid var(--gray-300)', overflow: 'hidden', display: 'flex', flexDirection: 'column', position: 'sticky', top: '1.5rem' }}>
+              <div style={{ background: 'var(--teal-900)', padding: '1rem 1.25rem' }}>
+                <h2 style={{ color: 'white', fontFamily: 'var(--font-display)', fontSize: '1rem', fontWeight: 600 }}>Live Preview</h2>
+                <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.72rem', marginTop: '0.2rem' }}>Slip as it will appear</p>
+              </div>
+              <div style={{ padding: '1.5rem', flex: 1, background: '#f8fafc', overflowY: 'auto', maxHeight: '75vh' }}>
+                <div style={{ 
+                  background: 'white', 
+                  boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', 
+                  padding: '1.5rem', 
+                  width: '300px', 
+                  margin: '0 auto',
+                  fontFamily: 'monospace',
+                  fontSize: '11px',
+                  color: '#000',
+                  border: '1px solid var(--gray-200)'
+                }}>
+                  <div style={{ textAlign: 'center', borderBottom: '1px dashed #000', paddingBottom: '8px', marginBottom: '10px' }}>
+                    <div style={{ fontWeight: 'bold', fontSize: '13px' }}>AMANA TRUST DIAGNOSTICS</div>
+                    <div style={{ fontSize: '10px' }}>AND CLINICAL SERVICES LTD</div>
+                    <div style={{ fontSize: '9px', marginTop: '2px' }}>No 15, C Tudun Wada Bus Stop</div>
+                  </div>
+                  <div style={{ textAlign: 'center', fontWeight: 'bold', marginBottom: '10px' }}>INVESTIGATION SLIP</div>
+                  <div style={{ marginBottom: '10px', lineHeight: '1.4' }}>
+                    <div>ID: <span style={{ float: 'right' }}>ATD/2026.../0001</span></div>
+                    <div>NAME: <span style={{ float: 'right', fontWeight: 'bold' }}>{(form.firstName || form.surname) ? `${form.firstName} ${form.middleName} ${form.surname}`.trim() : '—'}</span></div>
+                    <div>AGE/SEX: <span style={{ float: 'right' }}>{form.age || '—'} / {form.sex}</span></div>
+                    <div>DATE: <span style={{ float: 'right' }}>{new Date().toLocaleDateString('en-NG')}</span></div>
+                  </div>
+                  <div style={{ fontWeight: 'bold', borderBottom: '1px solid #000', marginBottom: '5px' }}>TESTS ORDERED ({selectedTests.length})</div>
+                  <div style={{ minHeight: '50px' }}>
+                    {selectedTests.length === 0 ? (
+                      <div style={{ color: '#999', fontStyle: 'italic', textAlign: 'center', marginTop: '10px' }}>No tests selected</div>
+                    ) : (
+                      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <tbody>
+                          {selectedTests.map(tid => {
+                            const t = getTestById(tid);
+                            return t ? (
+                              <tr key={tid} style={{ borderBottom: '1px dashed #eee' }}>
+                                <td style={{ padding: '2px 0' }}>{t.name} <span style={{ fontSize: '9px', color: '#666' }}>({t.specimen})</span></td>
+                                <td style={{ textAlign: 'right', padding: '2px 0' }}>{t.department === 'lab' ? 'Lab' : 'Radio'}</td>
+                              </tr>
+                            ) : null;
+                          })}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                  <div style={{ marginTop: '15px', borderTop: '1px dashed #000', paddingTop: '8px', textAlign: 'center', fontSize: '9px', color: '#666' }}>
+                    Please proceed to respective dept...<br/>
+                    Amana Trust &copy; 2026
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -421,7 +525,10 @@ function SlipModal({ patient, onClose }: { patient: Patient; onClose: () => void
     if (!win) return;
     win.document.write(getSlipTemplate(patient));
     win.document.close();
-    win.print();
+    setTimeout(() => {
+      win.focus();
+      win.print();
+    }, 500);
   };
 
   return (
@@ -493,7 +600,10 @@ function ResultModal({ patient, onClose }: { patient: Patient; onClose: () => vo
     if (!win) return;
     win.document.write(getResultTemplate(patient, completedTests));
     win.document.close();
-    win.print();
+    setTimeout(() => {
+      win.focus();
+      win.print();
+    }, 500);
   };
 
   return (
