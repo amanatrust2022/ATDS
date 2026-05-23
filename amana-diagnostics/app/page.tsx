@@ -1,9 +1,26 @@
 'use client';
 import { useRouter } from 'next/navigation';
+import { useAuth } from '@/components/AuthProvider';
 import { RiMicroscopeLine, RiTestTubeLine, RiRadarLine, RiHospitalLine, RiShieldCheckLine, RiCloudLine, RiPrinterLine, RiTeamLine } from '@remixicon/react';
 
 export default function LandingPage() {
   const router = useRouter();
+  const { user, profile, organization, loading } = useAuth();
+
+  const getDashboardUrl = () => {
+    if (!organization) return '/onboarding';
+    switch (profile?.role) {
+      case 'lab':       return `/${organization.slug}/lab`;
+      case 'radiology': return `/${organization.slug}/radiology`;
+      case 'admin':     return `/${organization.slug}/admin`;
+      case 'reception': return `/${organization.slug}/reception`;
+      default:          return `/${organization.slug}/reception`;
+    }
+  };
+
+  const handleWorkspaceClick = () => {
+    router.push(getDashboardUrl());
+  };
 
   return (
     <div style={{ minHeight: '100vh', background: '#0a0f1e', color: 'white', fontFamily: 'var(--font-body)' }}>
@@ -28,8 +45,14 @@ export default function LandingPage() {
           <span style={{ fontWeight: 700, fontSize: '1rem', letterSpacing: '-0.02em' }}>DiagnosticOS</span>
         </div>
         <div style={{ display: 'flex', gap: '0.75rem' }}>
-          <button onClick={() => router.push('/login')} className="outline-btn" style={{ background: 'none', border: '1px solid rgba(255,255,255,0.15)', color: 'white', padding: '0.5rem 1.25rem', borderRadius: 8, cursor: 'pointer', fontSize: '0.85rem', fontWeight: 500 }}>Sign In</button>
-          <button onClick={() => router.push('/signup')} className="cta-btn" style={{ background: '#4472c4', border: 'none', color: 'white', padding: '0.5rem 1.25rem', borderRadius: 8, cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600 }}>Start Free Trial</button>
+          {!loading && user ? (
+            <button onClick={handleWorkspaceClick} className="cta-btn" style={{ background: '#4472c4', border: 'none', color: 'white', padding: '0.5rem 1.25rem', borderRadius: 8, cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600 }}>Go to Workspace →</button>
+          ) : (
+            <>
+              <button onClick={() => router.push('/login')} className="outline-btn" style={{ background: 'none', border: '1px solid rgba(255,255,255,0.15)', color: 'white', padding: '0.5rem 1.25rem', borderRadius: 8, cursor: 'pointer', fontSize: '0.85rem', fontWeight: 500 }}>Sign In</button>
+              <button onClick={() => router.push('/signup')} className="cta-btn" style={{ background: '#4472c4', border: 'none', color: 'white', padding: '0.5rem 1.25rem', borderRadius: 8, cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600 }}>Start Free Trial</button>
+            </>
+          )}
         </div>
       </nav>
 
@@ -45,12 +68,20 @@ export default function LandingPage() {
           Reception, Lab, Radiology, and Results — all connected in real time. Built for diagnostic centres that want to move fast without the paperwork.
         </p>
         <div className="hero-animate-delay" style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
-          <button onClick={() => router.push('/signup')} className="cta-btn" style={{ background: '#4472c4', border: 'none', color: 'white', padding: '0.85rem 2rem', borderRadius: 10, cursor: 'pointer', fontSize: '0.95rem', fontWeight: 700 }}>
-            Start Free Trial — No credit card
-          </button>
-          <button onClick={() => router.push('/login')} className="outline-btn" style={{ background: 'none', border: '1px solid rgba(255,255,255,0.2)', color: 'white', padding: '0.85rem 1.75rem', borderRadius: 10, cursor: 'pointer', fontSize: '0.95rem', fontWeight: 500 }}>
-            Sign in to workspace
-          </button>
+          {!loading && user ? (
+            <button onClick={handleWorkspaceClick} className="cta-btn" style={{ background: '#4472c4', border: 'none', color: 'white', padding: '0.85rem 2rem', borderRadius: 10, cursor: 'pointer', fontSize: '0.95rem', fontWeight: 700 }}>
+              Open your Workspace
+            </button>
+          ) : (
+            <>
+              <button onClick={() => router.push('/signup')} className="cta-btn" style={{ background: '#4472c4', border: 'none', color: 'white', padding: '0.85rem 2rem', borderRadius: 10, cursor: 'pointer', fontSize: '0.95rem', fontWeight: 700 }}>
+                Start Free Trial — No credit card
+              </button>
+              <button onClick={() => router.push('/login')} className="outline-btn" style={{ background: 'none', border: '1px solid rgba(255,255,255,0.2)', color: 'white', padding: '0.85rem 1.75rem', borderRadius: 10, cursor: 'pointer', fontSize: '0.95rem', fontWeight: 500 }}>
+                Sign in to workspace
+              </button>
+            </>
+          )}
         </div>
       </section>
 

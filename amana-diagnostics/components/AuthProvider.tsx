@@ -6,6 +6,11 @@ import { User, Session } from '@supabase/supabase-js';
 export type Profile = {
   id: string;
   full_name: string;
+  title?: string;
+  first_name?: string;
+  surname?: string;
+  last_name?: string;
+  signature_url?: string;
   role: 'reception' | 'lab' | 'radiology' | 'admin';
   organization_id: string | null;
 };
@@ -18,6 +23,7 @@ export type Organization = {
   address?: string;
   phone?: string;
   email?: string;
+  letterhead_line2?: string;
 };
 
 type AuthContextType = {
@@ -43,17 +49,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [organization, setOrganization] = useState<Organization | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+
   const supabase = createClient();
 
   const fetchProfileAndOrg = async (userId: string) => {
-    const { data: prof } = await supabase
-      .from('profiles').select('*').eq('id', userId).single();
-    setProfile(prof);
-    if (prof?.organization_id) {
-      const { data: org } = await supabase
-        .from('organizations').select('*').eq('id', prof.organization_id).single();
-      setOrganization(org);
-    } else {
+    try {
+      const { data: prof } = await supabase
+        .from('profiles').select('*').eq('id', userId).single();
+      setProfile(prof ?? null);
+      if (prof?.organization_id) {
+        const { data: org } = await supabase
+          .from('organizations').select('*').eq('id', prof.organization_id).single();
+        setOrganization(org ?? null);
+      } else {
+        setOrganization(null);
+      }
+    } catch (e) {
+      console.error('fetchProfileAndOrg error:', e);
+      setProfile(null);
       setOrganization(null);
     }
   };
@@ -63,31 +76,100 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
-    const init = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) await fetchProfileAndOrg(session.user.id);
-      setLoading(false);
+    let mounted = true;
+
+    // A completely silent safety net. If Supabase hangs (e.g. due to corrupted local storage), 
+    // we unblock the UI after 2.5 seconds without throwing scary errors.
+    const safetyNet = setTimeout(() => {
+      if (mounted && loading) {
+        setLoading(false);
+      }
+    }, 2500);
+
+    const initializeAuth = async () => {
+      try {
+        // Race the session fetch against a silent timeout
+        const sessionPromise = supabase.auth.getSession();
+        const timeoutPromise = new Promise<{ data: { session: null }, error: null }>((resolve) => {
+          setTimeout(() => resolve({ data: { session: null }, error: null }), 2000);
+        });
+
+        const { data: { session }, error } = await Promise.race([sessionPromise, timeoutPromise]);
+        
+        if (error) {
+          if (mounted) setLoading(false);
+          return;
+        }
+        
+        if (!mounted) return;
+        
+        if (session?.user) {
+          // If we have a user, fetch profile with its own safety race
+          const profilePromise = fetchProfileAndOrg(session.user.id);
+          const profTimeout = new Promise((resolve) => setTimeout(resolve, 2000));
+          await Promise.race([profilePromise, profTimeout]);
+        } else {
+          setProfile(null);
+          setOrganization(null);
+        }
+        
+        if (!mounted) return;
+        setSession(session);
+        setUser(session?.user ?? null);
+      } catch (e) {
+        // Ignore errors silently to behave like a normal app
+        if (mounted) {
+          setProfile(null);
+          setOrganization(null);
+          setUser(null);
+          setSession(null);
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false);
+          clearTimeout(safetyNet);
+        }
+      }
     };
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        await fetchProfileAndOrg(session.user.id);
-      } else {
-        setProfile(null);
-        setOrganization(null);
-      }
-      setLoading(false);
-    });
+    initializeAuth();
 
-    init();
-    return () => subscription.unsubscribe();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (!mounted) return;
+        if (event === 'INITIAL_SESSION') return;
+
+        try {
+          if (event === 'SIGNED_OUT') {
+            setProfile(null);
+            setOrganization(null);
+          } else if (event === 'SIGNED_IN' || event === 'USER_UPDATED') {
+            if (session?.user) {
+              const profilePromise = fetchProfileAndOrg(session.user.id);
+              const profTimeout = new Promise((resolve) => setTimeout(resolve, 2000));
+              await Promise.race([profilePromise, profTimeout]);
+            }
+          }
+          
+          if (!mounted) return;
+          setSession(session);
+          setUser(session?.user ?? null);
+        } catch (e) {
+          // Silent catch
+        }
+      }
+    );
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+      clearTimeout(safetyNet);
+    };
   }, []);
 
-  const signOut = async () => { await supabase.auth.signOut(); };
+  const signOut = async () => {
+    await supabase.auth.signOut();
+  };
 
   return (
     <AuthContext.Provider value={{ user, profile, organization, session, loading, signOut, refreshOrg }}>

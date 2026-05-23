@@ -18,8 +18,11 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true); setError('');
     const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) setError(error.message);
-    setLoading(false);
+    if (error) {
+      setError(error.message);
+      setLoading(false);
+    }
+    // On success, we let the RootWrapper handle the redirect and leave the button in "Signing in..." state
   };
 
   const handleReset = async (e: React.FormEvent) => {

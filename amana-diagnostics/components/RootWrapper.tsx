@@ -3,14 +3,16 @@ import { useAuth } from '@/components/AuthProvider';
 import { useRouter, usePathname } from 'next/navigation';
 import { useEffect } from 'react';
 
-const PUBLIC_PATHS = ['/', '/login', '/signup', '/onboarding'];
+const PUBLIC_PATHS = ['/', '/login', '/signup', '/onboarding', '/update-password'];
 
+// Maps each staff role to its direct workspace URL
 const getRolePath = (role: string | undefined, slug: string) => {
   switch (role) {
-    case 'lab': return `/${slug}/lab`;
+    case 'lab':       return `/${slug}/lab`;
     case 'radiology': return `/${slug}/radiology`;
-    case 'admin': return `/${slug}/admin/staff`;
-    default: return `/${slug}/reception`;
+    case 'admin':     return `/${slug}/admin`;
+    case 'reception': return `/${slug}/reception`;
+    default:          return `/${slug}/reception`;
   }
 };
 
@@ -24,12 +26,18 @@ export default function RootWrapper({ children }: { children: React.ReactNode })
 
   useEffect(() => {
     if (loading) return;
+
+    // Not logged in → redirect to login (except on public pages)
     if (!user && !isPublic) { router.push('/login'); return; }
-    if (user && !organization && pathname !== '/onboarding' && !isPublic) {
+
+    // Logged in but no org yet → always go to onboarding (unless already there or on a public page)
+    if (user && !organization && pathname !== '/onboarding' && !pathname.startsWith('/invite/')) {
       router.push('/onboarding'); return;
     }
-    if (user && organization && (pathname === '/login' || pathname === '/signup')) {
-      router.push(getRolePath(profile?.role, organization.slug)); return;
+
+    // Logged in with org → immediately redirect away from login/signup/landing to the role workspace
+    if (user && organization && (pathname === '/login' || pathname === '/signup' || pathname === '/')) {
+      router.replace(getRolePath(profile?.role, organization.slug)); return;
     }
   }, [user, profile, organization, loading, pathname]);
 

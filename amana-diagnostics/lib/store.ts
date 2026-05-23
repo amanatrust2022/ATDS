@@ -22,6 +22,8 @@ export interface PatientTest {
   specimen?: string;
   results?: { parameter: string; result: string; unit: string; range: string; flag?: string }[];
   completedBy?: string;
+  completedBySignatureUrl?: string;
+  completedByTitle?: string;
   completedAt?: string;
   notes?: string;
 }
@@ -37,13 +39,12 @@ export interface Patient {
   age: string;
   sex: 'Male' | 'Female';
   phone: string;
+  email?: string;
   address: string;
   referredBy: string;
   referringFacility?: string;
   tests: PatientTest[];
 }
-
-
 
 export const TEST_CATALOGUE: Test[] = [
   // --- HEMATOLOGY ---
@@ -70,39 +71,21 @@ export const TEST_CATALOGUE: Test[] = [
     { name: 'P-LCR', unit: '%', range: '11.0-45.0' },
     { name: 'P-LCC', unit: 'ul', range: '30-90' },
   ]},
-  { id: 'esr', name: 'ESR', department: 'lab', category: 'Hematology', specimen: 'Whole Blood', parameters: [
-    { name: 'ESR', unit: 'mm/hr', range: 'M: <15 / F: <20' },
-  ]},
-  { id: 'pcv', name: 'PCV', department: 'lab', category: 'Hematology', specimen: 'Whole Blood', parameters: [
-    { name: 'PCV', unit: '%', range: '35-48' },
-  ]},
-  { id: 'genotype', name: 'Hb Genotype', department: 'lab', category: 'Hematology', specimen: 'Whole Blood', parameters: [
-    { name: 'HB Genotype', unit: '', range: '' },
-  ]},
-  { id: 'blood_group', name: 'Blood Grouping', department: 'lab', category: 'Hematology', specimen: 'Whole Blood', parameters: [
-    { name: 'Blood Group', unit: '', range: '' },
-  ]},
-  { id: 'rh_typing', name: 'Rh Typing', department: 'lab', category: 'Hematology', specimen: 'Whole Blood', parameters: [
-    { name: 'Rhesus Factor', unit: '', range: '' },
-  ]},
-  { id: 'mps_rdt', name: 'MPs (RDT)', department: 'lab', category: 'Hematology', specimen: 'Whole Blood', parameters: [
-    { name: 'Malaria Parasite (RDT)', unit: '', range: 'Negative' },
-  ]},
-  { id: 'mps_bf', name: 'MPs (Blood Film)', department: 'lab', category: 'Hematology', specimen: 'Whole Blood', parameters: [
-    { name: 'Malaria Parasite (Blood Film)', unit: '', range: 'Not Seen' },
-  ]},
+  { id: 'esr', name: 'ESR', department: 'lab', category: 'Hematology', specimen: 'Whole Blood', parameters: [{ name: 'ESR', unit: 'mm/hr', range: 'M: <15 / F: <20' }]},
+  { id: 'pcv', name: 'PCV', department: 'lab', category: 'Hematology', specimen: 'Whole Blood', parameters: [{ name: 'PCV', unit: '%', range: '35-48' }]},
+  { id: 'genotype', name: 'Hb Genotype', department: 'lab', category: 'Hematology', specimen: 'Whole Blood', parameters: [{ name: 'HB Genotype', unit: '', range: '' }]},
+  { id: 'blood_group', name: 'Blood Grouping', department: 'lab', category: 'Hematology', specimen: 'Whole Blood', parameters: [{ name: 'Blood Group', unit: '', range: '' }]},
+  { id: 'rh_typing', name: 'Rh Typing', department: 'lab', category: 'Hematology', specimen: 'Whole Blood', parameters: [{ name: 'Rhesus Factor', unit: '', range: '' }]},
+  { id: 'mps_rdt', name: 'MPs (RDT)', department: 'lab', category: 'Hematology', specimen: 'Whole Blood', parameters: [{ name: 'Malaria Parasite (RDT)', unit: '', range: 'Negative' }]},
+  { id: 'mps_bf', name: 'MPs (Blood Film)', department: 'lab', category: 'Hematology', specimen: 'Whole Blood', parameters: [{ name: 'Malaria Parasite (Blood Film)', unit: '', range: 'Not Seen' }]},
   { id: 'mp_widal', name: 'MP + WIDAL', department: 'lab', category: 'Hematology', specimen: 'Whole Blood', parameters: [
     { name: 'MPs', unit: '', range: 'Not Seen' },
     { name: 'Widal Test', unit: '', range: '' },
   ]},
 
   // --- SEROLOGY ---
-  { id: 'hbsag', name: 'HBsAg', department: 'lab', category: 'Serology', specimen: 'Serum', parameters: [
-    { name: 'HBsAg', unit: '', range: 'Non-Reactive' },
-  ]},
-  { id: 'hcv', name: 'HCV Antibody', department: 'lab', category: 'Serology', specimen: 'Serum', parameters: [
-    { name: 'HCV', unit: '', range: 'Non-Reactive' },
-  ]},
+  { id: 'hbsag', name: 'HBsAg', department: 'lab', category: 'Serology', specimen: 'Serum', parameters: [{ name: 'HBsAg', unit: '', range: 'Non-Reactive' }]},
+  { id: 'hcv', name: 'HCV Antibody', department: 'lab', category: 'Serology', specimen: 'Serum', parameters: [{ name: 'HCV', unit: '', range: 'Non-Reactive' }]},
   { id: 'hb_combo', name: 'HB Combo', department: 'lab', category: 'Serology', specimen: 'Serum', parameters: [
     { name: 'HBsAg', unit: '', range: 'Non-Reactive' },
     { name: 'HBsAb', unit: '', range: 'Non-Reactive' },
@@ -110,25 +93,15 @@ export const TEST_CATALOGUE: Test[] = [
     { name: 'HBeAb', unit: '', range: 'Non-Reactive' },
     { name: 'HBcAb', unit: '', range: 'Non-Reactive' },
   ]},
-  { id: 'vdrl', name: 'VDRL', department: 'lab', category: 'Serology', specimen: 'Serum', parameters: [
-    { name: 'VDRL', unit: '', range: 'Non-Reactive' },
-  ]},
-  { id: 'rvs', name: 'RVS', department: 'lab', category: 'Serology', specimen: 'Serum', parameters: [
-    { name: 'RVS', unit: '', range: 'Non-Reactive' },
-  ]},
-  { id: 'hcg', name: 'HCG', department: 'lab', category: 'Serology', specimen: 'Urine/Serum', parameters: [
-    { name: 'Pregnancy Test (HCG)', unit: '', range: 'Negative' },
-  ]},
-  { id: 'h_pylori', name: 'H Pylori', department: 'lab', category: 'Serology', specimen: 'Serum/Stool', parameters: [
-    { name: 'H. Pylori', unit: '', range: 'Non-Reactive' },
-  ]},
+  { id: 'vdrl', name: 'VDRL', department: 'lab', category: 'Serology', specimen: 'Serum', parameters: [{ name: 'VDRL', unit: '', range: 'Non-Reactive' }]},
+  { id: 'rvs', name: 'RVS', department: 'lab', category: 'Serology', specimen: 'Serum', parameters: [{ name: 'RVS', unit: '', range: 'Non-Reactive' }]},
+  { id: 'hcg', name: 'HCG', department: 'lab', category: 'Serology', specimen: 'Urine/Serum', parameters: [{ name: 'Pregnancy Test (HCG)', unit: '', range: 'Negative' }]},
+  { id: 'h_pylori', name: 'H Pylori', department: 'lab', category: 'Serology', specimen: 'Serum/Stool', parameters: [{ name: 'H. Pylori', unit: '', range: 'Non-Reactive' }]},
   { id: 'widal', name: 'WIDAL', department: 'lab', category: 'Serology', specimen: 'Serum', parameters: [
     { name: 'S. Typhi O', unit: 'titre', range: '1/20 - 1/80' },
     { name: 'S. Typhi H', unit: 'titre', range: '1/20 - 1/80' },
   ]},
-  { id: 'rheumatoid_factor', name: 'Rheumatoid Factor', department: 'lab', category: 'Serology', specimen: 'Serum', parameters: [
-    { name: 'Rheumatoid Factor', unit: '', range: 'Negative' },
-  ]},
+  { id: 'rheumatoid_factor', name: 'Rheumatoid Factor', department: 'lab', category: 'Serology', specimen: 'Serum', parameters: [{ name: 'Rheumatoid Factor', unit: '', range: 'Negative' }]},
 
   // --- CHEMICAL PATHOLOGY ---
   { id: 'kft', name: 'Kidney Function Test (E/U/Cr)', department: 'lab', category: 'Chemical Pathology', specimen: 'Serum', parameters: [
@@ -154,36 +127,20 @@ export const TEST_CATALOGUE: Test[] = [
     { name: 'HDL Cholesterol', unit: 'mg/dL', range: 'M:35-55 / F:45-65' },
     { name: 'LDL Cholesterol', unit: 'mg/dL', range: '<100' },
   ]},
-  { id: 'urea', name: 'Urea', department: 'lab', category: 'Chemical Pathology', specimen: 'Serum', parameters: [
-    { name: 'Urea', unit: 'mmol/L', range: '2.3-5.8' },
-  ]},
-  { id: 'creatinine', name: 'Creatinine', department: 'lab', category: 'Chemical Pathology', specimen: 'Serum', parameters: [
-    { name: 'Creatinine', unit: 'umol/L', range: '53-124' },
-  ]},
+  { id: 'urea', name: 'Urea', department: 'lab', category: 'Chemical Pathology', specimen: 'Serum', parameters: [{ name: 'Urea', unit: 'mmol/L', range: '2.3-5.8' }]},
+  { id: 'creatinine', name: 'Creatinine', department: 'lab', category: 'Chemical Pathology', specimen: 'Serum', parameters: [{ name: 'Creatinine', unit: 'umol/L', range: '53-124' }]},
   { id: 'electrolytes', name: 'Electrolytes', department: 'lab', category: 'Chemical Pathology', specimen: 'Serum', parameters: [
     { name: 'Sodium Na+', unit: 'mmole/L', range: '135-145' },
     { name: 'Potassium K+', unit: 'mmole/L', range: '3.5-5.0' },
     { name: 'Chloride Cl-', unit: 'mmole/L', range: '98-106' },
     { name: 'Bicarbonate HCO3-', unit: 'mmole/L', range: '21-31' },
   ]},
-  { id: 'uric_acid', name: 'Uric Acid', department: 'lab', category: 'Chemical Pathology', specimen: 'Serum', parameters: [
-    { name: 'Uric Acid', unit: 'mg/dL', range: 'M:2.7-7.3 / F:3.5-6.4' },
-  ]},
-  { id: 'hba1c', name: 'HBA1C', department: 'lab', category: 'Chemical Pathology', specimen: 'Whole Blood', parameters: [
-    { name: 'HbA1c', unit: '%', range: '4.0-6.5' },
-  ]},
-  { id: 'phosphate', name: 'PO4^3-', department: 'lab', category: 'Chemical Pathology', specimen: 'Serum', parameters: [
-    { name: 'Phosphate (Po42-)', unit: 'mg/dL', range: '2.5-4.4' },
-  ]},
-  { id: 'calcium', name: 'Ca^2+', department: 'lab', category: 'Chemical Pathology', specimen: 'Serum', parameters: [
-    { name: 'Calcium (Ca2+)', unit: 'mg/dL', range: '8.5-10.5' },
-  ]},
-  { id: 'fbs', name: 'Fasting Blood Sugar (FBS)', department: 'lab', category: 'Chemical Pathology', specimen: 'Fluoride Blood', parameters: [
-    { name: 'FBS', unit: 'mmol/L', range: '3.4-5.6' },
-  ]},
-  { id: 'rbs', name: 'Random Blood Sugar (RBS)', department: 'lab', category: 'Chemical Pathology', specimen: 'Plasma/Serum', parameters: [
-    { name: 'RBS', unit: 'mmol/L', range: '4.0-7.8' },
-  ]},
+  { id: 'uric_acid', name: 'Uric Acid', department: 'lab', category: 'Chemical Pathology', specimen: 'Serum', parameters: [{ name: 'Uric Acid', unit: 'mg/dL', range: 'M:2.7-7.3 / F:3.5-6.4' }]},
+  { id: 'hba1c', name: 'HBA1C', department: 'lab', category: 'Chemical Pathology', specimen: 'Whole Blood', parameters: [{ name: 'HbA1c', unit: '%', range: '4.0-6.5' }]},
+  { id: 'phosphate', name: 'PO4^3-', department: 'lab', category: 'Chemical Pathology', specimen: 'Serum', parameters: [{ name: 'Phosphate (Po42-)', unit: 'mg/dL', range: '2.5-4.4' }]},
+  { id: 'calcium', name: 'Ca^2+', department: 'lab', category: 'Chemical Pathology', specimen: 'Serum', parameters: [{ name: 'Calcium (Ca2+)', unit: 'mg/dL', range: '8.5-10.5' }]},
+  { id: 'fbs', name: 'Fasting Blood Sugar (FBS)', department: 'lab', category: 'Chemical Pathology', specimen: 'Fluoride Blood', parameters: [{ name: 'FBS', unit: 'mmol/L', range: '3.4-5.6' }]},
+  { id: 'rbs', name: 'Random Blood Sugar (RBS)', department: 'lab', category: 'Chemical Pathology', specimen: 'Plasma/Serum', parameters: [{ name: 'RBS', unit: 'mmol/L', range: '4.0-7.8' }]},
 
   // --- MICROBIOLOGY ---
   { id: 'urinalysis', name: 'Urinalysis', department: 'lab', category: 'Microbiology', specimen: 'Urine', parameters: [
@@ -262,15 +219,9 @@ export const TEST_CATALOGUE: Test[] = [
   ]},
 
   // --- HORMONES ---
-  { id: 'psa', name: 'PSA', department: 'lab', category: 'Hormones', specimen: 'Serum', parameters: [
-    { name: 'PSA', unit: 'ng/mL', range: '<4.0' },
-  ]},
-  { id: 'progesterone', name: 'Progesterone', department: 'lab', category: 'Hormones', specimen: 'Serum', parameters: [
-    { name: 'Progesterone', unit: 'ng/mL', range: '' },
-  ]},
-  { id: 'testosterone', name: 'Testosterone', department: 'lab', category: 'Hormones', specimen: 'Serum', parameters: [
-    { name: 'Testosterone', unit: 'ng/mL', range: '' },
-  ]},
+  { id: 'psa', name: 'PSA', department: 'lab', category: 'Hormones', specimen: 'Serum', parameters: [{ name: 'PSA', unit: 'ng/mL', range: '<4.0' }]},
+  { id: 'progesterone', name: 'Progesterone', department: 'lab', category: 'Hormones', specimen: 'Serum', parameters: [{ name: 'Progesterone', unit: 'ng/mL', range: '' }]},
+  { id: 'testosterone', name: 'Testosterone', department: 'lab', category: 'Hormones', specimen: 'Serum', parameters: [{ name: 'Testosterone', unit: 'ng/mL', range: '' }]},
   { id: 'tft', name: 'Thyroid Function Test (TFT)', department: 'lab', category: 'Hormones', specimen: 'Serum', parameters: [
     { name: 'T3', unit: 'nmol/L', range: '1.3-3.1' },
     { name: 'T4', unit: 'nmol/L', range: '66-181' },
@@ -287,48 +238,39 @@ export const TEST_CATALOGUE: Test[] = [
     { name: 'Blood Group', unit: '', range: '' },
     { name: 'PCV', unit: '%', range: '' },
   ]},
-  { id: 'pkg_basic', name: 'Basic', department: 'lab', category: 'Special Health Check Plans', specimen: 'Blood/Urine', parameters: [
-    { name: 'Basic Profile', unit: '', range: '' },
-  ]},
-  { id: 'pkg_silver', name: 'Silver', department: 'lab', category: 'Special Health Check Plans', specimen: 'Blood/Urine', parameters: [
-    { name: 'Silver Profile', unit: '', range: '' },
-  ]},
-  { id: 'pkg_gold', name: 'Gold', department: 'lab', category: 'Special Health Check Plans', specimen: 'Blood/Urine', parameters: [
-    { name: 'Gold Profile', unit: '', range: '' },
-  ]},
-  { id: 'pkg_diamond', name: 'Diamond', department: 'lab', category: 'Special Health Check Plans', specimen: 'Blood/Urine', parameters: [
-    { name: 'Diamond Profile', unit: '', range: '' },
-  ]},
+  { id: 'pkg_basic', name: 'Basic', department: 'lab', category: 'Special Health Check Plans', specimen: 'Blood/Urine', parameters: [{ name: 'Basic Profile', unit: '', range: '' }]},
+  { id: 'pkg_silver', name: 'Silver', department: 'lab', category: 'Special Health Check Plans', specimen: 'Blood/Urine', parameters: [{ name: 'Silver Profile', unit: '', range: '' }]},
+  { id: 'pkg_gold', name: 'Gold', department: 'lab', category: 'Special Health Check Plans', specimen: 'Blood/Urine', parameters: [{ name: 'Gold Profile', unit: '', range: '' }]},
+  { id: 'pkg_diamond', name: 'Diamond', department: 'lab', category: 'Special Health Check Plans', specimen: 'Blood/Urine', parameters: [{ name: 'Diamond Profile', unit: '', range: '' }]},
 ];
 
-export const generateSlipNumber = async (): Promise<string> => {
+// ─── ORG-SCOPED DATA FUNCTIONS ────────────────────────────────────────────────
+
+export const generateSlipNumber = async (organizationId: string): Promise<string> => {
   const supabase = createClient();
   const date = new Date();
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
   const d = String(date.getDate()).padStart(2, '0');
-  
   const dateStr = `${y}${m}${d}`;
   const { count } = await supabase
     .from('patients')
     .select('*', { count: 'exact', head: true })
+    .eq('organization_id', organizationId)
     .gte('registered_at', new Date(y, date.getMonth(), date.getDate()).toISOString());
-
   const num = (count || 0) + 1;
   return `ATD/${dateStr}/${num.toString().padStart(4, '0')}`;
 };
 
-export const fetchPatients = async (): Promise<Patient[]> => {
+export const fetchPatients = async (organizationId: string): Promise<Patient[]> => {
   const supabase = createClient();
   const { data, error } = await supabase
     .from('patients')
     .select('*, tests:patient_tests(*)')
+    .eq('organization_id', organizationId)
     .order('registered_at', { ascending: false });
 
-  if (error) {
-    console.error('Error fetching patients:', error);
-    return [];
-  }
+  if (error) { console.error('Error fetching patients:', error); return []; }
 
   return (data || []).map(p => ({
     ...p,
@@ -339,19 +281,24 @@ export const fetchPatients = async (): Promise<Patient[]> => {
     middleName: p.middle_name,
     referredBy: p.referred_by,
     referringFacility: p.referring_facility,
-    tests: p.tests.map((t: any) => ({
+    tests: (p.tests || []).map((t: any) => ({
       ...t,
       testId: t.test_id,
       testName: t.test_name,
       completedBy: t.completed_by,
+      completedBySignatureUrl: t.completed_by_signature_url,
+      completedByTitle: t.completed_by_title,
       completedAt: t.completed_at,
     }))
   }));
 };
 
-export const addPatient = async (patient: Omit<Patient, 'id' | 'tests'>, tests: Omit<PatientTest, 'id' | 'patient_id'>[], organizationId: string): Promise<void> => {
+export const addPatient = async (
+  patient: Omit<Patient, 'id' | 'tests'>,
+  tests: Omit<PatientTest, 'id' | 'patient_id'>[],
+  organizationId: string
+): Promise<void> => {
   const supabase = createClient();
-  
   const { data: pData, error: pError } = await supabase
     .from('patients')
     .insert([{
@@ -362,6 +309,7 @@ export const addPatient = async (patient: Omit<Patient, 'id' | 'tests'>, tests: 
       age: patient.age,
       sex: patient.sex,
       phone: patient.phone,
+      email: patient.email,
       address: patient.address,
       referred_by: patient.referredBy,
       referring_facility: patient.referringFacility,
@@ -369,7 +317,6 @@ export const addPatient = async (patient: Omit<Patient, 'id' | 'tests'>, tests: 
     }])
     .select()
     .single();
-
   if (pError) throw pError;
 
   const testsToInsert = tests.map(t => ({
@@ -381,7 +328,6 @@ export const addPatient = async (patient: Omit<Patient, 'id' | 'tests'>, tests: 
     specimen: t.specimen,
     organization_id: organizationId,
   }));
-
   const { error: tError } = await supabase.from('patient_tests').insert(testsToInsert);
   if (tError) throw tError;
 };
@@ -394,27 +340,30 @@ export const updateTestResult = async (testId: string, updates: Partial<PatientT
       status: updates.status,
       results: updates.results,
       completed_by: updates.completedBy,
+      completed_by_signature_url: updates.completedBySignatureUrl,
+      completed_by_title: updates.completedByTitle,
       completed_at: updates.completedAt,
       notes: updates.notes,
       specimen: updates.specimen,
     })
     .eq('id', testId);
-
   if (error) throw error;
 };
 
-export const subscribeToPatients = (callback: () => void) => {
+export const subscribeToPatients = (organizationId: string, callback: () => void) => {
   const supabase = createClient();
-  const patientsChannel = supabase.channel('patients-all')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'patients' }, callback)
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'patient_tests' }, callback)
+  const channel = supabase.channel(`patients-org-${organizationId}`)
+    .on('postgres_changes', {
+      event: '*', schema: 'public', table: 'patients',
+      filter: `organization_id=eq.${organizationId}`
+    }, callback)
+    .on('postgres_changes', {
+      event: '*', schema: 'public', table: 'patient_tests',
+      filter: `organization_id=eq.${organizationId}`
+    }, callback)
     .subscribe();
-
-  return () => {
-    supabase.removeChannel(patientsChannel);
-  };
+  return () => { supabase.removeChannel(channel); };
 };
 
 export const getTestById = (id: string): Test | undefined =>
   TEST_CATALOGUE.find(t => t.id === id);
-

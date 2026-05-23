@@ -1,6 +1,6 @@
 'use client';
-import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
+import { useParams, useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 
 export default function SlugLayout({ children }: { children: React.ReactNode }) {
@@ -11,14 +11,12 @@ export default function SlugLayout({ children }: { children: React.ReactNode }) 
 
   useEffect(() => {
     if (loading) return;
-    if (!organization) { router.push('/login'); return; }
+    if (!organization) return; // RootWrapper handles this redirect
     if (organization.slug !== slug) {
-      // User belongs to a different org — redirect to their workspace
-      router.push(`/${organization.slug}/reception`);
+      router.replace(`/${organization.slug}/reception`);
     }
   }, [organization, loading, slug]);
 
-  if (loading || !organization) return null;
-
+  // Don't render a blank page — let RootWrapper handle loading state
   return <>{children}</>;
 }

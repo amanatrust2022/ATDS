@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase';
 import { useAuth } from '@/components/AuthProvider';
 import Header from '@/components/Header';
-import { RiUserAddLine, RiShieldUserLine, RiLinkM, RiDeleteBinLine, RiTimeLine } from '@remixicon/react';
+import { RiUserAddLine, RiShieldUserLine, RiLinkM, RiDeleteBinLine, RiTimeLine, RiTeamLine } from '@remixicon/react';
 import { useParams } from 'next/navigation';
 
 export default function StaffManagement() {
@@ -31,15 +31,18 @@ export default function StaffManagement() {
 
   useEffect(() => { if (organization) fetchData(); }, [organization]);
 
+  const [sendingEmail, setSendingEmail] = useState(false);
+
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!organization) return;
-    setSubmitting(true); setInviteLink('');
+    setSubmitting(true); setInviteLink(''); setSendingEmail(true);
 
     const token = Array.from(crypto.getRandomValues(new Uint8Array(24)))
       .map(b => b.toString(16).padStart(2, '0')).join('');
 
-    const { error } = await supabase.from('invitations').insert([{
+    // 1. Insert into DB
+    const { error: dbError } = await supabase.from('invitations').insert([{
       organization_id: organization.id,
       email: form.email,
       role: form.role,
@@ -47,14 +50,41 @@ export default function StaffManagement() {
       invited_by: (await supabase.auth.getUser()).data.user?.id,
     }]);
 
-    if (error) { alert(error.message); }
-    else {
-      const link = `${window.location.origin}/invite/${token}`;
+    if (dbError) { 
+      alert(dbError.message);
+      setSubmitting(false);
+      setSendingEmail(false);
+      return;
+    }
+
+    // 2. Send Email via Brevo
+    const link = `${window.location.origin}/invite/${token}`;
+    try {
+      const emailRes = await fetch('/api/invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: form.email,
+          role: form.role,
+          organizationName: organization.name,
+          inviteLink: link,
+        }),
+      });
+
+      if (!emailRes.ok) throw new Error('Failed to send email');
+      
       setInviteLink(link);
       setForm({ email: '', role: 'reception' });
       fetchData();
+      alert('Invitation email sent successfully!');
+    } catch (err: any) {
+      console.error('Email send error:', err);
+      setInviteLink(link); // Still show link as fallback
+      alert('Invitation created, but email failed to send. You can copy the link manually.');
+    } finally {
+      setSubmitting(false);
+      setSendingEmail(false);
     }
-    setSubmitting(false);
   };
 
   const updateRole = async (id: string, role: string) => {
@@ -79,9 +109,17 @@ export default function StaffManagement() {
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--gray-50)' }}>
-      <Header title="Staff Management" subtitle={organization?.name || ''} icon={<RiShieldUserLine size={24} color="white" />} accentColor="var(--teal-800)" />
+      {/* Inline Header for Admin Page */}
+      <div style={{ background: 'white', borderBottom: '1px solid var(--gray-200)', padding: '1.5rem 2rem', marginBottom: '2rem' }}>
+        <h1 style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--gray-900)', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <RiTeamLine size={24} color="var(--teal-600)" /> Staff Management
+        </h1>
+        <p style={{ color: 'var(--gray-500)', fontSize: '0.85rem', marginTop: '0.3rem' }}>
+          Invite users and manage roles for your workspace.
+        </p>
+      </div>
 
-      <div style={{ padding: '1.5rem', maxWidth: 1100, margin: '0 auto' }}>
+      <div style={{ padding: '0 2rem', maxWidth: 1200, margin: '0 auto' }}>
         <div style={{ display: 'grid', gridTemplateColumns: '400px 1fr', gap: '1.5rem', alignItems: 'start' }}>
 
           {/* Left: Invite form */}
@@ -190,7 +228,15 @@ export default function StaffManagement() {
                       </td>
                       <td style={{ padding: '0.75rem 1rem' }}>
                         {s.id !== profile?.id && (
-                          <button style={{ background: 'none', border: '1px solid var(--gray-200)', borderRadius: 4, color: 'var(--red)', cursor: 'pointer', padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}>Remove</button>
+                          <button
+                            onClick={async () => {
+                              if (!confirm(`Remove ${s.full_name || 'this staff member'} from the workspace?`)) return;
+                              await supabase.from('profiles').update({ organization_id: null, role: 'reception' }).eq('id', s.id);
+                              fetchData();
+                            }}
+                            style={{ background: 'none', border: '1px solid var(--gray-200)', borderRadius: 4, color: 'var(--red)', cursor: 'pointer', padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}>
+                            Remove
+                          </button>
                         )}
                       </td>
                     </tr>

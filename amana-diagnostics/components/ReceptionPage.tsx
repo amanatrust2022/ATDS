@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   RiHospitalLine, RiAddLine, RiClipboardLine, RiCheckLine, RiErrorWarningLine,
   RiTestTubeLine, RiRadarLine, RiMailOpenLine, RiFolderOpenLine, RiPrinterLine,
-  RiFileTextLine, RiMoreLine, RiCloseLine, RiArrowUpSLine, RiArrowDownSLine
+  RiFileTextLine, RiMoreLine, RiCloseLine, RiArrowUpSLine, RiArrowDownSLine, RiMailLine
 } from '@remixicon/react';
 import Header from '@/components/Header';
 import {
@@ -26,22 +26,24 @@ export default function ReceptionPage() {
   const [testSearch, setTestSearch] = useState('');
   const [form, setForm] = useState({
     firstName: '', surname: '', middleName: '', age: '', sex: 'Male' as 'Male' | 'Female',
-    phone: '', address: '', referredBy: '', referringFacility: '',
+    phone: '', email: '', address: '', referredBy: '', referringFacility: '',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
 
   const { profile, organization, signOut } = useAuth();
   const refresh = useCallback(async () => {
-    const data = await fetchPatients();
+    if (!organization?.id) return;
+    const data = await fetchPatients(organization.id);
     setPatients(data);
-  }, []);
+  }, [organization?.id]);
 
   useEffect(() => {
+    if (!organization?.id) return;
     refresh();
-    const unsubscribe = subscribeToPatients(refresh);
+    const unsubscribe = subscribeToPatients(organization.id, refresh);
     return () => { unsubscribe(); };
-  }, [refresh]);
+  }, [organization?.id, refresh]);
 
   const categories = Array.from(new Set(TEST_CATALOGUE.map(t => t.category)));
   const testsByCategory = (cat: string) => TEST_CATALOGUE.filter(t => t.category === cat && t.name.toLowerCase().includes(testSearch.toLowerCase()));
@@ -72,7 +74,7 @@ export default function ReceptionPage() {
     setSaving(true);
     
     try {
-      const slipNumber = await generateSlipNumber();
+      const slipNumber = await generateSlipNumber(organization?.id || '');
       const tests: Omit<PatientTest, 'id' | 'patient_id'>[] = selectedTests.map(tid => {
         const t = getTestById(tid)!;
         return { testId: t.id, testName: t.name, department: t.department, status: 'pending', specimen: t.specimen };
@@ -95,7 +97,7 @@ export default function ReceptionPage() {
       };
       
       setShowSlipModal(tempPatient);
-      setForm({ firstName: '', surname: '', middleName: '', age: '', sex: 'Male', phone: '', address: '', referredBy: '', referringFacility: '' });
+      setForm({ firstName: '', surname: '', middleName: '', age: '', sex: 'Male', phone: '', email: '', address: '', referredBy: '', referringFacility: '' });
       setSelectedTests([]);
       setErrors({});
     } catch (err: any) {
@@ -154,17 +156,7 @@ export default function ReceptionPage() {
           </button>
         ))}
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--gray-800)' }}>{profile?.full_name}</div>
-            <div style={{ fontSize: '0.65rem', color: 'var(--teal-600)', fontWeight: 600, textTransform: 'uppercase' }}>{profile?.role}</div>
-          </div>
-          <button 
-            onClick={() => signOut()}
-            style={{ background: 'var(--gray-100)', border: '1px solid var(--gray-300)', padding: '0.4rem', borderRadius: 'var(--radius)', cursor: 'pointer', color: 'var(--gray-600)' }}
-            title="Sign Out"
-          >
-            <RiLogoutCircleLine size={18} />
-          </button>
+          {/* User profile & signout moved to universal Header dropdown */}
         </div>
       </div>
 
@@ -203,9 +195,14 @@ export default function ReceptionPage() {
                     </select>
                   </Field>
                 </div>
-                <Field label="Phone Number *" error={errors.phone}>
-                  <input style={inputStyle(!!errors.phone)} value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} placeholder="+234 803 000 0000" />
-                </Field>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                  <Field label="Phone Number *" error={errors.phone}>
+                    <input style={inputStyle(!!errors.phone)} value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} placeholder="+234 803 000 0000" />
+                  </Field>
+                  <Field label="Patient Email (for results)">
+                    <input style={inputStyle(false)} type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="patient@example.com" />
+                  </Field>
+                </div>
                 <Field label="Address">
                   <input style={inputStyle(false)} value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} placeholder="Patient address" />
                 </Field>
@@ -314,14 +311,16 @@ export default function ReceptionPage() {
                   color: '#000',
                   border: '1px solid var(--gray-200)'
                 }}>
+                  {/* ── Org Header ── */}
                   <div style={{ textAlign: 'center', borderBottom: '1px dashed #000', paddingBottom: '8px', marginBottom: '10px' }}>
-                    <div style={{ fontWeight: 'bold', fontSize: '13px' }}>AMANA TRUST DIAGNOSTICS</div>
-                    <div style={{ fontSize: '10px' }}>AND CLINICAL SERVICES LTD</div>
-                    <div style={{ fontSize: '9px', marginTop: '2px' }}>No 15, C Tudun Wada Bus Stop</div>
+                    <div style={{ fontWeight: 'bold', fontSize: '13px' }}>{(organization?.name || 'YOUR FACILITY').toUpperCase()}</div>
+                    {organization?.letterhead_line2 && <div style={{ fontSize: '10px', fontWeight: 'bold' }}>{organization.letterhead_line2.toUpperCase()}</div>}
+                    {organization?.address && <div style={{ fontSize: '9px', marginTop: '2px' }}>{organization.address}</div>}
+                    {organization?.phone && <div style={{ fontSize: '9px' }}>{organization.phone}</div>}
                   </div>
                   <div style={{ textAlign: 'center', fontWeight: 'bold', marginBottom: '10px' }}>INVESTIGATION SLIP</div>
                   <div style={{ marginBottom: '10px', lineHeight: '1.4' }}>
-                    <div>ID: <span style={{ float: 'right' }}>ATD/2026.../0001</span></div>
+                    <div>ID: <span style={{ float: 'right' }}>—/—/—</span></div>
                     <div>NAME: <span style={{ float: 'right', fontWeight: 'bold' }}>{(form.firstName || form.surname) ? `${form.firstName} ${form.middleName} ${form.surname}`.trim() : '—'}</span></div>
                     <div>AGE/SEX: <span style={{ float: 'right' }}>{form.age || '—'} / {form.sex}</span></div>
                     <div>DATE: <span style={{ float: 'right' }}>{new Date().toLocaleDateString('en-NG')}</span></div>
@@ -346,9 +345,10 @@ export default function ReceptionPage() {
                       </table>
                     )}
                   </div>
+                  {/* ── Footer ── */}
                   <div style={{ marginTop: '15px', borderTop: '1px dashed #000', paddingTop: '8px', textAlign: 'center', fontSize: '9px', color: '#666' }}>
-                    Please proceed to respective dept...<br/>
-                    Amana Trust &copy; 2026
+                    Please proceed to respective department with this slip<br/>
+                    {(organization?.name || 'Your Facility')} &copy; {new Date().getFullYear()}
                   </div>
                 </div>
               </div>
@@ -407,12 +407,12 @@ export default function ReceptionPage() {
 
       {/* Slip Modal */}
       {showSlipModal && (
-        <SlipModal patient={showSlipModal} onClose={() => { setShowSlipModal(null); setTab('queue'); }} />
+        <SlipModal patient={showSlipModal} org={organization} onClose={() => { setShowSlipModal(null); setTab('queue'); }} />
       )}
 
       {/* Result Modal */}
       {showResultModal && (
-        <ResultModal patient={showResultModal} onClose={() => setShowResultModal(null)} />
+        <ResultModal patient={showResultModal} org={organization} onClose={() => setShowResultModal(null)} />
       )}
     </div>
   );
@@ -515,15 +515,19 @@ function PatientCard({ patient, mode, onViewSlip, onViewResult }: any) {
 }
 
 /* ---- Slip Modal ---- */
-function SlipModal({ patient, onClose }: { patient: Patient; onClose: () => void }) {
-  const labTests = patient.tests.filter(t => t.department === 'lab');
-  const radioTests = patient.tests.filter(t => t.department === 'radiology');
-  const regDate = new Date(patient.registeredAt);
+function SlipModal({ patient, onClose, org }: { patient: Patient; onClose: () => void; org?: any }) {
+  const regDate = new Date(patient.registeredAt).toLocaleDateString('en-NG');
+  const specimens = Array.from(new Set(patient.tests.map((t: any) => t.specimen))).filter(Boolean).join(', ') || '—';
+
+  const orgName = org?.name || 'AMANA TRUST DIAGNOSTICS';
+  const orgLine2 = org?.letterhead_line2 || '';
+  const orgAddress = org?.address || '';
+  const orgPhone = org?.phone || '';
 
   const handlePrint = () => {
     const win = window.open('', '_blank');
     if (!win) return;
-    win.document.write(getSlipTemplate(patient));
+    win.document.write(getSlipTemplate(patient, org));
     win.document.close();
     setTimeout(() => {
       win.focus();
@@ -531,84 +535,168 @@ function SlipModal({ patient, onClose }: { patient: Patient; onClose: () => void
     }, 500);
   };
 
+  // Shared styles for the preview widget
+  const previewWrap: React.CSSProperties = {
+    background: 'white', border: '1px solid var(--gray-300)', borderRadius: 6,
+    padding: '12px 14px', fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif",
+    fontSize: 12, color: '#000', maxWidth: 320, margin: '0 auto',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+  };
+
   return (
     <div style={modalOverlay}>
       <div style={{ ...modalBox, maxWidth: 520 }}>
-        <div style={{ background: 'var(--teal-800)', padding: '1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        {/* Modal chrome header */}
+        <div style={{ background: 'var(--teal-800)', padding: '1rem 1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
-            <h2 style={{ color: 'white', fontFamily: 'var(--font-display)', fontSize: '1.05rem', fontWeight: 700 }}>Investigation Request Slip</h2>
-            <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.72rem', marginTop: '0.2rem' }}>Patient registered successfully</p>
+            <h2 style={{ color: 'white', fontFamily: 'var(--font-display)', fontSize: '1rem', fontWeight: 700 }}>Investigation Request Slip</h2>
+            <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.7rem', marginTop: '0.15rem' }}>Live Preview — Slip as it will appear</p>
           </div>
           <button onClick={onClose} style={closeBtn}><RiCloseLine size={16} /></button>
         </div>
-        <div style={{ padding: '1.25rem' }}>
-          <div style={{ background: 'var(--teal-50)', border: '1px solid var(--teal-200)', borderRadius: 'var(--radius)', padding: '0.75rem 1rem', marginBottom: '1rem', textAlign: 'center' }}>
-            <p style={{ fontSize: '0.7rem', color: 'var(--teal-600)', fontWeight: 600, marginBottom: '0.2rem' }}>SLIP NUMBER</p>
-            <p style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: '1.2rem', color: 'var(--teal-800)', letterSpacing: '0.05em' }}>{patient.slipNumber}</p>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '1rem' }}>
-            {[
-              ['Patient', patient.name],
-              ['Age / Sex', `${patient.age} / ${patient.sex}`],
-              ['Phone', patient.phone || '—'],
-              ['Referred By', patient.referredBy || 'Self'],
-            ].map(([l, v]) => (
-              <div key={l} style={{ background: 'var(--gray-50)', border: '1px solid var(--gray-200)', borderRadius: 0, padding: '0.5rem 0.75rem' }}>
-                <p style={{ fontSize: '0.65rem', color: 'var(--gray-500)', fontWeight: 600, textTransform: 'uppercase' }}>{l}</p>
-                <p style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--gray-800)' }}>{v}</p>
-              </div>
-            ))}
-          </div>
-          <div style={{ marginBottom: '1rem' }}>
-            <p style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--gray-700)', marginBottom: '0.4rem', textTransform: 'uppercase' }}>Tests Ordered ({patient.tests.length})</p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-              {patient.tests.map(t => (
-                <div key={t.testId} style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  padding: '0.4rem 0.75rem', borderRadius: 0,
-                  background: t.department === 'lab' ? 'var(--teal-50)' : '#f5f3ff',
-                  border: `1px solid ${t.department === 'lab' ? 'var(--teal-200)' : '#c4b5fd'}`,
-                  fontSize: '0.78rem',
-                }}>
-                  <span style={{ fontWeight: 500 }}>{t.testName}</span>
-                  <span style={{ fontSize: '0.68rem', fontWeight: 600, color: t.department === 'lab' ? 'var(--teal-700)' : '#5b21b6' }}>
-                    {t.department === 'lab' ? <><RiTestTubeLine size={12} style={{ display: 'inline', verticalAlign: 'middle' }} /> Lab</> : <><RiRadarLine size={12} style={{ display: 'inline', verticalAlign: 'middle' }} /> Radiology</>}
-                  </span>
+
+        {/* Live preview */}
+        <div style={{ padding: '1.25rem', background: 'var(--gray-100)' }}>
+          <div style={previewWrap}>
+
+            {/* ── Org Header ── */}
+            <div style={{ textAlign: 'center', borderBottom: '1px dashed #000', paddingBottom: 8, marginBottom: 10 }}>
+              <div style={{ fontSize: 16, fontWeight: 'bold', lineHeight: 1.2, margin: 0 }}>{orgName.toUpperCase()}</div>
+              {orgLine2 && <div style={{ fontSize: 11, fontWeight: 'bold', margin: '2px 0 4px' }}>{orgLine2.toUpperCase()}</div>}
+              {orgAddress && <div style={{ fontSize: 10, margin: '2px 0' }}>{orgAddress}</div>}
+              {orgPhone && <div style={{ fontSize: 10, margin: 0 }}>{orgPhone}</div>}
+            </div>
+
+            {/* ── Slip title ── */}
+            <div style={{ fontSize: 14, fontWeight: 'bold', textAlign: 'center', margin: '8px 0 10px', borderBottom: '1px solid #000', paddingBottom: 4 }}>
+              INVESTIGATION SLIP
+            </div>
+
+            {/* ── Patient info ── */}
+            <div style={{ marginBottom: 10, fontSize: 12, lineHeight: 1.6 }}>
+              {[
+                ['ID', patient.slipNumber],
+                ['Name', patient.name],
+                ['Age / Sex', `${patient.age} / ${patient.sex}`],
+                ['Date', regDate],
+                ['Specimen(s)', specimens],
+              ].map(([l, v]) => (
+                <div key={l} style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ fontWeight: 'bold' }}>{l}:</span>
+                  <span style={{ textAlign: 'right', maxWidth: '60%' }}>{v}</span>
                 </div>
               ))}
             </div>
+
+            {/* ── Tests ── */}
+            <div style={{ fontWeight: 'bold', borderBottom: '1px solid #000', paddingBottom: 2, marginTop: 10, fontSize: 12 }}>
+              TESTS ORDERED ({patient.tests.length})
+            </div>
+            <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 4, fontSize: 12 }}>
+              <thead>
+                <tr>
+                  <th style={{ borderBottom: '1px solid #000', textAlign: 'left', padding: '3px 0', fontWeight: 700 }}>Test</th>
+                  <th style={{ borderBottom: '1px solid #000', textAlign: 'right', padding: '3px 0', fontWeight: 700 }}>Dept</th>
+                </tr>
+              </thead>
+              <tbody>
+                {patient.tests.map((t: any) => (
+                  <tr key={t.testId} style={{ borderBottom: '1px dashed #ccc' }}>
+                    <td style={{ padding: '3px 0', fontSize: 11 }}>
+                      {t.testName}
+                      {t.specimen && <span style={{ fontSize: 9, color: '#666' }}> ({t.specimen})</span>}
+                    </td>
+                    <td style={{ padding: '3px 0', textAlign: 'right', fontSize: 11 }}>
+                      {t.department === 'lab' ? 'Lab' : 'Radio'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {/* ── Footer ── */}
+            <div style={{ marginTop: 14, borderTop: '1px dashed #000', paddingTop: 8, fontSize: 10, textAlign: 'center', lineHeight: 1.5 }}>
+              Please proceed to the respective department with this slip<br />
+              {orgName} &copy; {new Date().getFullYear()}
+            </div>
           </div>
-          <div style={{ background: 'var(--green-light)', border: '1px solid #a7d7c5', borderRadius: 0, padding: '0.6rem 0.75rem', marginBottom: '1rem', fontSize: '0.75rem', color: 'var(--green)' }}>
-            <RiCheckLine size={14} style={{ display: 'inline', verticalAlign: 'middle', marginRight: '0.25rem' }} /> Department notification sent automatically on print/close
-          </div>
-          <div style={{ display: 'flex', gap: '0.75rem' }}>
-            <button onClick={handlePrint} style={{ ...btnStyle('primary'), flex: 1, justifyContent: 'center' }}><RiPrinterLine size={14} /> Print Slip</button>
-            <button onClick={onClose} style={{ ...btnStyle('outline'), flex: 1, justifyContent: 'center' }}>Close & Notify</button>
-          </div>
+        </div>
+
+        {/* Actions */}
+        <div style={{ padding: '0.85rem 1.25rem', borderTop: '1px solid var(--gray-200)', display: 'flex', gap: '0.75rem', background: 'white' }}>
+          <button onClick={handlePrint} style={{ ...btnStyle('primary'), flex: 1, justifyContent: 'center' }}>
+            <RiPrinterLine size={14} /> Print Slip
+          </button>
+          <button onClick={onClose} style={{ ...btnStyle('outline'), flex: 1, justifyContent: 'center' }}>
+            Close &amp; Notify
+          </button>
         </div>
       </div>
     </div>
   );
 }
 
+
 /* ---- Result Modal ---- */
-function ResultModal({ patient, onClose }: { patient: Patient; onClose: () => void }) {
+function ResultModal({ patient, onClose, org }: { patient: Patient; onClose: () => void; org?: any }) {
   const completedTests = patient.tests.filter(t => t.status === 'completed');
+  const [sendingEmail, setSendingEmail] = useState(false);
+  // Selective print: all checked by default
+  const [selectedIds, setSelectedIds] = useState<string[]>(completedTests.map(t => t.testId));
+
+  const toggleTest = (testId: string) => {
+    setSelectedIds(prev =>
+      prev.includes(testId) ? prev.filter(id => id !== testId) : [...prev, testId]
+    );
+  };
+  const toggleAll = () => {
+    setSelectedIds(selectedIds.length === completedTests.length ? [] : completedTests.map(t => t.testId));
+  };
 
   const handlePrint = () => {
+    const testsToPrint = completedTests.filter(t => selectedIds.includes(t.testId));
+    if (testsToPrint.length === 0) {
+      alert('Please select at least one test to print.');
+      return;
+    }
     const win = window.open('', '_blank');
     if (!win) return;
-    win.document.write(getResultTemplate(patient, completedTests));
+    win.document.write(getResultTemplate(patient, testsToPrint, org));
     win.document.close();
-    setTimeout(() => {
-      win.focus();
-      win.print();
-    }, 500);
+    setTimeout(() => { win.focus(); win.print(); }, 500);
+  };
+
+  const handleEmail = async () => {
+    if (!patient.email) {
+      alert('This patient does not have an email address recorded. Please update their details first.');
+      return;
+    }
+
+    setSendingEmail(true);
+    try {
+      const res = await fetch('/api/send-result', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ patient, completedTests, org }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Failed to send email');
+      }
+
+      alert(`Report successfully emailed to ${patient.email}!`);
+    } catch (err: any) {
+      alert('Error: ' + err.message);
+    } finally {
+      setSendingEmail(false);
+    }
   };
 
   return (
     <div style={modalOverlay}>
-      <div style={{ ...modalBox, maxWidth: 680 }}>
+      <div style={{ ...modalBox, maxWidth: 700 }}>
+        {/* Header */}
         <div style={{ background: 'var(--teal-800)', padding: '1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
             <h2 style={{ color: 'white', fontFamily: 'var(--font-display)', fontSize: '1.05rem', fontWeight: 700 }}>Result Report</h2>
@@ -616,44 +704,107 @@ function ResultModal({ patient, onClose }: { patient: Patient; onClose: () => vo
           </div>
           <button onClick={onClose} style={closeBtn}><RiCloseLine size={16} /></button>
         </div>
-        <div style={{ padding: '1.25rem', maxHeight: '60vh', overflowY: 'auto' }}>
-          {completedTests.map(t => (
-            <div key={t.testId} style={{ marginBottom: '1.25rem', border: '1px solid var(--gray-300)', borderRadius: 'var(--radius)', overflow: 'hidden' }}>
-              <div style={{ background: 'var(--teal-800)', padding: '0.6rem 1rem', color: 'white', fontSize: '0.82rem', fontWeight: 700 }}>
-                {t.testName}
-              </div>
-              {t.results && t.results.length > 0 && (
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
-                  <thead>
-                    <tr style={{ background: 'var(--teal-50)' }}>
-                      {['Parameter', 'Result', 'Unit', 'Reference Range'].map(h => (
-                        <th key={h} style={{ padding: '0.5rem 0.75rem', textAlign: 'left', color: 'var(--teal-800)', fontWeight: 700, borderBottom: '1px solid var(--teal-200)' }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {t.results.map((r, i) => (
-                      <tr key={i} style={{ borderBottom: '1px solid var(--gray-100)' }}>
-                        <td style={{ padding: '0.45rem 0.75rem' }}>{r.parameter}</td>
-                        <td style={{ padding: '0.45rem 0.75rem', fontWeight: 700, color: r.flag === 'H' ? 'var(--red)' : r.flag === 'L' ? '#1a6aaf' : 'var(--gray-900)' }}>
-                          {r.result}{r.flag ? ` (${r.flag})` : ''}
-                        </td>
-                        <td style={{ padding: '0.45rem 0.75rem', color: 'var(--gray-500)' }}>{r.unit || '—'}</td>
-                        <td style={{ padding: '0.45rem 0.75rem', color: 'var(--gray-500)', fontFamily: 'var(--font-mono)', fontSize: '0.72rem' }}>{r.range || '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-              {t.notes && <div style={{ padding: '0.5rem 0.75rem', background: '#fffbe6', fontSize: '0.75rem', fontStyle: 'italic', borderTop: '1px solid var(--gray-200)' }}><b>Comment:</b> {t.notes}</div>}
-              <div style={{ padding: '0.45rem 0.75rem', background: 'var(--gray-50)', fontSize: '0.7rem', color: 'var(--gray-500)', borderTop: '1px solid var(--gray-200)' }}>
-                Analysed by: <b style={{ color: 'var(--gray-700)' }}>{t.completedBy || '—'}</b> • {t.completedAt ? new Date(t.completedAt).toLocaleString('en-NG') : '—'}
-              </div>
-            </div>
-          ))}
+
+        {/* Test selector */}
+        <div style={{ padding: '0.75rem 1.25rem', borderBottom: '1px solid var(--gray-200)', background: 'var(--gray-50)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--gray-600)', textTransform: 'uppercase' }}>
+              Select tests to include in print
+            </span>
+            <button
+              onClick={toggleAll}
+              style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--teal-600)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
+            >
+              {selectedIds.length === completedTests.length ? 'Deselect All' : 'Select All'}
+            </button>
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+            {completedTests.map(t => {
+              const checked = selectedIds.includes(t.testId);
+              return (
+                <button
+                  key={t.testId}
+                  onClick={() => toggleTest(t.testId)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '0.4rem',
+                    padding: '0.3rem 0.75rem', borderRadius: 999, fontSize: '0.78rem', fontWeight: 600,
+                    cursor: 'pointer', transition: 'all 0.15s',
+                    background: checked ? 'var(--teal-700)' : 'white',
+                    color: checked ? 'white' : 'var(--gray-600)',
+                    border: `1px solid ${checked ? 'var(--teal-700)' : 'var(--gray-300)'}`,
+                  }}
+                >
+                  {checked ? <RiCheckLine size={12} /> : <span style={{ width: 12, height: 12, border: '1.5px solid var(--gray-400)', borderRadius: '50%', display: 'inline-block' }} />}
+                  {t.testName}
+                </button>
+              );
+            })}
+          </div>
+          {selectedIds.length > 0 && (
+            <p style={{ fontSize: '0.7rem', color: 'var(--teal-700)', marginTop: '0.4rem', fontWeight: 600 }}>
+              {selectedIds.length} of {completedTests.length} test{completedTests.length !== 1 ? 's' : ''} selected for printing
+            </p>
+          )}
         </div>
-        <div style={{ padding: '1rem 1.25rem', borderTop: '1px solid var(--gray-300)', display: 'flex', gap: '0.75rem' }}>
-          <button onClick={handlePrint} style={{ ...btnStyle('primary'), flex: 1, justifyContent: 'center' }}><RiPrinterLine size={14} /> Print Official Report</button>
+
+        {/* Results preview */}
+        <div style={{ padding: '1.25rem', maxHeight: '45vh', overflowY: 'auto' }}>
+          {completedTests.map(t => {
+            const isSelected = selectedIds.includes(t.testId);
+            return (
+              <div key={t.testId} style={{
+                marginBottom: '1.25rem', border: `1px solid ${isSelected ? 'var(--teal-300)' : 'var(--gray-200)'}`,
+                borderRadius: 'var(--radius)', overflow: 'hidden', opacity: isSelected ? 1 : 0.45,
+                transition: 'opacity 0.2s',
+              }}>
+                <div style={{ background: isSelected ? 'var(--teal-800)' : 'var(--gray-400)', padding: '0.6rem 1rem', color: 'white', fontSize: '0.82rem', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span>{t.testName}</span>
+                  {!isSelected && <span style={{ fontSize: '0.65rem', opacity: 0.7 }}>excluded from print</span>}
+                </div>
+                {t.results && t.results.length > 0 && (
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+                    <thead>
+                      <tr style={{ background: 'var(--teal-50)' }}>
+                        {['Parameter', 'Result', 'Unit', 'Reference Range'].map(h => (
+                          <th key={h} style={{ padding: '0.5rem 0.75rem', textAlign: 'left', color: 'var(--teal-800)', fontWeight: 700, borderBottom: '1px solid var(--teal-200)' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {t.results.map((r, i) => (
+                        <tr key={i} style={{ borderBottom: '1px solid var(--gray-100)' }}>
+                          <td style={{ padding: '0.45rem 0.75rem' }}>{r.parameter}</td>
+                          <td style={{ padding: '0.45rem 0.75rem', fontWeight: 700, color: r.flag === 'H' ? 'var(--red)' : r.flag === 'L' ? '#1a6aaf' : 'var(--gray-900)' }}>
+                            {r.result}{r.flag ? ` (${r.flag})` : ''}
+                          </td>
+                          <td style={{ padding: '0.45rem 0.75rem', color: 'var(--gray-500)' }}>{r.unit || '—'}</td>
+                          <td style={{ padding: '0.45rem 0.75rem', color: 'var(--gray-500)', fontFamily: 'var(--font-mono)', fontSize: '0.72rem' }}>{r.range || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+                {t.notes && <div style={{ padding: '0.5rem 0.75rem', background: '#fffbe6', fontSize: '0.75rem', fontStyle: 'italic', borderTop: '1px solid var(--gray-200)' }}><b>Comment:</b> {t.notes}</div>}
+                <div style={{ padding: '0.45rem 0.75rem', background: 'var(--gray-50)', fontSize: '0.7rem', color: 'var(--gray-500)', borderTop: '1px solid var(--gray-200)' }}>
+                  Analysed by: <b style={{ color: 'var(--gray-700)' }}>{t.completedBy || '—'}</b> • {t.completedAt ? new Date(t.completedAt).toLocaleString('en-NG') : '—'}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Actions */}
+        <div style={{ padding: '1rem 1.25rem', borderTop: '1px solid var(--gray-300)', display: 'flex', gap: '0.75rem', background: 'var(--gray-50)' }}>
+          <button
+            onClick={handlePrint}
+            disabled={selectedIds.length === 0}
+            style={{ ...btnStyle('primary'), flex: 1, justifyContent: 'center', opacity: selectedIds.length === 0 ? 0.5 : 1, cursor: selectedIds.length === 0 ? 'not-allowed' : 'pointer' }}
+          >
+            <RiPrinterLine size={14} /> Print {selectedIds.length > 0 ? `${selectedIds.length} Test${selectedIds.length !== 1 ? 's' : ''}` : 'Report'}
+          </button>
+          <button onClick={handleEmail} disabled={sendingEmail} style={{ ...btnStyle('outline'), flex: 1, justifyContent: 'center', borderColor: 'var(--teal-600)', color: 'var(--teal-700)' }}>
+            {sendingEmail ? 'Sending Email...' : <><RiMailLine size={14} /> Email Report to Patient</>}
+          </button>
           <button onClick={onClose} style={btnStyle('outline')}>Close</button>
         </div>
       </div>
