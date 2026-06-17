@@ -1,0 +1,18 @@
+{
+  "name": "Amana Diagnostics",
+  "short_name": "AmanaDiag",
+  "description": "Offline-Resilient Laboratory & Radiology Management System",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0f1e",
+  "theme_color": "#0a0f1e",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/uss-pics/N SCAN PELVIC.jpeg",
+      "sizes": "512x512",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    }
+  ]
+}

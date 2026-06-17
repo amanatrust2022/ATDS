@@ -77,6 +77,11 @@ body {
 
 /* Print styles */
 @media print {
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
   .no-print {
     display: none !important;
   }
@@ -137,4 +142,19 @@ body {
 
 .animate-pulse {
   animation: pulse 2s infinite;
+}
+
+.custom-letterhead {
+  margin-bottom: 0px;
+  padding-bottom: 0px;
+}
+.custom-letterhead p {
+  margin: 0 0 4px 0;
+}
+.custom-letterhead div {
+  margin: 0;
+}
+.custom-letterhead *:last-child {
+  margin-bottom: 0px !important;
+  padding-bottom: 0px !important;
 }

@@ -1,5 +1,14 @@
 import { createClient } from './supabase';
 
+const IS_LOCAL_MODE = typeof window !== 'undefined'
+  ? (localStorage.getItem('amana_local_mode') === 'true' || 
+     window.location.hostname === 'localhost' || 
+     window.location.hostname === '127.0.0.1' || 
+     window.location.hostname.startsWith('192.168.') || 
+     window.location.hostname.startsWith('10.') || 
+     window.location.hostname.startsWith('172.'))
+  : (process.env.NEXT_PUBLIC_LOCAL_SERVER_MODE === 'true');
+
 export type Department = 'lab' | 'radiology';
 export type TestStatus = 'pending' | 'in_progress' | 'completed';
 
@@ -43,6 +52,16 @@ export interface Patient {
   address: string;
   referredBy: string;
   referringFacility?: string;
+  referringDoctorId?: string;
+  referringFacilityId?: string;
+  // Per-visit commission snapshot
+  commissionAssigned?: boolean;
+  commissionType?: 'percentage' | 'flat';
+  commissionValue?: number;   // rate snapshot at registration time
+  commissionAmount?: number;  // calculated amount at registration time
+  commissionStatus?: 'pending' | 'paid';
+  commissionPaidAt?: string;
+  commissionPaidNotes?: string;
   tests: PatientTest[];
 }
 
@@ -247,6 +266,20 @@ export const TEST_CATALOGUE: Test[] = [
 // ─── ORG-SCOPED DATA FUNCTIONS ────────────────────────────────────────────────
 
 export const generateSlipNumber = async (organizationId: string): Promise<string> => {
+  if (IS_LOCAL_MODE) {
+    const res = await fetch(`/api/patients?organizationId=${organizationId}`);
+    const patients = await res.json();
+    const date = new Date();
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    const dateStr = `${y}${m}${d}`;
+    const todayPrefix = `ATD/${dateStr}/`;
+    const todayPatients = patients.filter((p: any) => p.slipNumber && p.slipNumber.startsWith(todayPrefix));
+    const num = todayPatients.length + 1;
+    return `ATD/${dateStr}/${num.toString().padStart(4, '0')}`;
+  }
+
   const supabase = createClient();
   const date = new Date();
   const y = date.getFullYear();
@@ -263,6 +296,11 @@ export const generateSlipNumber = async (organizationId: string): Promise<string
 };
 
 export const fetchPatients = async (organizationId: string): Promise<Patient[]> => {
+  if (IS_LOCAL_MODE) {
+    const res = await fetch(`/api/patients?organizationId=${organizationId}`);
+    return res.json();
+  }
+
   const supabase = createClient();
   const { data, error } = await supabase
     .from('patients')
@@ -272,7 +310,7 @@ export const fetchPatients = async (organizationId: string): Promise<Patient[]> 
 
   if (error) { console.error('Error fetching patients:', error); return []; }
 
-  return (data || []).map(p => ({
+  return (data || []).map((p: any) => ({
     ...p,
     slipNumber: p.slip_number,
     registeredAt: p.registered_at,
@@ -281,6 +319,15 @@ export const fetchPatients = async (organizationId: string): Promise<Patient[]> 
     middleName: p.middle_name,
     referredBy: p.referred_by,
     referringFacility: p.referring_facility,
+    referringDoctorId: p.referring_doctor_id,
+    referringFacilityId: p.referring_facility_id,
+    commissionAssigned: p.commission_assigned,
+    commissionType: p.commission_type,
+    commissionValue: p.commission_value,
+    commissionAmount: p.commission_amount,
+    commissionStatus: p.commission_status,
+    commissionPaidAt: p.commission_paid_at,
+    commissionPaidNotes: p.commission_paid_notes,
     tests: (p.tests || []).map((t: any) => ({
       ...t,
       testId: t.test_id,
@@ -298,6 +345,19 @@ export const addPatient = async (
   tests: Omit<PatientTest, 'id' | 'patient_id'>[],
   organizationId: string
 ): Promise<void> => {
+  if (IS_LOCAL_MODE) {
+    const res = await fetch('/api/patients', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'addPatient', patient, tests, organizationId })
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Failed to add patient locally');
+    }
+    return;
+  }
+
   const supabase = createClient();
   const { data: pData, error: pError } = await supabase
     .from('patients')
@@ -313,6 +373,8 @@ export const addPatient = async (
       address: patient.address,
       referred_by: patient.referredBy,
       referring_facility: patient.referringFacility,
+      referring_doctor_id: patient.referringDoctorId || null,
+      referring_facility_id: patient.referringFacilityId || null,
       organization_id: organizationId,
     }])
     .select()
@@ -333,6 +395,19 @@ export const addPatient = async (
 };
 
 export const updateTestResult = async (testId: string, updates: Partial<PatientTest>): Promise<void> => {
+  if (IS_LOCAL_MODE) {
+    const res = await fetch('/api/patients', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'updateTestResult', testId, updates })
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Failed to update test result locally');
+    }
+    return;
+  }
+
   const supabase = createClient();
   const { error } = await supabase
     .from('patient_tests')
@@ -351,6 +426,12 @@ export const updateTestResult = async (testId: string, updates: Partial<PatientT
 };
 
 export const subscribeToPatients = (organizationId: string, callback: () => void) => {
+  if (IS_LOCAL_MODE) {
+    // Poll the local API every 5 seconds to get updates in local LAN mode
+    const interval = setInterval(callback, 5000);
+    return () => clearInterval(interval);
+  }
+
   const supabase = createClient();
   const channel = supabase.channel(`patients-org-${organizationId}`)
     .on('postgres_changes', {
@@ -367,3 +448,564 @@ export const subscribeToPatients = (organizationId: string, callback: () => void
 
 export const getTestById = (id: string): Test | undefined =>
   TEST_CATALOGUE.find(t => t.id === id);
+
+// ─── REFERRING FACILITIES ─────────────────────────────────────────────────────
+
+export interface ReferringFacility {
+  id: string;
+  organization_id: string;
+  name: string;
+  address?: string;
+  phone?: string;
+  email?: string;
+  commission_type: 'percentage' | 'flat';
+  commission_value: number;
+  is_active: boolean;
+  created_at: string;
+}
+
+export const fetchReferringFacilities = async (organizationId: string): Promise<ReferringFacility[]> => {
+  if (IS_LOCAL_MODE) {
+    const res = await fetch(`/api/referrals?type=facilities&organizationId=${organizationId}`);
+    return res.json();
+  }
+
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from('referring_facilities')
+    .select('*')
+    .eq('organization_id', organizationId)
+    .order('name', { ascending: true });
+  if (error) { console.error('fetchReferringFacilities error:', error); return []; }
+  return data || [];
+};
+
+export const addReferringFacility = async (facility: Omit<ReferringFacility, 'id' | 'created_at'>, organizationId: string): Promise<ReferringFacility> => {
+  if (IS_LOCAL_MODE) {
+    const res = await fetch('/api/referrals', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target: 'facility', action: 'add', facility, organizationId })
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Failed to add referring facility locally');
+    }
+    return res.json();
+  }
+
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from('referring_facilities')
+    .insert([{ ...facility, organization_id: organizationId }])
+    .select().single();
+  if (error) throw error;
+  return data;
+};
+
+export const updateReferringFacility = async (id: string, updates: Partial<ReferringFacility>): Promise<void> => {
+  if (IS_LOCAL_MODE) {
+    const res = await fetch('/api/referrals', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target: 'facility', action: 'update', id, updates })
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Failed to update referring facility locally');
+    }
+    return;
+  }
+
+  const supabase = createClient();
+  const { error } = await supabase.from('referring_facilities').update(updates).eq('id', id);
+  if (error) throw error;
+};
+
+export const deleteReferringFacility = async (id: string): Promise<void> => {
+  if (IS_LOCAL_MODE) {
+    const res = await fetch('/api/referrals', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target: 'facility', action: 'delete', id })
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Failed to delete referring facility locally');
+    }
+    return;
+  }
+
+  const supabase = createClient();
+  const { error } = await supabase.from('referring_facilities').delete().eq('id', id);
+  if (error) throw error;
+};
+
+// ─── REFERRING DOCTORS ────────────────────────────────────────────────────────
+
+export interface ReferringDoctor {
+  id: string;
+  organization_id: string;
+  facility_id?: string;
+  facility_name?: string; // joined
+  name: string;
+  phone?: string;
+  email?: string;
+  commission_type: 'percentage' | 'flat';
+  commission_value: number;
+  is_active: boolean;
+  created_at: string;
+}
+
+export const fetchReferringDoctors = async (organizationId: string): Promise<ReferringDoctor[]> => {
+  if (IS_LOCAL_MODE) {
+    const res = await fetch(`/api/referrals?type=doctors&organizationId=${organizationId}`);
+    return res.json();
+  }
+
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from('referring_doctors')
+    .select('*, referring_facilities(name)')
+    .eq('organization_id', organizationId)
+    .order('name', { ascending: true });
+  if (error) { console.error('fetchReferringDoctors error:', error); return []; }
+  return (data || []).map((d: any) => ({ ...d, facility_name: d.referring_facilities?.name }));
+};
+
+export const addReferringDoctor = async (doctor: Omit<ReferringDoctor, 'id' | 'created_at' | 'facility_name'>, organizationId: string): Promise<ReferringDoctor> => {
+  if (IS_LOCAL_MODE) {
+    const res = await fetch('/api/referrals', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target: 'doctor', action: 'add', doctor, organizationId })
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Failed to add referring doctor locally');
+    }
+    return res.json();
+  }
+
+  const supabase = createClient();
+  const { facility_name, ...rest } = doctor as any;
+  const { data, error } = await supabase
+    .from('referring_doctors')
+    .insert([{ ...rest, organization_id: organizationId }])
+    .select().single();
+  if (error) throw error;
+  return data;
+};
+
+export const updateReferringDoctor = async (id: string, updates: Partial<ReferringDoctor>): Promise<void> => {
+  if (IS_LOCAL_MODE) {
+    const res = await fetch('/api/referrals', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target: 'doctor', action: 'update', id, updates })
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Failed to update referring doctor locally');
+    }
+    return;
+  }
+
+  const supabase = createClient();
+  const { facility_name, ...rest } = updates as any;
+  const { error } = await supabase.from('referring_doctors').update(rest).eq('id', id);
+  if (error) throw error;
+};
+
+export const deleteReferringDoctor = async (id: string): Promise<void> => {
+  if (IS_LOCAL_MODE) {
+    const res = await fetch('/api/referrals', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target: 'doctor', action: 'delete', id })
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Failed to delete referring doctor locally');
+    }
+    return;
+  }
+
+  const supabase = createClient();
+  const { error } = await supabase.from('referring_doctors').delete().eq('id', id);
+  if (error) throw error;
+};
+
+// ─── TEST PRICES ──────────────────────────────────────────────────────────────
+
+export interface TestPrice {
+  id?: string;
+  organization_id: string;
+  test_id: string;
+  test_name: string;
+  price: number;
+}
+
+export const fetchTestPrices = async (organizationId: string): Promise<TestPrice[]> => {
+  if (IS_LOCAL_MODE) {
+    const res = await fetch(`/api/test-prices?organizationId=${organizationId}`);
+    return res.json();
+  }
+
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from('test_prices')
+    .select('*')
+    .eq('organization_id', organizationId);
+  if (error) { console.error('fetchTestPrices error:', error); return []; }
+  return data || [];
+};
+
+export const upsertTestPrices = async (prices: Omit<TestPrice, 'id'>[], organizationId: string): Promise<void> => {
+  if (IS_LOCAL_MODE) {
+    const res = await fetch('/api/test-prices', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prices, organizationId })
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Failed to upsert test prices locally');
+    }
+    return;
+  }
+
+  const supabase = createClient();
+  const rows = prices.map(p => ({ ...p, organization_id: organizationId }));
+  const { error } = await supabase
+    .from('test_prices')
+    .upsert(rows, { onConflict: 'organization_id,test_id' });
+  if (error) throw error;
+};
+
+// ─── COMMISSION REPORT ────────────────────────────────────────────────────────
+
+export interface CommissionEntry {
+  patientId: string;
+  patientName: string;
+  slipNumber: string;
+  registeredAt: string;
+  referrerName: string;
+  referrerType: 'doctor' | 'facility';
+  commissionType: 'percentage' | 'flat';
+  commissionValue: number;
+  tests: { testId: string; testName: string; price: number }[];
+  totalAmount: number;
+  commissionAmount: number;
+  commissionStatus: 'pending' | 'paid';
+  commissionPaidAt?: string;
+  commissionPaidNotes?: string;
+}
+
+export const fetchCommissionReport = async (organizationId: string, from?: string, to?: string): Promise<CommissionEntry[]> => {
+  // Pull core arrays
+  const [patients, prices, doctors, facilities] = await Promise.all([
+    fetchPatients(organizationId),
+    fetchTestPrices(organizationId),
+    fetchReferringDoctors(organizationId),
+    fetchReferringFacilities(organizationId),
+  ]);
+
+  // Filter patients with commission
+  let filteredPatients = patients.filter(p => p.commissionAssigned);
+  if (from) {
+    filteredPatients = filteredPatients.filter(p => p.registeredAt >= from);
+  }
+  if (to) {
+    filteredPatients = filteredPatients.filter(p => p.registeredAt <= to);
+  }
+
+  const priceMap = new Map(prices.map(p => [p.test_id || (p as any).testId, p.price]));
+  const doctorMap = new Map(doctors.map(d => [d.id, d]));
+  const facilityMap = new Map(facilities.map(f => [f.id, f]));
+
+  return filteredPatients.map((p: any) => {
+    const tests = (p.tests || []).map((t: any) => ({
+      testId: t.testId,
+      testName: t.testName,
+      price: priceMap.get(t.testId) || 0,
+    }));
+    const totalAmount = tests.reduce((sum: number, t: any) => sum + t.price, 0);
+
+    let referrerName = p.referredBy || '—';
+    let referrerType: 'doctor' | 'facility' = 'doctor';
+
+    if (p.referringDoctorId && doctorMap.has(p.referringDoctorId)) {
+      referrerName = doctorMap.get(p.referringDoctorId)!.name;
+      referrerType = 'doctor';
+    } else if (p.referringFacilityId && facilityMap.has(p.referringFacilityId)) {
+      referrerName = facilityMap.get(p.referringFacilityId)!.name;
+      referrerType = 'facility';
+    } else if (p.referringFacility) {
+      referrerName = p.referringFacility;
+      referrerType = 'facility';
+    }
+
+    return {
+      patientId: p.id,
+      patientName: `${p.firstName} ${p.surname}`,
+      slipNumber: p.slipNumber,
+      registeredAt: p.registeredAt,
+      referrerName,
+      referrerType,
+      commissionType: p.commissionType || 'percentage',
+      commissionValue: p.commissionValue || 0,
+      tests,
+      totalAmount,
+      commissionAmount: p.commissionAmount || 0,
+      commissionStatus: p.commissionStatus || 'pending',
+      commissionPaidAt: p.commissionPaidAt,
+      commissionPaidNotes: p.commissionPaidNotes,
+    };
+  });
+};
+
+// ─── PATIENT (updated) with referring_doctor_id support ───────────────────────
+
+export const addPatientWithReferral = async (
+  patient: Omit<Patient, 'id' | 'tests'>,
+  tests: Omit<PatientTest, 'id' | 'patient_id'>[],
+  organizationId: string
+): Promise<void> => {
+  if (IS_LOCAL_MODE) {
+    const res = await fetch('/api/patients', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'addPatient', patient, tests, organizationId })
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Failed to add patient referral locally');
+    }
+    return;
+  }
+
+  const supabase = createClient();
+  const { data: pData, error: pError } = await supabase
+    .from('patients')
+    .insert([{
+      slip_number: patient.slipNumber,
+      first_name: patient.firstName,
+      surname: patient.surname,
+      middle_name: patient.middleName,
+      age: patient.age,
+      sex: patient.sex,
+      phone: patient.phone,
+      email: patient.email,
+      address: patient.address,
+      referred_by: patient.referredBy,
+      referring_facility: patient.referringFacility,
+      referring_doctor_id: patient.referringDoctorId || null,
+      referring_facility_id: patient.referringFacilityId || null,
+      // Per-visit commission snapshot
+      commission_assigned: patient.commissionAssigned ?? false,
+      commission_type: patient.commissionType || null,
+      commission_value: patient.commissionValue ?? null,
+      commission_amount: patient.commissionAmount ?? null,
+      commission_status: patient.commissionAssigned ? 'pending' : null,
+      organization_id: organizationId,
+    }])
+    .select()
+    .single();
+  if (pError) throw pError;
+
+  const testsToInsert = tests.map(t => ({
+    patient_id: pData.id,
+    test_id: t.testId,
+    test_name: t.testName,
+    department: t.department,
+    status: t.status,
+    specimen: t.specimen,
+    organization_id: organizationId,
+  }));
+  const { error: tError } = await supabase.from('patient_tests').insert(testsToInsert);
+  if (tError) throw tError;
+};
+
+export const updatePatient = async (id: string, updates: Partial<Patient>): Promise<void> => {
+  if (IS_LOCAL_MODE) {
+    const res = await fetch('/api/patients', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'updatePatient', patientId: id, updates })
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Failed to update patient locally');
+    }
+    return;
+  }
+
+  const supabase = createClient();
+  const { error } = await supabase.from('patients').update({
+    first_name: updates.firstName,
+    surname: updates.surname,
+    middle_name: updates.middleName,
+    age: updates.age,
+    sex: updates.sex,
+    phone: updates.phone,
+    email: updates.email,
+    address: updates.address,
+    referred_by: updates.referredBy,
+    referring_facility: updates.referringFacility,
+    name: updates.name,
+  }).eq('id', id);
+  if (error) throw error;
+};
+
+export const markCommissionPaid = async (patientId: string, notes?: string): Promise<void> => {
+  if (IS_LOCAL_MODE) {
+    const res = await fetch('/api/patients', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'markCommissionPaid', patientId, notes })
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Failed to mark commission paid locally');
+    }
+    return;
+  }
+
+  const supabase = createClient();
+  const { error } = await supabase.from('patients').update({
+    commission_status: 'paid',
+    commission_paid_at: new Date().toISOString(),
+    commission_paid_notes: notes || null,
+  }).eq('id', patientId);
+  if (error) throw error;
+};
+
+export const markCommissionsUnpaid = async (patientIds: string[]): Promise<void> => {
+  if (IS_LOCAL_MODE) {
+    const res = await fetch('/api/patients', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'markCommissionsUnpaid', patientIds })
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Failed to mark commissions unpaid locally');
+    }
+    return;
+  }
+
+  const supabase = createClient();
+  const { error } = await supabase.from('patients').update({
+    commission_status: 'pending',
+    commission_paid_at: null,
+    commission_paid_notes: null,
+  }).in('id', patientIds);
+  if (error) throw error;
+};
+
+// ─── RADIOLOGY TEMPLATES ──────────────────────────────────────────────────────
+
+export interface RadiologyTemplate {
+  id: string;
+  organization_id: string;
+  key: string;
+  name: string;
+  findings: string;
+  impression: string;
+  created_at?: string;
+  created_by?: string;
+}
+
+export const fetchCustomTemplates = async (organizationId: string): Promise<RadiologyTemplate[]> => {
+  if (IS_LOCAL_MODE) {
+    const res = await fetch(`/api/radiology-templates?organizationId=${organizationId}`);
+    return res.json();
+  }
+
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from('radiology_templates')
+    .select('*')
+    .eq('organization_id', organizationId)
+    .order('name', { ascending: true });
+  if (error) { console.error('fetchCustomTemplates error:', error); return []; }
+  return data || [];
+};
+
+export const addCustomTemplate = async (
+  template: Omit<RadiologyTemplate, 'id' | 'created_at'>,
+  userId?: string
+): Promise<RadiologyTemplate> => {
+  if (IS_LOCAL_MODE) {
+    const res = await fetch('/api/radiology-templates', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'add', template, userId })
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Failed to add template locally');
+    }
+    return res.json();
+  }
+
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from('radiology_templates')
+    .insert([{ ...template, created_by: userId }])
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+};
+
+export const updateCustomTemplate = async (id: string, updates: Partial<RadiologyTemplate>): Promise<void> => {
+  if (IS_LOCAL_MODE) {
+    const res = await fetch('/api/radiology-templates', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'update', id, updates })
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Failed to update template locally');
+    }
+    return;
+  }
+
+  const supabase = createClient();
+  const { error } = await supabase
+    .from('radiology_templates')
+    .update({
+      key: updates.key,
+      name: updates.name,
+      findings: updates.findings,
+      impression: updates.impression,
+    })
+    .eq('id', id);
+  if (error) throw error;
+};
+
+export const deleteCustomTemplate = async (id: string): Promise<void> => {
+  if (IS_LOCAL_MODE) {
+    const res = await fetch('/api/radiology-templates', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'delete', id })
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Failed to delete template locally');
+    }
+    return;
+  }
+
+  const supabase = createClient();
+  const { error } = await supabase
+    .from('radiology_templates')
+    .delete()
+    .eq('id', id);
+  if (error) throw error;
+};
+

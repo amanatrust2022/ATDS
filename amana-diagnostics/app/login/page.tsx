@@ -17,12 +17,80 @@ export default function LoginPage() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true); setError('');
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) {
-      setError(error.message);
+    
+    const isLocalMode = typeof window !== 'undefined'
+      ? (localStorage.getItem('amana_local_mode') === 'true' || 
+         window.location.hostname === 'localhost' || 
+         window.location.hostname === '127.0.0.1' || 
+         window.location.hostname.startsWith('192.168.') || 
+         window.location.hostname.startsWith('10.') || 
+         window.location.hostname.startsWith('172.'))
+      : (process.env.NEXT_PUBLIC_LOCAL_SERVER_MODE === 'true');
+
+    try {
+      // 1. Try Supabase Auth first
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      
+      if (!error && data?.user) {
+        // Successful online login! Cache credentials locally
+        if (isLocalMode) {
+          try {
+            await fetch('/api/auth/save-credentials', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ email, password, userId: data.user.id })
+            });
+          } catch (saveErr) {
+            console.error('Failed to save credentials locally:', saveErr);
+          }
+        }
+        return;
+      }
+
+      // If it's a network/connection error AND we are in local mode, attempt local login fallback
+      const isNetworkError = error?.message?.includes('fetch') || 
+                             error?.message?.includes('network') || 
+                             error?.status === 0 || 
+                             (error && typeof window !== 'undefined' && !window.navigator.onLine);
+
+      if (isLocalMode && isNetworkError) {
+        try {
+          const localRes = await fetch('/api/auth/local-login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password })
+          });
+          
+          if (localRes.ok) {
+            const localSession = await localRes.json();
+            // Cache the local session so AuthProvider loads it
+            localStorage.setItem('amana_offline_session', JSON.stringify({
+              user: localSession.user,
+              profile: localSession.profile,
+              organization: localSession.organization,
+              session: null
+            }));
+            
+            // Force a reload to let AuthProvider pick up the cached session
+            window.location.reload();
+            return;
+          } else {
+            const localErr = await localRes.json();
+            setError(localErr.error || 'Invalid credentials');
+            setLoading(false);
+            return;
+          }
+        } catch (localLoginErr) {
+          console.error('Local login execution failed:', localLoginErr);
+        }
+      }
+
+      setError(error ? error.message : 'Login failed');
+      setLoading(false);
+    } catch (err: any) {
+      setError(err.message || 'An unexpected error occurred');
       setLoading(false);
     }
-    // On success, we let the RootWrapper handle the redirect and leave the button in "Signing in..." state
   };
 
   const handleReset = async (e: React.FormEvent) => {

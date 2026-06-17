@@ -4,6 +4,7 @@ import './globals.css'
 export const metadata: Metadata = {
   title: 'DiagnosticOS — Diagnostic Centre Management',
   description: 'Cloud-based LIS for diagnostic centres. Reception, Lab, Radiology, and Results — all in one platform.',
+  manifest: '/manifest.json',
 }
 
 import { AuthProvider } from '@/components/AuthProvider'

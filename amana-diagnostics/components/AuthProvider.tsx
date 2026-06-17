@@ -24,6 +24,7 @@ export type Organization = {
   phone?: string;
   email?: string;
   letterhead_line2?: string;
+  letterhead_html?: string | null;
 };
 
 type AuthContextType = {
@@ -35,6 +36,15 @@ type AuthContextType = {
   signOut: () => Promise<void>;
   refreshOrg: () => Promise<void>;
 };
+
+const IS_LOCAL_MODE = typeof window !== 'undefined'
+  ? (localStorage.getItem('amana_local_mode') === 'true' || 
+     window.location.hostname === 'localhost' || 
+     window.location.hostname === '127.0.0.1' || 
+     window.location.hostname.startsWith('192.168.') || 
+     window.location.hostname.startsWith('10.') || 
+     window.location.hostname.startsWith('172.'))
+  : (process.env.NEXT_PUBLIC_LOCAL_SERVER_MODE === 'true');
 
 const AuthContext = createContext<AuthContextType>({
   user: null, profile: null, organization: null,
@@ -54,15 +64,71 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const fetchProfileAndOrg = async (userId: string) => {
     try {
-      const { data: prof } = await supabase
-        .from('profiles').select('*').eq('id', userId).single();
+      let prof = null;
+      let org = null;
+      let fetchedFromCloud = false;
+
+      if (IS_LOCAL_MODE) {
+        // Fetch from local SQLite server endpoints
+        try {
+          const profRes = await fetch(`/api/profiles?userId=${userId}`);
+          if (profRes.ok) {
+            prof = await profRes.json();
+            if (prof?.organization_id) {
+              const orgRes = await fetch(`/api/organizations?id=${prof.organization_id}`);
+              if (orgRes.ok) {
+                org = await orgRes.json();
+              }
+            }
+          }
+        } catch (localErr) {
+          console.warn('Local database lookup failed, falling back to Supabase:', localErr);
+        }
+      }
+
+      if (!prof) {
+        // Fallback/cloud behavior
+        const { data } = await supabase
+          .from('profiles').select('*').eq('id', userId).single();
+        prof = data;
+        if (prof?.organization_id) {
+          const { data: orgData } = await supabase
+            .from('organizations').select('*').eq('id', prof.organization_id).single();
+          org = orgData;
+        }
+        fetchedFromCloud = true;
+      }
+
       setProfile(prof ?? null);
-      if (prof?.organization_id) {
-        const { data: org } = await supabase
-          .from('organizations').select('*').eq('id', prof.organization_id).single();
-        setOrganization(org ?? null);
-      } else {
-        setOrganization(null);
+      setOrganization(org ?? null);
+
+      if (prof) {
+        localStorage.setItem('amana_offline_session', JSON.stringify({
+          user: { id: userId, email: (prof as any).email || '' },
+          profile: prof,
+          organization: org,
+          session: null
+        }));
+
+        // Cache cloud profile and organization locally in SQLite
+        if (fetchedFromCloud && IS_LOCAL_MODE) {
+          try {
+            await fetch('/api/profiles', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(prof)
+            });
+            if (org) {
+              await fetch('/api/organizations', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(org)
+              });
+            }
+          } catch (syncErr) {
+            console.warn('Failed to cache profile/org to local SQLite:', syncErr);
+          }
+        }
       }
     } catch (e) {
       console.error('fetchProfileAndOrg error:', e);
@@ -88,6 +154,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const initializeAuth = async () => {
       try {
+        // In local mode, try to load offline mock session first to render immediately
+        if (IS_LOCAL_MODE) {
+          const cachedSessionStr = localStorage.getItem('amana_offline_session');
+          if (cachedSessionStr) {
+            try {
+              const cached = JSON.parse(cachedSessionStr);
+              if (cached && cached.user && cached.profile) {
+                if (mounted) {
+                  setUser(cached.user);
+                  setProfile(cached.profile);
+                  setOrganization(cached.organization || null);
+                  setSession(cached.session || null);
+                  setLoading(false);
+                  clearTimeout(safetyNet);
+                  // Trigger background validation of profile/org in case they were updated
+                  fetchProfileAndOrg(cached.user.id);
+                  return;
+                }
+              }
+            } catch (jsonErr) {
+              console.error('Failed to parse cached offline session:', jsonErr);
+            }
+          }
+        }
+
         // Race the session fetch against a silent timeout
         const sessionPromise = supabase.auth.getSession();
         const timeoutPromise = new Promise<{ data: { session: null }, error: null }>((resolve) => {
@@ -104,10 +195,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (!mounted) return;
         
         if (session?.user) {
-          // If we have a user, fetch profile with its own safety race
-          const profilePromise = fetchProfileAndOrg(session.user.id);
-          const profTimeout = new Promise((resolve) => setTimeout(resolve, 2000));
-          await Promise.race([profilePromise, profTimeout]);
+          // If we have a user, fetch profile
+          await fetchProfileAndOrg(session.user.id);
         } else {
           setProfile(null);
           setOrganization(null);
@@ -135,7 +224,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     initializeAuth();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
+      async (event: string, session: any) => {
         if (!mounted) return;
         if (event === 'INITIAL_SESSION') return;
 
@@ -145,9 +234,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setOrganization(null);
           } else if (event === 'SIGNED_IN' || event === 'USER_UPDATED') {
             if (session?.user) {
-              const profilePromise = fetchProfileAndOrg(session.user.id);
-              const profTimeout = new Promise((resolve) => setTimeout(resolve, 2000));
-              await Promise.race([profilePromise, profTimeout]);
+              await fetchProfileAndOrg(session.user.id);
             }
           }
           
@@ -168,7 +255,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    try {
+      localStorage.removeItem('amana_offline_session');
+      await supabase.auth.signOut();
+    } catch (e) {
+      console.warn('Sign out from Supabase failed or offline:', e);
+    } finally {
+      setUser(null);
+      setProfile(null);
+      setOrganization(null);
+      setSession(null);
+    }
   };
 
   return (

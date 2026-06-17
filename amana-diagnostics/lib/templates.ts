@@ -8,6 +8,7 @@
  */
 
 import { Patient, PatientTest } from './store';
+import { deserializeRadiologyResults, convertTextToFormattedHtml } from './radiology-templates';
 
 /** Minimal org shape needed for rendering letterheads */
 export type OrgForTemplate = {
@@ -16,6 +17,7 @@ export type OrgForTemplate = {
   address?: string | null;
   phone?: string | null;
   email?: string | null;
+  letterhead_html?: string | null;
 };
 
 /**
@@ -41,7 +43,197 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
   const orgPhone = org?.phone || '+2348033390574, +2347032663898';
   const orgEmail = org?.email || 'amanatrust2022@gmail.com';
 
+  // Clean trailing empty paragraphs, line breaks, and elements (e.g. styling-enhanced empty paragraphs)
+  let cleanLetterheadHtml = org?.letterhead_html || '';
+  if (cleanLetterheadHtml) {
+    let prev = '';
+    cleanLetterheadHtml = cleanLetterheadHtml.trim();
+    while (cleanLetterheadHtml !== prev) {
+      prev = cleanLetterheadHtml;
+      // Remove trailing br tags that are followed only by closing tags or whitespace
+      cleanLetterheadHtml = cleanLetterheadHtml.replace(/(?:<br\s*\/?>\s*)+(?=(?:\s|<\/\w+>)*$)/gi, '').trim();
+      // Remove trailing empty tags (restricting nested tags to inline styles) that are followed only by closing tags or whitespace
+      cleanLetterheadHtml = cleanLetterheadHtml.replace(/<(\w+)\b[^>]*>(?:\s|&nbsp;|<br\s*\/?>|<(?:\/?(?:span|strong|em|b|i|u|font))\b[^>]*>)*<\/\1>(?=(?:\s|<\/\w+>)*$)/gi, (match) => {
+        if (match.includes('<img') || match.includes('<svg') || match.includes('<hr') || match.includes('data-shape') || match.includes('canvas')) {
+          return match;
+        }
+        const textOnly = match.replace(/<[^>]+>/g, '').replace(/&nbsp;/g, '').replace(/\s/g, '');
+        if (textOnly === '') return '';
+        return match;
+      }).trim();
+    }
+  }
+
   const testSections = completedTests.map(t => {
+    const isMcs = t.testId.toLowerCase().endsWith('_mcs') || t.testId.toLowerCase().includes('mcs') || t.testId.toLowerCase() === 'sfmcs' || t.testName.toLowerCase().includes('mcs') || t.testName.toLowerCase().includes('culture & sensitivity') || t.testName.toLowerCase().includes('culture and sensitivity');
+
+    if (t.department === 'radiology') {
+      const radData = deserializeRadiologyResults(t.results || []);
+      const imageSection = radData.images && radData.images.length > 0 
+        ? `<div style="margin-top:20px; font-weight:bold; font-size:10pt; color:#4472c4; text-transform:uppercase; border-bottom:1px solid #4472c4; padding-bottom:4px; margin-bottom:10px;">Attached Imagery</div>
+           <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:15px; page-break-inside:avoid;">
+             ${radData.images.map(img => `
+               <div style="border:1px solid #ddd; padding:8px; background:white; text-align:center; page-break-inside:avoid;">
+                 <img src="${img}" style="max-width:100%; max-height:220px; object-fit:contain;" alt="Attached Scan" />
+                 <div style="font-size:8pt; color:#555; margin-top:5px; font-weight:bold;">${img.split('/').pop()?.replace(/_/g, ' ') || ''}</div>
+               </div>
+             `).join('')}
+           </div>`
+        : '';
+
+      return `
+        <div class="test-block radiology-block" style="page-break-inside: avoid; border: none; margin-bottom: 24px;">
+          <div style="font-weight: bold; border-bottom: 2px solid #4472c4; margin-bottom: 12px; font-size: 12pt; color: #4472c4; text-transform: uppercase; padding-bottom: 4px;">
+            ${t.testName}
+          </div>
+          <div style="font-size: 11pt; line-height: 1.6; color: #000; text-align: justify; margin-bottom: 18px; font-family: Times New Roman, serif;">
+            ${convertTextToFormattedHtml(radData.findings)}
+          </div>
+          ${radData.impression ? `
+            <div style="background: #f8fafc; border-left: 4px solid #4472c4; padding: 12px; margin-top: 15px; page-break-inside: avoid; font-family: Times New Roman, serif;">
+              <div style="font-weight: bold; color: #4472c4; font-size: 11pt; text-transform: uppercase; margin-bottom: 4px;">Impression / Conclusion:</div>
+              <div style="font-size: 11pt; line-height: 1.5; font-weight: bold; color: #111827;">
+                ${convertTextToFormattedHtml(radData.impression)}
+              </div>
+            </div>
+          ` : ''}
+          ${imageSection}
+          ${t.notes ? `<div class="notes" style="margin-top:15px; padding: 8px 12px; font-size: 10pt; background: #fffbe6; border: 1px solid #ffe58f; font-style: italic;"><b>Remarks:</b> ${t.notes}</div>` : ''}
+        </div>
+      `;
+    }
+
+    if (isMcs) {
+      let colour = '—';
+      let appearance = '—';
+      const microscopyRows: string[] = [];
+      let growth = '—';
+      let organism = '—';
+      let degree = '—';
+      let gramReaction = '—';
+      let shape = '—';
+      let incubationPeriod = '—';
+      let incubationTemperature = '—';
+
+      const sensitiveList: string[] = [];
+      const intermediateList: string[] = [];
+      const resistantList: string[] = [];
+
+      (t.results || []).forEach(r => {
+        const param = r.parameter;
+        const val = r.result;
+
+        if (param.startsWith('Macroscopy: ')) {
+          const field = param.replace('Macroscopy: ', '');
+          if (field === 'Colour') colour = val || '—';
+          if (field === 'Appearance') appearance = val || '—';
+        } else if (param.startsWith('Microscopy: ')) {
+          const pName = param.replace('Microscopy: ', '');
+          microscopyRows.push(`<tr><td style="padding: 2px 4px; border: none; font-size: 10pt; font-weight: 600; width: 50%;">${pName}:</td><td style="padding: 2px 4px; border: none; font-size: 10pt;">${val || 'Nil'}</td></tr>`);
+        } else if (param.startsWith('Culture: ')) {
+          const field = param.replace('Culture: ', '');
+          if (field === 'Growth') growth = val || '—';
+          if (field === 'Organism') organism = val || '—';
+          if (field === 'Degree') degree = val || '—';
+          if (field === 'Gram Reaction') gramReaction = val || '—';
+          if (field === 'Shape') shape = val || '—';
+          if (field === 'Incubation Period') incubationPeriod = val || '—';
+          if (field === 'Incubation Temperature') incubationTemperature = val || '—';
+        } else if (param.startsWith('Sensitivity: ')) {
+          const match = param.match(/Sensitivity:\s+(.+)\s+\((.+)\)/);
+          if (match) {
+            const antibioticText = `${match[1]} (${match[2]})`;
+            if (val === 'S') sensitiveList.push(antibioticText);
+            else if (val === 'I') intermediateList.push(antibioticText);
+            else if (val === 'R') resistantList.push(antibioticText);
+          }
+        }
+      });
+
+      const isNoGrowth = ['no growth', 'sterile', 'no-growth'].includes(growth.trim().toLowerCase());
+
+      const maxRows = Math.max(sensitiveList.length, intermediateList.length, resistantList.length);
+      const sensitivityRows: string[] = [];
+      for (let i = 0; i < maxRows; i++) {
+        sensitivityRows.push(`
+          <tr>
+            <td style="padding: 4px 6px; font-size: 10pt; border-bottom: 1px solid #eee; border-right: 1px solid #eee; color: #1e7e5a; font-weight: 500;">${sensitiveList[i] || ''}</td>
+            <td style="padding: 4px 6px; font-size: 10pt; border-bottom: 1px solid #eee; border-right: 1px solid #eee; color: #d4850a; font-weight: 500;">${intermediateList[i] || ''}</td>
+            <td style="padding: 4px 6px; font-size: 10pt; border-bottom: 1px solid #eee; color: #c0392b; font-weight: 600;">${resistantList[i] || ''}</td>
+          </tr>
+        `);
+      }
+
+      return `
+        <div class="test-block mcs-block" style="page-break-inside: avoid; border: 1px solid #4472c4; margin-bottom: 12px;">
+          <div class="test-header" style="background: #4472c4; color: white; padding: 6px 10px; font-weight: bold; font-size: 11pt;">
+            ${t.testName}
+          </div>
+          
+          <div style="display: flex; border-bottom: 1px solid #ddd;">
+            <div style="flex: 1; padding: 8px; border-right: 1px solid #ddd;">
+              <div style="font-weight: bold; border-bottom: 1px solid #ddd; margin-bottom: 5px; font-size: 10pt; color: #4472c4; text-transform: uppercase;">Macroscopy</div>
+              <table style="width: 100%; margin-top: 0; border: none; border-collapse: collapse;">
+                <tr style="border: none;"><td style="padding: 2px 4px; font-weight: 600; border: none; font-size: 10pt; width: 50%;">Colour:</td><td style="padding: 2px 4px; border: none; font-size: 10pt;">${colour}</td></tr>
+                <tr style="border: none;"><td style="padding: 2px 4px; font-weight: 600; border: none; font-size: 10pt;">Appearance:</td><td style="padding: 2px 4px; border: none; font-size: 10pt;">${appearance}</td></tr>
+              </table>
+            </div>
+            <div style="flex: 1; padding: 8px;">
+              <div style="font-weight: bold; border-bottom: 1px solid #ddd; margin-bottom: 5px; font-size: 10pt; color: #4472c4; text-transform: uppercase;">Microscopy</div>
+              <table style="width: 100%; margin-top: 0; border: none; border-collapse: collapse;">
+                <tbody>
+                  ${microscopyRows.length > 0 ? microscopyRows.join('') : '<tr><td style="padding: 2px 4px; border: none; font-size: 10pt; font-style: italic; color: #666;">No microscopy parameter recorded</td></tr>'}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div style="padding: 8px; border-bottom: ${!isNoGrowth ? '1px solid #ddd' : 'none'};">
+            <div style="font-weight: bold; border-bottom: 1px solid #ddd; margin-bottom: 5px; font-size: 10pt; color: #4472c4; text-transform: uppercase;">Culture Findings</div>
+            <table style="width: 100%; margin-top: 0; border: none; border-collapse: collapse;">
+              <tr style="border: none;">
+                <td style="padding: 2px 4px; font-weight: 600; border: none; font-size: 10pt; width: 15%;">Growth:</td>
+                <td style="padding: 2px 4px; border: none; font-size: 10pt; width: 25%;">${growth}</td>
+                ${!isNoGrowth ? `
+                  <td style="padding: 2px 4px; font-weight: 600; border: none; font-size: 10pt; width: 15%;">Organism:</td>
+                  <td style="padding: 2px 4px; border: none; font-size: 10pt; font-style: italic; width: 25%;">${organism}</td>
+                  <td style="padding: 2px 4px; font-weight: 600; border: none; font-size: 10pt; width: 10%;">Degree:</td>
+                  <td style="padding: 2px 4px; border: none; font-size: 10pt; width: 10%;">${degree}</td>
+                ` : '<td colSpan="4" style="border: none;"></td>'}
+              </tr>
+              ${!isNoGrowth ? `
+                <tr style="border: none;">
+                  <td style="padding: 2px 4px; font-weight: 600; border: none; font-size: 10pt;">Reaction:</td>
+                  <td style="padding: 2px 4px; border: none; font-size: 10pt;">${gramReaction} (${shape})</td>
+                  <td style="padding: 2px 4px; font-weight: 600; border: none; font-size: 10pt;">Incubation:</td>
+                  <td style="padding: 2px 4px; border: none; font-size: 10pt;" colSpan="3">${incubationPeriod} @ ${incubationTemperature}</td>
+                </tr>
+              ` : ''}
+            </table>
+          </div>
+
+          ${!isNoGrowth ? `
+            <div style="padding: 8px;">
+              <div style="font-weight: bold; border-bottom: 1px solid #ddd; margin-bottom: 5px; font-size: 10pt; color: #4472c4; text-transform: uppercase;">Antibiotic Sensitivity Profile</div>
+              <table style="width: 100%; border-collapse: collapse; margin-top: 4px;">
+                <thead>
+                  <tr style="background: #f2f2f2;">
+                    <th style="padding: 4px 6px; font-size: 9.5pt; color: #1e7e5a; font-weight: bold; width: 33.3%; border-bottom: 2px solid #ddd; border-right: 1px solid #ddd; text-align: left;">SENSITIVE (S)</th>
+                    <th style="padding: 4px 6px; font-size: 9.5pt; color: #d4850a; font-weight: bold; width: 33.3%; border-bottom: 2px solid #ddd; border-right: 1px solid #ddd; text-align: left;">INTERMEDIATE (I)</th>
+                    <th style="padding: 4px 6px; font-size: 9.5pt; color: #c0392b; font-weight: bold; width: 33.3%; border-bottom: 2px solid #ddd; text-align: left;">RESISTANT (R)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${sensitivityRows.length > 0 ? sensitivityRows.join('') : '<tr><td colSpan="3" style="text-align: center; padding: 10px; font-style: italic; color: #666;">No sensitivity results recorded</td></tr>'}
+                </tbody>
+              </table>
+            </div>
+          ` : ''}
+
+          ${t.notes ? `<div class="notes" style="padding: 5px 8px; font-size: 9pt; background: #fffbe6; border-top: 1px solid #ddd; font-style: italic;"><b>Comment:</b> ${t.notes}</div>` : ''}
+        </div>`;
+    }
+
     const rows = (t.results || []).map(r => `
       <tr>
         <td>${r.parameter}</td>
@@ -53,7 +245,7 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
       </tr>`).join('');
 
     return `
-      <div class="test-block">
+      <div class="test-block" style="page-break-inside: avoid;">
         <div class="test-header">${t.testName}</div>
         ${t.results && t.results.length > 0 ? `
         <table>
@@ -72,20 +264,29 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
     <!DOCTYPE html><html><head><title>Result - ${patient.slipNumber}</title>
     <style>
       body { font-family: Times New Roman, sans-serif; margin: 0; padding: 20px; font-size: 11pt; color: #000; min-width: 750px; }
+      @page { margin-top: 4mm; }
       @media screen {
         body { max-width: 860px; margin: 0 auto; padding: 32px 40px; background: #f0f2f5; }
         html { background: #f0f2f5; }
       }
       @media print {
-        body { margin: 0; padding: 20px; background: white; max-width: none; }
+        body { margin: 0; padding: 10px 20px 20px; background: white; max-width: none; }
+        * {
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+        }
       }
-      .header { text-align: center; border-bottom: 2px solid #4472c4; padding-bottom: 4px; margin-bottom: 8px; margin-left: 0; margin-right: 0; padding-left: 0; padding-right: 0; }
+      .header { text-align: center; border-bottom: 2px solid #4472c4; padding-bottom: 0; margin-bottom: 0; margin-left: 0; margin-right: 0; padding-left: 0; padding-right: 0; }
+      .custom-letterhead { margin-bottom: 0px; padding-bottom: 0px; }
+      .custom-letterhead p { margin: 0 0 4px 0; }
+      .custom-letterhead div { margin: 0; }
+      .custom-letterhead *:last-child { margin-bottom: 0px !important; padding-bottom: 0px !important; }
       .org-name-1 { font-size: 40pt; white-space: nowrap; color: #0563c1; margin: 0; padding: 0; line-height: 1; }
       .org-name-2 { font-size: 26pt; white-space: nowrap; color: #0563c1; margin: 0; padding: 0; line-height: 1; }
       .org-addr { font-size: 14pt; color: #222a35; margin: 0; padding: 0; line-height: 1; }
       .org-contact { font-size: 14pt; color: #c00000; margin: 0; padding: 0; line-height: 1; }
-      .org-email { font-size: 14pt; margin: 0; padding: 0; line-height: 1; padding-bottom: 12px; }
-      .report-title { text-align: center; font-size: 14pt; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; margin: 5px 0 10px; color: #4472c4; text-decoration: underline; }
+      .org-email { font-size: 14pt; margin: 0; padding: 0; line-height: 1; padding-bottom: 5px; }
+      .report-title { text-align: center; font-size: 14pt; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; margin: 2.5px 0 10px; color: #4472c4; text-decoration: underline; }
       .patient-info { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; font-size: 12pt; border: 1px solid #4472c4; padding: 12px; }
       .pi-label { font-weight: bold; margin-right: 8px; }
       .test-block { margin-bottom: 18px; border: 1px solid #ddd; }
@@ -98,21 +299,29 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
       .sig-box { text-align: center; width: 200px; }
       .sig-line { border-top: 1px solid #333; padding-top: 4px; font-size: 10pt; color: #333; }
     </style></head><body>
-    <div class="header">
-      <div class="org-name-1">${orgName}</div>
-      ${orgLine2 ? `<div class="org-name-2">${orgLine2}</div>` : ''}
-      ${orgAddress ? `<div class="org-addr">${orgAddress}</div>` : ''}
-      ${orgPhone ? `<div class="org-contact"><b>Phone;</b> ${orgPhone}</div>` : ''}
-      ${orgEmail ? `<div class="org-email"><b>Email;</b> <span style="color:#0563c1">${orgEmail}</span></div>` : ''}
+    <div class="header" style="${org?.letterhead_html ? 'border-bottom: none; text-align: left;' : ''}">
+      ${org?.letterhead_html ? `
+        <div class="custom-letterhead">${cleanLetterheadHtml}</div>
+      ` : `
+        <div class="org-name-1">${orgName}</div>
+        ${orgLine2 ? `<div class="org-name-2">${orgLine2}</div>` : ''}
+        ${orgAddress ? `<div class="org-addr">${orgAddress}</div>` : ''}
+        ${orgPhone ? `<div class="org-contact"><b>Phone;</b> ${orgPhone}</div>` : ''}
+        ${orgEmail ? `<div class="org-email"><b>Email;</b> <span style="color:#0563c1">${orgEmail}</span></div>` : ''}
+      `}
     </div>
     <div class="report-title">${reportTitle}</div>
     <div class="patient-info">
       <div><span class="pi-label">Patient Name;</span> ${patient.name}</div>
       <div><span class="pi-label">Patient ID;</span> ${patient.slipNumber}</div>
-      <div><span class="pi-label">Age;</span> ${patient.age}</div>
-      <div><span class="pi-label">Sex;</span> ${patient.sex}</div>
-      <div><span class="pi-label">Requested Date;</span> ${regDate}</div>
-      <div><span class="pi-label">Reporting Date;</span> ${reportingDate}</div>
+      <div>
+        <span style="margin-right: 30px;"><span class="pi-label">Age;</span> ${patient.age}</span>
+        <span><span class="pi-label">Requested Date;</span> ${regDate}</span>
+      </div>
+      <div>
+        <span style="margin-right: 30px;"><span class="pi-label">Sex;</span> ${patient.sex}</span>
+        <span><span class="pi-label">Reporting Date;</span> ${reportingDate}</span>
+      </div>
       <div><span class="pi-label">Investigation(s);</span> ${investigationList}</div>
       <div><span class="pi-label">Specimen(s);</span> ${specimens}</div>
     </div>

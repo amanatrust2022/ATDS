@@ -542,13 +542,21 @@ function ResultModal({ patient, onClose }: { patient: Patient; onClose: () => vo
       <!DOCTYPE html><html><head><title>Result - \${patient.slipNumber}</title>
       <style>
         body { font-family: Times New Roman, sans-serif; margin: 0; padding: 20px; font-size: 11pt; color: #000; min-width: 750px; }
-        .header { text-align: center; border-bottom: 2px solid #4472c4; padding-bottom: 4px; margin-bottom: 8px; margin-left: 0; margin-right: 0; padding-left: 0; padding-right: 0; }
+        @page { margin-top: 4mm; }
+        @media screen {
+          body { max-width: 860px; margin: 0 auto; padding: 32px 40px; background: #f0f2f5; }
+          html { background: #f0f2f5; }
+        }
+        @media print {
+          body { margin: 0; padding: 10px 20px 20px; background: white; max-width: none; }
+        }
+        .header { text-align: center; border-bottom: 2px solid #4472c4; padding-bottom: 0; margin-bottom: 0; margin-left: 0; margin-right: 0; padding-left: 0; padding-right: 0; }
         .org-name-1 { font-size: 40pt; white-space: nowrap; color: #0563c1; margin: 0; padding: 0; line-height: 1; }
         .org-name-2 { font-size: 26pt; white-space: nowrap; color: #0563c1; margin: 0; padding: 0; line-height: 1; }
         .org-addr { font-size: 14pt; color: #222a35; margin: 0; padding: 0; line-height: 1; }
         .org-contact { font-size: 14pt; color: #c00000; margin: 0; padding: 0; line-height: 1; }
-        .org-email { font-size: 14pt; margin: 0; padding: 0; line-height: 1; padding-bottom: 12px; }
-        .report-title { text-align: center; font-size: 14pt; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; margin: 5px 0 10px; color: #4472c4; text-decoration: underline; }
+        .org-email { font-size: 14pt; margin: 0; padding: 0; line-height: 1; padding-bottom: 5px; }
+        .report-title { text-align: center; font-size: 14pt; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; margin: 2.5px 0 10px; color: #4472c4; text-decoration: underline; }
         .patient-info { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; font-size: 12pt; border: 1px solid #4472c4; padding: 12px; }
         .pi-label { font-weight: bold; margin-right: 8px; }
         .test-block { margin-bottom: 18px; border: 1px solid #ddd; }
@@ -576,10 +584,14 @@ function ResultModal({ patient, onClose }: { patient: Patient; onClose: () => vo
       <div class="patient-info">
         <div><span class="pi-label">Patient Name;</span> \${patient.name}</div>
         <div><span class="pi-label">Patient ID;</span> \${patient.slipNumber}</div>
-        <div><span class="pi-label">Age;</span> \${patient.age}</div>
-        <div><span class="pi-label">Sex;</span> \${patient.sex}</div>
-        <div><span class="pi-label">Requested Date;</span> \${new Date(patient.registeredAt).toLocaleDateString('en-NG')}</div>
-        <div><span class="pi-label">Reporting Date;</span> \${completedTests[0]?.completedAt ? new Date(completedTests[0].completedAt).toLocaleDateString('en-NG') : '—'}</div>
+        <div>
+          <span style="margin-right: 30px;"><span class="pi-label">Age;</span> \${patient.age}</span>
+          <span><span class="pi-label">Requested Date;</span> \${new Date(patient.registeredAt).toLocaleDateString('en-NG')}</span>
+        </div>
+        <div>
+          <span style="margin-right: 30px;"><span class="pi-label">Sex;</span> \${patient.sex}</span>
+          <span><span class="pi-label">Reporting Date;</span> \${completedTests[0]?.completedAt ? new Date(completedTests[0].completedAt).toLocaleDateString('en-NG') : '—'}</span>
+        </div>
         <div><span class="pi-label">Investigation(s);</span> \${completedTests.map(t => t.testName).join(', ')}</div>
         <div><span class="pi-label">Specimen;</span> \${completedTests[0]?.specimen || '—'}</div>
       </div>

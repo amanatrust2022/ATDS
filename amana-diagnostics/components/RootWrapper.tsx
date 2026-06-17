@@ -21,6 +21,35 @@ export default function RootWrapper({ children }: { children: React.ReactNode })
   const router = useRouter();
   const pathname = usePathname();
 
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js')
+        .then((reg) => console.log('Service Worker registered on scope:', reg.scope))
+        .catch((err) => console.error('Service Worker registration failed:', err));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const checkConfig = async () => {
+      try {
+        const res = await fetch('/api/config');
+        if (res.ok) {
+          const data = await res.json();
+          const currentLocalMode = localStorage.getItem('amana_local_mode');
+          const newLocalMode = String(data.localMode);
+          if (currentLocalMode !== newLocalMode) {
+            localStorage.setItem('amana_local_mode', newLocalMode);
+            window.location.reload();
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to fetch config from server:', err);
+      }
+    };
+    checkConfig();
+  }, []);
+
   const isPublic = PUBLIC_PATHS.includes(pathname) || pathname.startsWith('/invite/');
   const isOrgRoute = !isPublic && !pathname.startsWith('/login') && !pathname.startsWith('/signup');
 

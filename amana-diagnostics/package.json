@@ -1,16 +1,23 @@
 {
   "name": "amana-diagnostics",
   "version": "1.0.0",
+  "main": "electron/main.js",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "electron": "electron .",
+    "electron:pack": "next build && electron-builder --dir",
+    "electron:dist": "next build && electron-builder"
   },
   "dependencies": {
     "@remixicon/react": "^4.9.0",
     "@supabase/ssr": "^0.10.2",
     "@supabase/supabase-js": "^2.105.3",
+    "bonjour-service": "^1.2.1",
+    "electron-updater": "^6.1.8",
     "lucide-react": "^1.14.0",
+    "mammoth": "^1.12.0",
     "next": "^16.2.4",
     "nodemailer": "^8.0.7",
     "pdfmake": "^0.3.8",
@@ -20,6 +27,31 @@
   "devDependencies": {
     "@types/node": "25.6.0",
     "@types/react": "19.2.14",
+    "electron": "^33.4.11",
+    "electron-builder": "^24.13.3",
     "typescript": "6.0.3"
+  },
+  "build": {
+    "appId": "com.amana.diagnostics",
+    "productName": "Amana Diagnostics Hub",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "runAfterFinish": true
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "amana-diagnostics",
+      "repo": "ATDS"
+    }
   }
 }
