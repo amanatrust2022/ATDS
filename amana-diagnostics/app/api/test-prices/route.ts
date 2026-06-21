@@ -35,21 +35,27 @@ export async function POST(request: Request) {
     }
 
     const stmt = db.prepare(`
-      INSERT INTO test_prices (organization_id, test_id, test_name, price)
-      VALUES (?, ?, ?, ?)
+      INSERT INTO test_prices (organization_id, test_id, test_name, price, commission_type, commission_value)
+      VALUES (?, ?, ?, ?, ?, ?)
       ON CONFLICT(organization_id, test_id) DO UPDATE SET
-        price = excluded.price
+        price = excluded.price,
+        commission_type = excluded.commission_type,
+        commission_value = excluded.commission_value
     `);
 
     for (const p of prices) {
-      stmt.run(organizationId, p.test_id || p.testId, p.test_name || p.testName, p.price);
+      const commType = p.commission_type || p.commissionType || 'percentage';
+      const commVal = p.commission_value ?? p.commissionValue ?? 0;
+      stmt.run(organizationId, p.test_id || p.testId, p.test_name || p.testName, p.price, commType, commVal);
 
       // Log upsert in outbox (can sync using organization_id + test_id as composite key)
       queueSync(db, 'test_prices', 'UPDATE', `${organizationId}:${p.test_id || p.testId}`, {
         organization_id: organizationId,
         test_id: p.test_id || p.testId,
         test_name: p.test_name || p.testName,
-        price: p.price
+        price: p.price,
+        commission_type: commType,
+        commission_value: commVal
       });
     }
 

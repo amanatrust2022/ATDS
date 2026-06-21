@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb, queueSync } from '@/lib/localDb';
+import { sendEmail } from '@/lib/brevo';
 
 export async function GET(request: Request) {
   try {
@@ -47,6 +48,10 @@ export async function GET(request: Request) {
         completedByTitle: t.completed_by_title,
         completedAt: t.completed_at,
         notes: t.notes,
+        price: t.price || 0,
+        commissionType: t.commission_type || 'none',
+        commissionValue: t.commission_value || 0,
+        commissionAmount: t.commission_amount || 0,
       });
     });
 
@@ -74,6 +79,14 @@ export async function GET(request: Request) {
       commissionStatus: p.commission_status || null,
       commissionPaidAt: p.commission_paid_at || null,
       commissionPaidNotes: p.commission_paid_notes || null,
+      totalAmount: p.total_amount || 0,
+      discountType: p.discount_type || 'none',
+      discountValue: p.discount_value || 0,
+      discountAmount: p.discount_amount || 0,
+      netAmount: p.net_amount || 0,
+      paidAmount: p.paid_amount || 0,
+      paymentStatus: p.payment_status || 'paid',
+      paymentMethod: p.payment_method || 'cash',
       tests: testsByPatientId.get(p.id) || []
     }));
 
@@ -101,8 +114,9 @@ export async function POST(request: Request) {
           id, slip_number, registered_at, first_name, surname, middle_name, age, sex, phone, email, address,
           referred_by, referring_facility, referring_doctor_id, referring_facility_id,
           commission_assigned, commission_type, commission_value, commission_amount, commission_status,
+          total_amount, discount_type, discount_value, discount_amount, net_amount, paid_amount, payment_status, payment_method,
           organization_id, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       patientStmt.run(
@@ -126,6 +140,14 @@ export async function POST(request: Request) {
         patient.commissionValue || null,
         patient.commissionAmount || null,
         patient.commissionAssigned ? 'pending' : null,
+        patient.totalAmount ?? 0,
+        patient.discountType || 'none',
+        patient.discountValue ?? 0,
+        patient.discountAmount ?? 0,
+        patient.netAmount ?? 0,
+        patient.paidAmount ?? 0,
+        patient.paymentStatus || 'paid',
+        patient.paymentMethod || 'cash',
         organizationId,
         nowStr
       );
@@ -152,17 +174,65 @@ export async function POST(request: Request) {
         commission_value: patient.commissionValue ?? null,
         commission_amount: patient.commissionAmount ?? null,
         commission_status: patient.commissionAssigned ? 'pending' : null,
+        total_amount: patient.totalAmount ?? 0,
+        discount_type: patient.discountType || 'none',
+        discount_value: patient.discountValue ?? 0,
+        discount_amount: patient.discountAmount ?? 0,
+        net_amount: patient.netAmount ?? 0,
+        paid_amount: patient.paidAmount ?? 0,
+        payment_status: patient.paymentStatus || 'paid',
+        payment_method: patient.paymentMethod || 'cash',
         organization_id: organizationId,
         updated_at: nowStr
       });
+
+      // Send welcome email if email exists (async, safe)
+      if (patient.email && patient.email.trim()) {
+        try {
+          const org = db.prepare('SELECT * FROM organizations WHERE id = ?').get(organizationId) as any;
+          const orgName = org?.name || 'Amana Trust Diagnostics';
+          const patientName = `${patient.firstName} ${patient.surname}`;
+          const host = request.headers.get('host') || 'localhost:3000';
+          const protocol = host.startsWith('localhost') || host.startsWith('127.0.0.1') ? 'http' : 'https';
+          const portalLink = `${protocol}://${host}/portal/login`;
+
+          sendEmail({
+            to: patient.email.trim(),
+            subject: `Welcome to the Patient Portal — ${orgName}`,
+            htmlContent: `
+              <div style="font-family: 'Times New Roman', Times, serif; max-width: 520px; margin: 0 auto; color: #000000; line-height: 1.6;">
+                <div style="background: #0563c1; padding: 28px 24px; text-align: center; border: 1px solid #0563c1;">
+                  <h1 style="font-family: 'Times New Roman', Times, serif; color: #ffffff; margin: 0; font-size: 22px; font-weight: bold; letter-spacing: 0.5px;">WELCOME TO PATIENT PORTAL</h1>
+                  <p style="font-family: 'Times New Roman', Times, serif; color: #ffffff; margin: 6px 0 0; font-size: 14px; text-transform: uppercase; letter-spacing: 1px;">${orgName}</p>
+                </div>
+                <div style="padding: 32px 24px; border: 1px solid #0563c1; border-top: none; background: #ffffff;">
+                  <p style="margin: 0 0 16px; font-size: 16px; color: #000000;">Dear <strong>${patientName}</strong>,</p>
+                  <p style="margin: 0 0 16px; font-size: 15px; color: #000000;">Thank you for registering at our clinical facility. Your patient record has been successfully created.</p>
+                  <p style="margin: 0 0 24px; font-size: 15px; color: #000000;">You can securely access your medical history, check the status of your ongoing tests, and view or print your results directly from our Patient Portal at any time.</p>
+                  <div style="text-align: center; margin-bottom: 28px;">
+                    <a href="${portalLink}" style="display: inline-block; padding: 12px 24px; background-color: #0563c1; color: #ffffff !important; text-decoration: none; font-weight: bold; font-size: 15px; border-radius: 0px;">Access My Portal →</a>
+                  </div>
+                  <p style="margin: 0 0 8px; font-size: 14px; color: #555;">To log in, enter the email address you registered with (<strong>${patient.email.trim().toLowerCase()}</strong>) and we will send a secure verification code directly to your inbox.</p>
+                  <p style="margin: 0; font-size: 15px; color: #000000; margin-top: 20px;">Thank you for choosing <strong>${orgName}</strong>.</p>
+                </div>
+                <div style="padding: 16px; text-align: center; font-size: 12px; color: #666; border: 1px solid #ddd; border-top: none;">
+                  &copy; ${new Date().getFullYear()} ${orgName}. All rights reserved.
+                </div>
+              </div>
+            `
+          }).catch(err => console.warn('Failed to send registration welcome email (possibly offline):', err.message));
+        } catch (err: any) {
+          console.warn('Failed to construct or queue welcome email:', err.message);
+        }
+      }
 
       // Insert tests
       for (const t of tests) {
         const testId = crypto.randomUUID();
         const testStmt = db.prepare(`
           INSERT INTO patient_tests (
-            id, patient_id, test_id, test_name, department, status, specimen, organization_id, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            id, patient_id, test_id, test_name, department, status, specimen, price, commission_type, commission_value, commission_amount, organization_id, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
         testStmt.run(
           testId,
@@ -172,6 +242,10 @@ export async function POST(request: Request) {
           t.department,
           t.status,
           t.specimen || null,
+          t.price ?? 0,
+          t.commissionType || 'none',
+          t.commissionValue ?? 0,
+          t.commissionAmount ?? 0,
           organizationId,
           nowStr
         );
@@ -185,6 +259,10 @@ export async function POST(request: Request) {
           department: t.department,
           status: t.status,
           specimen: t.specimen || null,
+          price: t.price ?? 0,
+          commission_type: t.commissionType || 'none',
+          commission_value: t.commissionValue ?? 0,
+          commission_amount: t.commissionAmount ?? 0,
           organization_id: organizationId,
           updated_at: nowStr
         });
@@ -236,6 +314,71 @@ export async function POST(request: Request) {
         specimen: updates.specimen || null,
         updated_at: nowStr
       });
+
+      // Send result ready notification if this completes the order (async, safe)
+      if (updates.status === 'completed') {
+        try {
+          const testInfo = db.prepare(`
+            SELECT patient_id, test_name FROM patient_tests WHERE id = ?
+          `).get(testId) as { patient_id: string; test_name: string } | undefined;
+
+          if (testInfo) {
+            const { patient_id } = testInfo;
+            const patient = db.prepare(`
+              SELECT first_name, surname, email, organization_id FROM patients WHERE id = ?
+            `).get(patient_id) as { first_name: string; surname: string; email: string; organization_id: string } | undefined;
+
+            if (patient && patient.email && patient.email.trim()) {
+              // Check if all tests for this patient are completed
+              const counts = db.prepare(`
+                SELECT 
+                  COUNT(*) as total,
+                  SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed
+                FROM patient_tests
+                WHERE patient_id = ?
+              `).get(patient_id) as { total: number; completed: number } | undefined;
+
+              if (counts && counts.total === counts.completed) {
+                const org = db.prepare('SELECT * FROM organizations WHERE id = ?').get(patient.organization_id) as any;
+                const orgName = org?.name || 'Amana Trust Diagnostics';
+                const patientName = `${patient.first_name || ''} ${patient.surname || ''}`.trim();
+                const host = request.headers.get('host') || 'localhost:3000';
+                const protocol = host.startsWith('localhost') || host.startsWith('127.0.0.1') ? 'http' : 'https';
+                const portalLink = `${protocol}://${host}/portal/login`;
+
+                sendEmail({
+                  to: patient.email.trim(),
+                  subject: `All Your Diagnostic Results Are Ready — ${orgName}`,
+                  htmlContent: `
+                    <div style="font-family: 'Times New Roman', Times, serif; max-width: 520px; margin: 0 auto; color: #000000; line-height: 1.6;">
+                      <div style="background: #0563c1; padding: 28px 24px; text-align: center; border: 1px solid #0563c1;">
+                        <h1 style="font-family: 'Times New Roman', Times, serif; color: #ffffff; margin: 0; font-size: 22px; font-weight: bold; letter-spacing: 0.5px;">DIAGNOSTIC RESULTS READY</h1>
+                        <p style="font-family: 'Times New Roman', Times, serif; color: #ffffff; margin: 6px 0 0; font-size: 14px; text-transform: uppercase; letter-spacing: 1px;">${orgName}</p>
+                      </div>
+                      <div style="padding: 32px 24px; border: 1px solid #0563c1; border-top: none; background: #ffffff;">
+                        <p style="margin: 0 0 16px; font-size: 16px; color: #000000;">Dear <strong>${patientName}</strong>,</p>
+                        <p style="margin: 0 0 16px; font-size: 15px; color: #000000;">We are pleased to inform you that all the diagnostic investigations ordered during your visit have been completed and verified by our medical professionals.</p>
+                        <p style="margin: 0 0 24px; font-size: 15px; color: #000000;">You can view, save, or print your official results instantly from our secure Patient Portal by clicking the button below.</p>
+                        <div style="text-align: center; margin-bottom: 28px;">
+                          <a href="${portalLink}" style="display: inline-block; padding: 12px 24px; background-color: #0563c1; color: #ffffff !important; text-decoration: none; font-weight: bold; font-size: 15px; border-radius: 0px;">View My Results →</a>
+                        </div>
+                        <p style="margin: 0 0 12px; font-size: 14px; color: #555;">Please log in using your registered email: <strong>${patient.email.trim().toLowerCase()}</strong>.</p>
+                        <p style="margin: 0 0 20px; font-size: 14px; color: #555; font-style: italic;">Note: We recommend consulting your referring doctor to discuss these results.</p>
+                        <p style="margin: 0; font-size: 15px; color: #000000; margin-top: 20px;">Thank you for choosing <strong>${orgName}</strong>.</p>
+                      </div>
+                      <div style="padding: 16px; text-align: center; font-size: 12px; color: #666; border: 1px solid #ddd; border-top: none;">
+                        &copy; ${new Date().getFullYear()} ${orgName}. All rights reserved.
+                      </div>
+                    </div>
+                  `
+                }).catch(err => console.warn('Failed to send result ready email (possibly offline):', err.message));
+              }
+            }
+          }
+        } catch (err: any) {
+          console.warn('Failed to construct or queue result ready email:', err.message);
+        }
+      }
 
       return NextResponse.json({ success: true });
     }

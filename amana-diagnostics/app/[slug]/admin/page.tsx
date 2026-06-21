@@ -12,11 +12,57 @@ export default function AdminOverview() {
   useEffect(() => {
     async function loadStats() {
       if (!organization) return;
-      const [{ count: staffCount }, { count: inviteCount }] = await Promise.all([
-        supabase.from('profiles').select('*', { count: 'exact', head: true }).eq('organization_id', organization.id),
-        supabase.from('invitations').select('*', { count: 'exact', head: true }).eq('organization_id', organization.id).is('accepted_at', null),
-      ]);
-      setStats({ staffCount: staffCount || 0, pendingInvites: inviteCount || 0 });
+      
+      const isLocalMode = typeof window !== 'undefined'
+        ? (localStorage.getItem('amana_local_mode') === null
+            ? (window.location.hostname === 'localhost' || 
+               window.location.hostname === '127.0.0.1' || 
+               window.location.hostname.startsWith('192.168.') || 
+               window.location.hostname.startsWith('10.') || 
+               window.location.hostname.startsWith('172.'))
+            : localStorage.getItem('amana_local_mode') === 'true')
+        : (process.env.NEXT_PUBLIC_LOCAL_SERVER_MODE === 'true');
+
+      let staffCount = 0;
+      let inviteCount = 0;
+
+      if (isLocalMode) {
+        try {
+          const res = await fetch(`/api/profiles?organizationId=${organization.id}`);
+          if (res.ok) {
+            const profiles = await res.json();
+            staffCount = Array.isArray(profiles) ? profiles.length : 0;
+          }
+        } catch (err) {
+          console.error('Failed to fetch local profiles for stats:', err);
+        }
+
+        try {
+          const { count, error } = await supabase
+            .from('invitations')
+            .select('*', { count: 'exact', head: true })
+            .eq('organization_id', organization.id)
+            .is('accepted_at', null);
+          if (!error && count !== null) {
+            inviteCount = count;
+          }
+        } catch (err) {
+          console.warn('Failed to fetch invitations from Supabase (offline fallback):', err);
+        }
+      } else {
+        try {
+          const [{ count: sCount }, { count: iCount }] = await Promise.all([
+            supabase.from('profiles').select('*', { count: 'exact', head: true }).eq('organization_id', organization.id),
+            supabase.from('invitations').select('*', { count: 'exact', head: true }).eq('organization_id', organization.id).is('accepted_at', null),
+          ]);
+          staffCount = sCount || 0;
+          inviteCount = iCount || 0;
+        } catch (err) {
+          console.error('Failed to fetch stats from Supabase:', err);
+        }
+      }
+
+      setStats({ staffCount, pendingInvites: inviteCount });
     }
     loadStats();
   }, [organization]);

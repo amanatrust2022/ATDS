@@ -106,9 +106,43 @@ export async function POST(request: Request) {
             deleteQuery = supabase.from(table_name).delete().eq('id', record_id);
           }
           const { error } = await deleteQuery;
-          if (!error) success = true;
+          if (error) {
+            console.error(`Supabase DELETE error for outbox item ${outboxId}:`, error);
+          } else {
+            success = true;
+          }
+        } else if (action === 'UPDATE') {
+          // Ensure results are handled as actual JSON objects in Supabase
+          if (table_name === 'patient_tests' && data.results && typeof data.results === 'string') {
+            data.results = JSON.parse(data.results);
+          }
+          
+          // Map boolean values for Supabase
+          if (table_name === 'patients' && 'commission_assigned' in data) {
+            data.commission_assigned = data.commission_assigned === 1 || data.commission_assigned === true;
+          }
+          if (table_name === 'referring_doctors' && 'is_active' in data) {
+            data.is_active = data.is_active === 1 || data.is_active === true;
+          }
+          if (table_name === 'referring_facilities' && 'is_active' in data) {
+            data.is_active = data.is_active === 1 || data.is_active === true;
+          }
+
+          let updateQuery;
+          if (table_name === 'test_prices') {
+            const [orgId, testId] = record_id.split(':');
+            updateQuery = supabase.from(table_name).update(data).eq('organization_id', orgId).eq('test_id', testId);
+          } else {
+            updateQuery = supabase.from(table_name).update(data).eq('id', record_id);
+          }
+          const { error } = await updateQuery;
+          if (error) {
+            console.error(`Supabase UPDATE error for outbox item ${outboxId}:`, error);
+          } else {
+            success = true;
+          }
         } else {
-          // INSERT or UPDATE - using upsert
+          // action === 'INSERT'
           // Ensure results are handled as actual JSON objects in Supabase
           if (table_name === 'patient_tests' && data.results && typeof data.results === 'string') {
             data.results = JSON.parse(data.results);
@@ -126,7 +160,11 @@ export async function POST(request: Request) {
           }
 
           const { error } = await supabase.from(table_name).upsert(data);
-          if (!error) success = true;
+          if (error) {
+            console.error(`Supabase INSERT (upsert) error for outbox item ${outboxId}:`, error);
+          } else {
+            success = true;
+          }
         }
       } catch (err) {
         console.error(`Replication failed for outbox item ${outboxId}:`, err);
@@ -256,13 +294,15 @@ export async function POST(request: Request) {
     const { data: prices } = await supabase.from('test_prices').select('*').eq('organization_id', organizationId);
     if (prices && prices.length > 0) {
       const insertPrice = db.prepare(`
-        INSERT INTO test_prices (organization_id, test_id, test_name, price)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO test_prices (organization_id, test_id, test_name, price, commission_type, commission_value)
+        VALUES (?, ?, ?, ?, ?, ?)
         ON CONFLICT(organization_id, test_id) DO UPDATE SET
-          price = excluded.price
+          price = excluded.price,
+          commission_type = excluded.commission_type,
+          commission_value = excluded.commission_value
       `);
       prices.forEach((p) => {
-        insertPrice.run(p.organization_id, p.test_id, p.test_name, p.price);
+        insertPrice.run(p.organization_id, p.test_id, p.test_name, p.price, p.commission_type || 'percentage', p.commission_value ?? 0);
       });
     }
 
@@ -292,8 +332,9 @@ export async function POST(request: Request) {
           id, slip_number, registered_at, first_name, surname, middle_name, age, sex, phone, email, address,
           referred_by, referring_facility, referring_doctor_id, referring_facility_id,
           commission_assigned, commission_type, commission_value, commission_amount, commission_status,
-          commission_paid_at, commission_paid_notes, organization_id, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          commission_paid_at, commission_paid_notes, total_amount, discount_type, discount_value, discount_amount,
+          net_amount, paid_amount, payment_status, payment_method, organization_id, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
           slip_number = excluded.slip_number,
           registered_at = excluded.registered_at,
@@ -316,6 +357,14 @@ export async function POST(request: Request) {
           commission_status = excluded.commission_status,
           commission_paid_at = excluded.commission_paid_at,
           commission_paid_notes = excluded.commission_paid_notes,
+          total_amount = excluded.total_amount,
+          discount_type = excluded.discount_type,
+          discount_value = excluded.discount_value,
+          discount_amount = excluded.discount_amount,
+          net_amount = excluded.net_amount,
+          paid_amount = excluded.paid_amount,
+          payment_status = excluded.payment_status,
+          payment_method = excluded.payment_method,
           updated_at = excluded.updated_at
       `);
       patients.forEach((p) => {
@@ -323,7 +372,8 @@ export async function POST(request: Request) {
           p.id, p.slip_number, p.registered_at, p.first_name, p.surname, p.middle_name, p.age, p.sex, p.phone, p.email, p.address,
           p.referred_by, p.referring_facility, p.referring_doctor_id, p.referring_facility_id,
           p.commission_assigned ? 1 : 0, p.commission_type, p.commission_value, p.commission_amount, p.commission_status,
-          p.commission_paid_at, p.commission_paid_notes, p.organization_id, p.updated_at
+          p.commission_paid_at, p.commission_paid_notes, p.total_amount ?? 0, p.discount_type || 'none', p.discount_value ?? 0, p.discount_amount ?? 0,
+          p.net_amount ?? 0, p.paid_amount ?? 0, p.payment_status || 'paid', p.payment_method || 'cash', p.organization_id, p.updated_at
         );
       });
     }
@@ -334,8 +384,9 @@ export async function POST(request: Request) {
       const insertTest = db.prepare(`
         INSERT INTO patient_tests (
           id, patient_id, test_id, test_name, department, status, specimen, results,
-          completed_by, completed_by_signature_url, completed_by_title, completed_at, notes, organization_id, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          completed_by, completed_by_signature_url, completed_by_title, completed_at, notes,
+          price, commission_type, commission_value, commission_amount, organization_id, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
           patient_id = excluded.patient_id,
           test_id = excluded.test_id,
@@ -349,13 +400,19 @@ export async function POST(request: Request) {
           completed_by_title = excluded.completed_by_title,
           completed_at = excluded.completed_at,
           notes = excluded.notes,
+          price = excluded.price,
+          commission_type = excluded.commission_type,
+          commission_value = excluded.commission_value,
+          commission_amount = excluded.commission_amount,
           updated_at = excluded.updated_at
       `);
       patientTests.forEach((t) => {
         insertTest.run(
           t.id, t.patient_id, t.test_id, t.test_name, t.department, t.status, t.specimen,
           t.results ? JSON.stringify(t.results) : null,
-          t.completed_by, t.completed_by_signature_url, t.completed_by_title, t.completed_at, t.notes, t.organization_id, t.updated_at
+          t.completed_by, t.completed_by_signature_url, t.completed_by_title, t.completed_at, t.notes,
+          t.price ?? 0, t.commission_type || 'none', t.commission_value ?? 0, t.commission_amount ?? 0,
+          t.organization_id, t.updated_at
         );
       });
     }

@@ -8,14 +8,18 @@ export function getDb(): any {
   }
 
   if (!dbInstance) {
-    // If not local mode or local hub mode, and we are on Vercel, throw a warning/error
-    // to prevent execution.
-    if (process.env.NEXT_PUBLIC_LOCAL_SERVER_MODE !== 'true' && process.env.IS_LOCAL_HUB !== 'true') {
+    // If not local mode or local hub mode, not in development, and we are on Vercel,
+    // throw a warning/error to prevent execution.
+    if (
+      process.env.NEXT_PUBLIC_LOCAL_SERVER_MODE !== 'true' &&
+      process.env.IS_LOCAL_HUB !== 'true' &&
+      process.env.NODE_ENV !== 'development'
+    ) {
       throw new Error('DatabaseSync is disabled in cloud production mode.');
     }
 
-    // Dynamically load node:sqlite
-    const { DatabaseSync } = require('node:sqlite');
+    // Dynamically load node:sqlite using eval('require') to bypass Turbopack's static analysis
+    const { DatabaseSync } = eval('require')('node:sqlite');
     
     let dbPath = '';
     if (process.env.IS_LOCAL_HUB === 'true') {
@@ -88,6 +92,14 @@ function initDb(db: any) {
       commission_paid_at TEXT,
       commission_paid_notes TEXT,
       organization_id TEXT NOT NULL,
+      total_amount REAL DEFAULT 0.0,
+      discount_type TEXT DEFAULT 'none',
+      discount_value REAL DEFAULT 0.0,
+      discount_amount REAL DEFAULT 0.0,
+      net_amount REAL DEFAULT 0.0,
+      paid_amount REAL DEFAULT 0.0,
+      payment_status TEXT DEFAULT 'paid',
+      payment_method TEXT DEFAULT 'cash',
       updated_at TEXT
     );
   `);
@@ -109,6 +121,10 @@ function initDb(db: any) {
       completed_at TEXT,
       notes TEXT,
       organization_id TEXT NOT NULL,
+      price REAL DEFAULT 0.0,
+      commission_type TEXT DEFAULT 'none',
+      commission_value REAL DEFAULT 0.0,
+      commission_amount REAL DEFAULT 0.0,
       updated_at TEXT,
       FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE CASCADE
     );
@@ -136,6 +152,8 @@ function initDb(db: any) {
       test_id TEXT NOT NULL,
       test_name TEXT NOT NULL,
       price REAL DEFAULT 0.0,
+      commission_type TEXT DEFAULT 'percentage',
+      commission_value REAL DEFAULT 0.0,
       PRIMARY KEY (organization_id, test_id)
     );
   `);
@@ -213,6 +231,52 @@ function initDb(db: any) {
       user_id TEXT NOT NULL
     );
   `);
+
+  // 12. Safe Migrations for existing databases
+  try {
+    db.exec(`ALTER TABLE test_prices ADD COLUMN commission_type TEXT DEFAULT 'percentage';`);
+  } catch (e) {}
+  try {
+    db.exec(`ALTER TABLE test_prices ADD COLUMN commission_value REAL DEFAULT 0.0;`);
+  } catch (e) {}
+
+  try {
+    db.exec(`ALTER TABLE patient_tests ADD COLUMN price REAL DEFAULT 0.0;`);
+  } catch (e) {}
+  try {
+    db.exec(`ALTER TABLE patient_tests ADD COLUMN commission_type TEXT DEFAULT 'none';`);
+  } catch (e) {}
+  try {
+    db.exec(`ALTER TABLE patient_tests ADD COLUMN commission_value REAL DEFAULT 0.0;`);
+  } catch (e) {}
+  try {
+    db.exec(`ALTER TABLE patient_tests ADD COLUMN commission_amount REAL DEFAULT 0.0;`);
+  } catch (e) {}
+
+  try {
+    db.exec(`ALTER TABLE patients ADD COLUMN total_amount REAL DEFAULT 0.0;`);
+  } catch (e) {}
+  try {
+    db.exec(`ALTER TABLE patients ADD COLUMN discount_type TEXT DEFAULT 'none';`);
+  } catch (e) {}
+  try {
+    db.exec(`ALTER TABLE patients ADD COLUMN discount_value REAL DEFAULT 0.0;`);
+  } catch (e) {}
+  try {
+    db.exec(`ALTER TABLE patients ADD COLUMN discount_amount REAL DEFAULT 0.0;`);
+  } catch (e) {}
+  try {
+    db.exec(`ALTER TABLE patients ADD COLUMN net_amount REAL DEFAULT 0.0;`);
+  } catch (e) {}
+  try {
+    db.exec(`ALTER TABLE patients ADD COLUMN paid_amount REAL DEFAULT 0.0;`);
+  } catch (e) {}
+  try {
+    db.exec(`ALTER TABLE patients ADD COLUMN payment_status TEXT DEFAULT 'paid';`);
+  } catch (e) {}
+  try {
+    db.exec(`ALTER TABLE patients ADD COLUMN payment_method TEXT DEFAULT 'cash';`);
+  } catch (e) {}
 }
 
 /**

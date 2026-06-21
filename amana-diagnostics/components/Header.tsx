@@ -23,12 +23,13 @@ export default function Header({ title, subtitle, icon = <RiMicroscopeLine size=
   const { profile, organization, session, signOut } = useAuth();
   
   const isLocalMode = typeof window !== 'undefined'
-    ? (localStorage.getItem('amana_local_mode') === 'true' || 
-       window.location.hostname === 'localhost' || 
-       window.location.hostname === '127.0.0.1' || 
-       window.location.hostname.startsWith('192.168.') || 
-       window.location.hostname.startsWith('10.') || 
-       window.location.hostname.startsWith('172.'))
+    ? (localStorage.getItem('amana_local_mode') === null
+        ? (window.location.hostname === 'localhost' || 
+           window.location.hostname === '127.0.0.1' || 
+           window.location.hostname.startsWith('192.168.') || 
+           window.location.hostname.startsWith('10.') || 
+           window.location.hostname.startsWith('172.'))
+        : localStorage.getItem('amana_local_mode') === 'true')
     : (process.env.NEXT_PUBLIC_LOCAL_SERVER_MODE === 'true');
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -36,22 +37,7 @@ export default function Header({ title, subtitle, icon = <RiMicroscopeLine size=
   const [installPrompt, setInstallPrompt] = useState<any>(null);
   const [showInstallBtn, setShowInstallBtn] = useState(false);
   const [showInstructionsModal, setShowInstructionsModal] = useState(false);
-  const [isDesktop, setIsDesktop] = useState(false);
-  const [localIPs, setLocalIPs] = useState<{ interface: string; address: string }[]>([]);
-  const [updateStatus, setUpdateStatus] = useState<string>('idle');
-  const [showIPModal, setShowIPModal] = useState(false);
 
-  useEffect(() => {
-    if (typeof window !== 'undefined' && (window as any).electronAPI) {
-      setIsDesktop(true);
-      (window as any).electronAPI.getLocalIPs().then((ips: any) => {
-        setLocalIPs(ips);
-      });
-      (window as any).electronAPI.getUpdateStatus((status: string) => {
-        setUpdateStatus(status);
-      });
-    }
-  }, []);
 
   const now = new Date();
   const dateStr = now.toLocaleDateString('en-NG', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
@@ -370,33 +356,7 @@ export default function Header({ title, subtitle, icon = <RiMicroscopeLine size=
                   </>
                 )}
                 
-                {isDesktop && (
-                  <>
-                    <div style={{ height: '1px', background: 'var(--gray-200)', margin: '0.4rem 0' }} />
-                    <div style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--gray-400)', textTransform: 'uppercase', paddingLeft: '0.75rem', marginBottom: '0.25rem', marginTop: '0.25rem' }}>
-                      Local Hub App
-                    </div>
-                    <button onClick={() => { setShowIPModal(true); setDropdownOpen(false); }} style={dropdownBtnStyle}>
-                      🔌 LAN Connection Info
-                    </button>
-                    <button 
-                      onClick={() => {
-                        if (updateStatus === 'ready-to-install') {
-                          (window as any).electronAPI.restartAndInstall();
-                        } else {
-                          (window as any).electronAPI.checkForUpdates();
-                        }
-                      }} 
-                      style={dropdownBtnStyle}
-                    >
-                      🔄 {updateStatus === 'checking' ? 'Checking updates...' 
-                          : updateStatus === 'available' ? 'Update available! Downloading...'
-                          : updateStatus.startsWith('downloading') ? `Downloading: ${updateStatus.split(':')[1]}%`
-                          : updateStatus === 'ready-to-install' ? 'Restart to Update'
-                          : 'Check for updates'}
-                    </button>
-                  </>
-                )}
+
                 
                 <div style={{ height: '1px', background: 'var(--gray-200)', margin: '0.4rem 0' }} />
                 
@@ -520,104 +480,7 @@ export default function Header({ title, subtitle, icon = <RiMicroscopeLine size=
           </div>
         </div>
       )}
-      {showIPModal && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          backgroundColor: 'rgba(0,0,0,0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1000,
-          backdropFilter: 'blur(4px)',
-        }}>
-          <div style={{
-            background: 'white',
-            width: '100%',
-            maxWidth: '480px',
-            border: '1px solid var(--gray-300)',
-            borderRadius: 0,
-            boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04)',
-            padding: '1.5rem',
-            position: 'relative',
-            color: 'var(--gray-900)',
-          }}>
-            <button 
-              onClick={() => setShowIPModal(false)}
-              style={{
-                position: 'absolute',
-                top: '1rem',
-                right: '1rem',
-                background: 'none',
-                border: 'none',
-                fontSize: '1.2rem',
-                cursor: 'pointer',
-                color: 'var(--gray-500)'
-              }}
-            >
-              ×
-            </button>
-            <h3 style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '1.1rem', marginBottom: '1rem', color: 'var(--gray-900)' }}>
-              Clinic LAN Connection Details
-            </h3>
-            
-            <p style={{ fontSize: '0.82rem', color: 'var(--gray-600)', marginBottom: '1.25rem', lineHeight: '1.4' }}>
-              Connect all clinic laptops/devices to the same Wi-Fi router. Open their web browsers and enter any of the following local addresses to access this Diagnostics Hub:
-            </p>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', textAlign: 'left', marginBottom: '1.5rem' }}>
-              {/* mDNS Option */}
-              <div style={{ background: '#f0fdfa', border: '1px solid var(--teal-200)', padding: '0.75rem', borderRadius: 4 }}>
-                <span style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--teal-700)', textTransform: 'uppercase', display: 'block', marginBottom: '0.2rem' }}>
-                  Recommended (Zero-Configuration)
-                </span>
-                <code style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--teal-800)', fontFamily: 'var(--font-mono)' }}>
-                  http://amana-hub.local:3000
-                </code>
-              </div>
-
-              {/* IP Addresses */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                <span style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--gray-500)', textTransform: 'uppercase' }}>
-                  Alternative IP Addresses
-                </span>
-                {localIPs.length === 0 ? (
-                  <p style={{ fontSize: '0.8rem', color: 'var(--gray-500)', margin: 0 }}>No network interfaces detected. Connect this PC to a Wi-Fi router.</p>
-                ) : (
-                  localIPs.map((ip, index) => (
-                    <div key={index} style={{ background: '#f8fafc', border: '1px solid var(--gray-200)', padding: '0.6rem 0.75rem', borderRadius: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <code style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--gray-700)', fontFamily: 'var(--font-mono)' }}>
-                        http://{ip.address}:3000
-                      </code>
-                      <span style={{ fontSize: '0.65rem', color: 'var(--gray-400)', textTransform: 'uppercase', fontWeight: 600 }}>
-                        {ip.interface}
-                      </span>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <button 
-                onClick={() => setShowIPModal(false)}
-                style={{
-                  padding: '0.4rem 1.25rem',
-                  border: '1px solid var(--gray-300)',
-                  backgroundColor: 'white',
-                  color: 'var(--gray-700)',
-                  fontSize: '0.8rem',
-                  fontWeight: 600,
-                  borderRadius: 0,
-                  cursor: 'pointer',
-                }}
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </header>
   );
 }

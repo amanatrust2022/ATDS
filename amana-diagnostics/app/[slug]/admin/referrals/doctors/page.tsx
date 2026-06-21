@@ -142,7 +142,7 @@ export default function ReferringDoctorsPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
               <thead>
                 <tr style={{ background: 'var(--gray-50)', borderBottom: '1px solid var(--gray-200)' }}>
-                  {['Doctor', 'Facility', 'Contact', 'Commission', 'Status', 'Actions'].map(h => (
+                  {['Doctor', 'Facility', 'Contact', 'Status', 'Actions'].map(h => (
                     <th key={h} style={{ padding: '0.75rem 1rem', textAlign: 'left', fontWeight: 700, fontSize: '0.72rem', color: 'var(--gray-500)', textTransform: 'uppercase' }}>{h}</th>
                   ))}
                 </tr>
@@ -162,16 +162,6 @@ export default function ReferringDoctorsPage() {
                       {d.phone && <div style={{ fontSize: '0.75rem', color: 'var(--gray-600)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}><RiPhoneLine size={12} />{d.phone}</div>}
                       {d.email && <div style={{ fontSize: '0.75rem', color: 'var(--gray-600)', display: 'flex', alignItems: 'center', gap: '0.25rem', marginTop: '0.2rem' }}><RiMailLine size={12} />{d.email}</div>}
                       {!d.phone && !d.email && <span style={{ color: 'var(--gray-400)', fontSize: '0.75rem' }}>—</span>}
-                    </td>
-                    <td style={{ padding: '0.85rem 1rem' }}>
-                      {d.commission_value > 0 ? (
-                        <div>
-                          <span style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--teal-700)' }}>
-                            {d.commission_type === 'percentage' ? `${d.commission_value}%` : `₦${d.commission_value.toLocaleString()}`}
-                          </span>
-                          <div style={{ fontSize: '0.68rem', color: 'var(--gray-500)' }}>{d.commission_type === 'percentage' ? 'of total' : 'flat per patient'}</div>
-                        </div>
-                      ) : <span style={{ color: 'var(--gray-400)', fontSize: '0.75rem' }}>No commission</span>}
                     </td>
                     <td style={{ padding: '0.85rem 1rem' }}>
                       <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '0.2rem 0.6rem', background: d.is_active ? 'var(--green-light)' : 'var(--gray-100)', color: d.is_active ? 'var(--green)' : 'var(--gray-500)' }}>
@@ -217,20 +207,6 @@ export default function ReferringDoctorsPage() {
                 <Field label="Email">
                   <input style={inputStyle} type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="dr@email.com" />
                 </Field>
-              </div>
-              <div style={{ background: 'var(--teal-50)', border: '1px solid var(--teal-100)', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--teal-700)', textTransform: 'uppercase' }}>Commission Settings</div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                  <Field label="Type">
-                    <select style={inputStyle} value={form.commission_type} onChange={e => setForm({ ...form, commission_type: e.target.value as 'percentage' | 'flat' })}>
-                      <option value="percentage">Percentage (%)</option>
-                      <option value="flat">Flat Amount (₦)</option>
-                    </select>
-                  </Field>
-                  <Field label={form.commission_type === 'percentage' ? 'Rate (%)' : 'Amount (₦)'}>
-                    <input style={inputStyle} type="number" min={0} step={form.commission_type === 'percentage' ? 0.5 : 100} value={form.commission_value} onChange={e => setForm({ ...form, commission_value: parseFloat(e.target.value) || 0 })} placeholder={form.commission_type === 'percentage' ? 'e.g. 10' : 'e.g. 500'} />
-                  </Field>
-                </div>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <input type="checkbox" id="doc-active" checked={form.is_active} onChange={e => setForm({ ...form, is_active: e.target.checked })} style={{ width: 16, height: 16 }} />

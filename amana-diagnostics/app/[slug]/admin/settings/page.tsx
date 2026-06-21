@@ -6,12 +6,13 @@ import { RiSettings3Line, RiCheckLine, RiSave3Line, RiHospitalLine } from '@remi
 import RichTextEditor from '@/components/RichTextEditor';
 
 const IS_LOCAL_MODE = typeof window !== 'undefined'
-  ? (localStorage.getItem('amana_local_mode') === 'true' || 
-     window.location.hostname === 'localhost' || 
-     window.location.hostname === '127.0.0.1' || 
-     window.location.hostname.startsWith('192.168.') || 
-     window.location.hostname.startsWith('10.') || 
-     window.location.hostname.startsWith('172.'))
+  ? (localStorage.getItem('amana_local_mode') === null
+      ? (window.location.hostname === 'localhost' || 
+         window.location.hostname === '127.0.0.1' || 
+         window.location.hostname.startsWith('192.168.') || 
+         window.location.hostname.startsWith('10.') || 
+         window.location.hostname.startsWith('172.'))
+      : localStorage.getItem('amana_local_mode') === 'true')
   : (process.env.NEXT_PUBLIC_LOCAL_SERVER_MODE === 'true');
 
 const cleanLetterhead = (html: string) => {

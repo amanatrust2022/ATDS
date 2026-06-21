@@ -18,12 +18,59 @@ export default function StaffManagement() {
   const [inviteLink, setInviteLink] = useState('');
   const supabase = createClient();
 
+  const isLocalMode = typeof window !== 'undefined'
+    ? (localStorage.getItem('amana_local_mode') === null
+        ? (window.location.hostname === 'localhost' || 
+           window.location.hostname === '127.0.0.1' || 
+           window.location.hostname.startsWith('192.168.') || 
+           window.location.hostname.startsWith('10.') || 
+           window.location.hostname.startsWith('172.'))
+        : localStorage.getItem('amana_local_mode') === 'true')
+    : (process.env.NEXT_PUBLIC_LOCAL_SERVER_MODE === 'true');
+
   const fetchData = async () => {
+    if (!organization) return;
     setLoading(true);
-    const [{ data: staffData }, { data: inviteData }] = await Promise.all([
-      supabase.from('profiles').select('*').eq('organization_id', organization?.id).order('created_at', { ascending: false }),
-      supabase.from('invitations').select('*').eq('organization_id', organization?.id).is('accepted_at', null).order('created_at', { ascending: false }),
-    ]);
+    
+    let staffData: any[] = [];
+    let inviteData: any[] = [];
+
+    if (isLocalMode) {
+      try {
+        const res = await fetch(`/api/profiles?organizationId=${organization.id}`);
+        if (res.ok) {
+          staffData = await res.json();
+        }
+      } catch (err) {
+        console.error('Failed to fetch local profiles:', err);
+      }
+
+      try {
+        const { data, error } = await supabase
+          .from('invitations')
+          .select('*')
+          .eq('organization_id', organization.id)
+          .is('accepted_at', null)
+          .order('created_at', { ascending: false });
+        if (!error && data) {
+          inviteData = data;
+        }
+      } catch (err) {
+        console.warn('Failed to fetch invitations from Supabase (offline fallback):', err);
+      }
+    } else {
+      try {
+        const [{ data: sData }, { data: iData }] = await Promise.all([
+          supabase.from('profiles').select('*').eq('organization_id', organization.id).order('created_at', { ascending: false }),
+          supabase.from('invitations').select('*').eq('organization_id', organization.id).is('accepted_at', null).order('created_at', { ascending: false }),
+        ]);
+        staffData = sData || [];
+        inviteData = iData || [];
+      } catch (err) {
+        console.error('Failed to fetch staff/invites from Supabase:', err);
+      }
+    }
+
     setStaff(staffData || []);
     setInvites(inviteData || []);
     setLoading(false);
@@ -88,12 +135,60 @@ export default function StaffManagement() {
   };
 
   const updateRole = async (id: string, role: string) => {
-    await supabase.from('profiles').update({ role }).eq('id', id);
+    try {
+      await supabase.from('profiles').update({ role }).eq('id', id);
+    } catch (err) {
+      console.warn('Failed to update role in Supabase:', err);
+    }
+
+    if (isLocalMode) {
+      try {
+        const staffMember = staff.find(s => s.id === id);
+        if (staffMember) {
+          await fetch('/api/profiles', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...staffMember, role })
+          });
+        }
+      } catch (err) {
+        console.error('Failed to update role locally:', err);
+      }
+    }
+
     fetchData();
   };
 
   const revokeInvite = async (id: string) => {
-    await supabase.from('invitations').delete().eq('id', id);
+    try {
+      await supabase.from('invitations').delete().eq('id', id);
+    } catch (err) {
+      console.warn('Failed to revoke invite in Supabase:', err);
+    }
+    fetchData();
+  };
+
+  const removeStaff = async (s: any) => {
+    if (!confirm(`Remove ${s.full_name || 'this staff member'} from the workspace?`)) return;
+
+    try {
+      await supabase.from('profiles').update({ organization_id: null, role: 'reception' }).eq('id', s.id);
+    } catch (err) {
+      console.warn('Failed to remove staff from Supabase:', err);
+    }
+
+    if (isLocalMode) {
+      try {
+        await fetch('/api/profiles', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...s, organization_id: null, role: 'reception' })
+        });
+      } catch (err) {
+        console.error('Failed to remove staff locally:', err);
+      }
+    }
+
     fetchData();
   };
 
@@ -229,11 +324,7 @@ export default function StaffManagement() {
                       <td style={{ padding: '0.75rem 1rem' }}>
                         {s.id !== profile?.id && (
                           <button
-                            onClick={async () => {
-                              if (!confirm(`Remove ${s.full_name || 'this staff member'} from the workspace?`)) return;
-                              await supabase.from('profiles').update({ organization_id: null, role: 'reception' }).eq('id', s.id);
-                              fetchData();
-                            }}
+                            onClick={() => removeStaff(s)}
                             style={{ background: 'none', border: '1px solid var(--gray-200)', borderRadius: 4, color: 'var(--red)', cursor: 'pointer', padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}>
                             Remove
                           </button>

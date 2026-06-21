@@ -70,7 +70,7 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
     if (t.department === 'radiology') {
       const radData = deserializeRadiologyResults(t.results || []);
       const imageSection = radData.images && radData.images.length > 0 
-        ? `<div style="margin-top:20px; font-weight:bold; font-size:10pt; color:#4472c4; text-transform:uppercase; border-bottom:1px solid #4472c4; padding-bottom:4px; margin-bottom:10px;">Attached Imagery</div>
+        ? `<div style="margin-top:20px; font-weight:bold; font-size:10pt; color:#0563c1; text-transform:uppercase; border-bottom:1px solid #0563c1; padding-bottom:4px; margin-bottom:10px;">Attached Imagery</div>
            <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:15px; page-break-inside:avoid;">
              ${radData.images.map(img => `
                <div style="border:1px solid #ddd; padding:8px; background:white; text-align:center; page-break-inside:avoid;">
@@ -83,15 +83,15 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
 
       return `
         <div class="test-block radiology-block" style="page-break-inside: avoid; border: none; margin-bottom: 24px;">
-          <div style="font-weight: bold; border-bottom: 2px solid #4472c4; margin-bottom: 12px; font-size: 12pt; color: #4472c4; text-transform: uppercase; padding-bottom: 4px;">
+          <div style="font-weight: bold; border-bottom: 2px solid #0563c1; margin-bottom: 12px; font-size: 12pt; color: #0563c1; text-transform: uppercase; padding-bottom: 4px;">
             ${t.testName}
           </div>
-          <div style="font-size: 11pt; line-height: 1.6; color: #000; text-align: justify; margin-bottom: 18px; font-family: Times New Roman, serif;">
+          <div style="font-size: 11pt; line-height: 1.6; color: #000; text-align: justify; margin-bottom: 18px; font-family: 'Times New Roman', Times, serif;">
             ${convertTextToFormattedHtml(radData.findings)}
           </div>
           ${radData.impression ? `
-            <div style="background: #f8fafc; border-left: 4px solid #4472c4; padding: 12px; margin-top: 15px; page-break-inside: avoid; font-family: Times New Roman, serif;">
-              <div style="font-weight: bold; color: #4472c4; font-size: 11pt; text-transform: uppercase; margin-bottom: 4px;">Impression / Conclusion:</div>
+            <div style="background: #f8fafc; border-left: 4px solid #0563c1; padding: 12px; margin-top: 15px; page-break-inside: avoid; font-family: 'Times New Roman', Times, serif;">
+              <div style="font-weight: bold; color: #0563c1; font-size: 11pt; text-transform: uppercase; margin-bottom: 4px;">Impression / Conclusion:</div>
               <div style="font-size: 11pt; line-height: 1.5; font-weight: bold; color: #111827;">
                 ${convertTextToFormattedHtml(radData.impression)}
               </div>
@@ -165,21 +165,21 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
       }
 
       return `
-        <div class="test-block mcs-block" style="page-break-inside: avoid; border: 1px solid #4472c4; margin-bottom: 12px;">
-          <div class="test-header" style="background: #4472c4; color: white; padding: 6px 10px; font-weight: bold; font-size: 11pt;">
+        <div class="test-block mcs-block" style="page-break-inside: avoid; border: 1px solid #0563c1; margin-bottom: 12px;">
+          <div class="test-header" style="background: #0563c1; color: white; padding: 6px 10px; font-weight: bold; font-size: 11pt;">
             ${t.testName}
           </div>
           
-          <div style="display: flex; border-bottom: 1px solid #ddd;">
-            <div style="flex: 1; padding: 8px; border-right: 1px solid #ddd;">
-              <div style="font-weight: bold; border-bottom: 1px solid #ddd; margin-bottom: 5px; font-size: 10pt; color: #4472c4; text-transform: uppercase;">Macroscopy</div>
+          <div class="mcs-flex" style="display: flex; border-bottom: 1px solid #ddd;">
+            <div class="mcs-border-right" style="flex: 1; padding: 8px; border-right: 1px solid #ddd;">
+              <div style="font-weight: bold; border-bottom: 1px solid #ddd; margin-bottom: 5px; font-size: 10pt; color: #0563c1; text-transform: uppercase;">Macroscopy</div>
               <table style="width: 100%; margin-top: 0; border: none; border-collapse: collapse;">
                 <tr style="border: none;"><td style="padding: 2px 4px; font-weight: 600; border: none; font-size: 10pt; width: 50%;">Colour:</td><td style="padding: 2px 4px; border: none; font-size: 10pt;">${colour}</td></tr>
                 <tr style="border: none;"><td style="padding: 2px 4px; font-weight: 600; border: none; font-size: 10pt;">Appearance:</td><td style="padding: 2px 4px; border: none; font-size: 10pt;">${appearance}</td></tr>
               </table>
             </div>
             <div style="flex: 1; padding: 8px;">
-              <div style="font-weight: bold; border-bottom: 1px solid #ddd; margin-bottom: 5px; font-size: 10pt; color: #4472c4; text-transform: uppercase;">Microscopy</div>
+              <div style="font-weight: bold; border-bottom: 1px solid #ddd; margin-bottom: 5px; font-size: 10pt; color: #0563c1; text-transform: uppercase;">Microscopy</div>
               <table style="width: 100%; margin-top: 0; border: none; border-collapse: collapse;">
                 <tbody>
                   ${microscopyRows.length > 0 ? microscopyRows.join('') : '<tr><td style="padding: 2px 4px; border: none; font-size: 10pt; font-style: italic; color: #666;">No microscopy parameter recorded</td></tr>'}
@@ -189,7 +189,7 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
           </div>
 
           <div style="padding: 8px; border-bottom: ${!isNoGrowth ? '1px solid #ddd' : 'none'};">
-            <div style="font-weight: bold; border-bottom: 1px solid #ddd; margin-bottom: 5px; font-size: 10pt; color: #4472c4; text-transform: uppercase;">Culture Findings</div>
+            <div style="font-weight: bold; border-bottom: 1px solid #ddd; margin-bottom: 5px; font-size: 10pt; color: #0563c1; text-transform: uppercase;">Culture Findings</div>
             <table style="width: 100%; margin-top: 0; border: none; border-collapse: collapse;">
               <tr style="border: none;">
                 <td style="padding: 2px 4px; font-weight: 600; border: none; font-size: 10pt; width: 15%;">Growth:</td>
@@ -214,7 +214,7 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
 
           ${!isNoGrowth ? `
             <div style="padding: 8px;">
-              <div style="font-weight: bold; border-bottom: 1px solid #ddd; margin-bottom: 5px; font-size: 10pt; color: #4472c4; text-transform: uppercase;">Antibiotic Sensitivity Profile</div>
+              <div style="font-weight: bold; border-bottom: 1px solid #ddd; margin-bottom: 5px; font-size: 10pt; color: #0563c1; text-transform: uppercase;">Antibiotic Sensitivity Profile</div>
               <table style="width: 100%; border-collapse: collapse; margin-top: 4px;">
                 <thead>
                   <tr style="background: #f2f2f2;">
@@ -262,21 +262,28 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
 
   return `
     <!DOCTYPE html><html><head><title>Result - ${patient.slipNumber}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <style>
-      body { font-family: Times New Roman, sans-serif; margin: 0; padding: 20px; font-size: 11pt; color: #000; min-width: 750px; }
-      @page { margin-top: 4mm; }
+      body { font-family: 'Times New Roman', Times, serif; margin: 0; padding: 20px; font-size: 11pt; color: #000; }
+      @media screen and (min-width: 768px) {
+        body { min-width: 750px; }
+      }
+      @page { margin: 0; }
       @media screen {
         body { max-width: 860px; margin: 0 auto; padding: 32px 40px; background: #f0f2f5; }
         html { background: #f0f2f5; }
+        @media (max-width: 767px) {
+          body { padding: 16px 12px; }
+        }
       }
       @media print {
-        body { margin: 0; padding: 10px 20px 20px; background: white; max-width: none; }
+        body { margin: 0; padding: 10px 20px 20px; background: white; max-width: none; min-width: 750px; }
         * {
           -webkit-print-color-adjust: exact !important;
           print-color-adjust: exact !important;
         }
       }
-      .header { text-align: center; border-bottom: 2px solid #4472c4; padding-bottom: 0; margin-bottom: 0; margin-left: 0; margin-right: 0; padding-left: 0; padding-right: 0; }
+      .header { text-align: center; border-bottom: 2px solid #0563c1; padding-bottom: 0; margin-bottom: 0; margin-left: 0; margin-right: 0; padding-left: 0; padding-right: 0; }
       .custom-letterhead { margin-bottom: 0px; padding-bottom: 0px; }
       .custom-letterhead p { margin: 0 0 4px 0; }
       .custom-letterhead div { margin: 0; }
@@ -286,18 +293,31 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
       .org-addr { font-size: 14pt; color: #222a35; margin: 0; padding: 0; line-height: 1; }
       .org-contact { font-size: 14pt; color: #c00000; margin: 0; padding: 0; line-height: 1; }
       .org-email { font-size: 14pt; margin: 0; padding: 0; line-height: 1; padding-bottom: 5px; }
-      .report-title { text-align: center; font-size: 14pt; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; margin: 2.5px 0 10px; color: #4472c4; text-decoration: underline; }
-      .patient-info { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; font-size: 12pt; border: 1px solid #4472c4; padding: 12px; }
+      .report-title { text-align: center; font-size: 14pt; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; margin: 2.5px 0 10px; color: #0563c1; text-decoration: underline; }
+      .patient-info { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; font-size: 12pt; border: 1px solid #0563c1; padding: 12px; }
       .pi-label { font-weight: bold; margin-right: 8px; }
       .test-block { margin-bottom: 18px; border: 1px solid #ddd; }
-      .test-header { background: #4472c4; color: white; padding: 7px 12px; font-size: 11pt; font-weight: bold; }
+      .test-header { background: #0563c1; color: white; padding: 7px 12px; font-size: 11pt; font-weight: bold; }
       table { width: 100%; border-collapse: collapse; margin-top: 16px; }
-      th { background: #4472c4; color: white; padding: 6px 8px; text-align: left; font-size: 11pt; }
+      th { background: #0563c1; color: white; padding: 6px 8px; text-align: left; font-size: 11pt; }
       td { padding: 5px 8px; border-bottom: 1px solid #eee; font-size: 11pt; }
       .notes { padding: 6px 12px; font-size: 10pt; background: #fffbe6; border-top: 1px solid #eee; font-style: italic; }
       .sig-section { margin-top: 24px; display: flex; justify-content: flex-end; }
       .sig-box { text-align: center; width: 200px; }
       .sig-line { border-top: 1px solid #333; padding-top: 4px; font-size: 10pt; color: #333; }
+      
+      /* Responsive styles */
+      @media screen and (max-width: 600px) {
+        .org-name-1 { font-size: 24pt !important; white-space: normal !important; }
+        .org-name-2 { font-size: 16pt !important; white-space: normal !important; }
+        .org-addr, .org-contact, .org-email { font-size: 11pt !important; }
+        .patient-info { grid-template-columns: 1fr !important; gap: 4px !important; padding: 8px !important; font-size: 11pt !important; }
+        .report-title { font-size: 12pt !important; }
+        .mcs-flex { flex-direction: column !important; }
+        .mcs-border-right { border-right: none !important; border-bottom: 1px solid #ddd !important; }
+        table { font-size: 10pt !important; }
+        th, td { font-size: 10pt !important; padding: 4px 6px !important; }
+      }
     </style></head><body>
     <div class="header" style="${org?.letterhead_html ? 'border-bottom: none; text-align: left;' : ''}">
       ${org?.letterhead_html ? `
@@ -407,6 +427,101 @@ export const getSlipTemplate = (patient: Patient, org?: OrgForTemplate) => {
     </table>
     <div class="footer">
       Please proceed to the respective department with this slip<br>
+      ${orgName} &copy; ${new Date().getFullYear()}
+    </div>
+    </body></html>`;
+};
+
+/**
+ * Generates the HTML for the Patient Thermal Receipt/Invoice.
+ * Contains subtotal, discount, net bill, amount paid, balance and payment details.
+ */
+export const getInvoiceTemplate = (patient: Patient, org?: OrgForTemplate) => {
+  const regDate = new Date(patient.registeredAt).toLocaleDateString('en-NG');
+  const orgName = org?.name || 'AMANA TRUST DIAGNOSTICS';
+  const orgLine2 = org?.letterhead_line2 || 'AND CLINICAL SERVICES LTD';
+  const orgAddress = org?.address || 'No 15, C Tudun Wada Bus Stop,\nNasarawa LGA, Kano State.';
+  const orgPhone = org?.phone || 'Tel: 08033390574, 07032663898';
+
+  const testRows = (patient.tests || []).map(t => `
+    <tr>
+      <td style="padding: 4px 0; text-align: left;">${t.testName}</td>
+      <td style="padding: 4px 0; text-align: right;">₦${(t.price || 0).toLocaleString('en-NG', { minimumFractionDigits: 2 })}</td>
+    </tr>
+  `).join('');
+
+  const subtotal = patient.totalAmount || 0;
+  const discountAmount = patient.discountAmount || 0;
+  const netAmount = patient.netAmount || 0;
+  const paidAmount = patient.paidAmount || 0;
+  const balance = netAmount - paidAmount;
+  const discountText = patient.discountType === 'percentage' 
+    ? `Discount (${patient.discountValue}%)` 
+    : patient.discountType === 'flat' 
+      ? 'Discount (Flat)' 
+      : 'Discount';
+
+  return `
+    <!DOCTYPE html><html><head><title>Invoice - ${patient.slipNumber}</title>
+    <style>
+      @page { margin: 0; }
+      body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; margin: 0 auto; padding: 15px 10px; width: 80mm; font-size: 12px; color: #000; box-sizing: border-box; }
+      .header { text-align: center; border-bottom: 1px dashed #000; padding-bottom: 8px; margin-bottom: 10px; }
+      .org-name-1 { font-size: 16px; font-weight: bold; margin: 0; line-height: 1.2; }
+      .org-name-2 { font-size: 11px; font-weight: bold; margin: 0; margin-bottom: 4px; }
+      .org-addr { font-size: 10px; margin: 2px 0; }
+      .org-contact { font-size: 10px; margin: 0; }
+      .slip-title { font-size: 14px; font-weight: bold; text-align: center; margin: 10px 0; padding-bottom: 5px; border-bottom: 1px solid #000; }
+      .patient-info { margin-bottom: 10px; font-size: 12px; line-height: 1.5; border-bottom: 1px dashed #000; padding-bottom: 8px; }
+      .pi-row { display: flex; justify-content: space-between; }
+      .pi-label { font-weight: bold; }
+      table { width: 100%; border-collapse: collapse; margin-top: 5px; font-size: 12px; }
+      th { border-bottom: 1px solid #000; text-align: left; padding: 4px 0; }
+      .summary-section { margin-top: 10px; border-top: 1px solid #000; padding-top: 6px; font-size: 12px; line-height: 1.6; }
+      .summary-row { display: flex; justify-content: space-between; }
+      .summary-row.bold { font-weight: bold; font-size: 13px; }
+      .footer { margin-top: 15px; border-top: 1px dashed #000; padding-top: 10px; font-size: 10px; text-align: center; line-height: 1.4; }
+    </style></head><body>
+    <div class="header">
+      <div class="org-name-1">${orgName.toUpperCase()}</div>
+      ${orgLine2 ? `<div class="org-name-2">${orgLine2.toUpperCase()}</div>` : ''}
+      ${orgAddress ? `<div class="org-addr">${orgAddress.replace(/\n/g, '<br>')}</div>` : ''}
+      ${orgPhone ? `<div class="org-contact">${orgPhone}</div>` : ''}
+    </div>
+    <div class="slip-title">PAYMENT RECEIPT / INVOICE</div>
+    <div class="patient-info">
+      <div class="pi-row"><span class="pi-label">Invoice No:</span> <span>${patient.slipNumber}</span></div>
+      <div class="pi-row"><span class="pi-label">Patient Name:</span> <span>${patient.name}</span></div>
+      <div class="pi-row"><span class="pi-label">Age/Sex:</span> <span>${patient.age} / ${patient.sex}</span></div>
+      <div class="pi-row"><span class="pi-label">Date:</span> <span>${regDate}</span></div>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th style="text-align: left;">Investigation</th>
+          <th style="text-align: right;">Price</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${testRows}
+      </tbody>
+    </table>
+    <div class="summary-section">
+      <div class="summary-row"><span>Subtotal:</span> <span>₦${subtotal.toLocaleString('en-NG', { minimumFractionDigits: 2 })}</span></div>
+      ${discountAmount > 0 ? `<div class="summary-row"><span>${discountText}:</span> <span>-₦${discountAmount.toLocaleString('en-NG', { minimumFractionDigits: 2 })}</span></div>` : ''}
+      <div class="summary-row bold" style="border-bottom: 1px dashed #000; padding-bottom: 4px; margin-bottom: 4px;"><span>Net Amount:</span> <span>₦${netAmount.toLocaleString('en-NG', { minimumFractionDigits: 2 })}</span></div>
+      <div class="summary-row"><span>Amount Paid:</span> <span>₦${paidAmount.toLocaleString('en-NG', { minimumFractionDigits: 2 })}</span></div>
+      <div class="summary-row" style="font-weight: bold; color: ${balance > 0 ? '#c0392b' : '#000'}"><span>Balance Due:</span> <span>₦${balance.toLocaleString('en-NG', { minimumFractionDigits: 2 })}</span></div>
+      <div class="summary-row" style="font-size: 10px; color: #555; margin-top: 4px;">
+        <span>Payment Method:</span> <span style="text-transform: uppercase;">${patient.paymentMethod || 'cash'}</span>
+      </div>
+      <div class="summary-row" style="font-size: 10px; color: #555;">
+        <span>Payment Status:</span> <span style="text-transform: uppercase; font-weight: bold;">${patient.paymentStatus || 'paid'}</span>
+      </div>
+    </div>
+    <div class="footer">
+      Thank you for your patronage.<br>
+      Please retain this receipt for your records.<br>
       ${orgName} &copy; ${new Date().getFullYear()}
     </div>
     </body></html>`;

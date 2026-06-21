@@ -5,19 +5,24 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get('userId');
+    const organizationId = searchParams.get('organizationId');
 
-    if (!userId) {
-      return NextResponse.json({ error: 'Missing userId' }, { status: 400 });
+    if (!userId && !organizationId) {
+      return NextResponse.json({ error: 'Missing userId or organizationId' }, { status: 400 });
     }
 
     const db = getDb();
-    const profile = db.prepare('SELECT * FROM profiles WHERE id = ?').get(userId);
 
-    if (!profile) {
-      return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
+    if (userId) {
+      const profile = db.prepare('SELECT * FROM profiles WHERE id = ?').get(userId);
+      if (!profile) {
+        return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
+      }
+      return NextResponse.json(profile);
+    } else {
+      const profiles = db.prepare('SELECT * FROM profiles WHERE organization_id = ?').all(organizationId);
+      return NextResponse.json(profiles);
     }
-
-    return NextResponse.json(profile);
   } catch (error: any) {
     console.error('Error in GET /api/profiles:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });

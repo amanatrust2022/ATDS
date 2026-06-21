@@ -1,13 +1,14 @@
 import { createClient } from './supabase';
 
 const IS_LOCAL_MODE = typeof window !== 'undefined'
-  ? (localStorage.getItem('amana_local_mode') === 'true' || 
-     window.location.hostname === 'localhost' || 
-     window.location.hostname === '127.0.0.1' || 
-     window.location.hostname.startsWith('192.168.') || 
-     window.location.hostname.startsWith('10.') || 
-     window.location.hostname.startsWith('172.'))
-  : (process.env.NEXT_PUBLIC_LOCAL_SERVER_MODE === 'true');
+  ? (localStorage.getItem('amana_local_mode') === null
+      ? (window.location.hostname === 'localhost' || 
+         window.location.hostname === '127.0.0.1' || 
+         window.location.hostname.startsWith('192.168.') || 
+         window.location.hostname.startsWith('10.') || 
+         window.location.hostname.startsWith('172.'))
+      : localStorage.getItem('amana_local_mode') === 'true')
+  : (process.env.NEXT_PUBLIC_LOCAL_SERVER_MODE === 'true' || process.env.NODE_ENV === 'development');
 
 export type Department = 'lab' | 'radiology';
 export type TestStatus = 'pending' | 'in_progress' | 'completed';
@@ -35,6 +36,10 @@ export interface PatientTest {
   completedByTitle?: string;
   completedAt?: string;
   notes?: string;
+  price?: number;
+  commissionType?: 'percentage' | 'flat' | 'none';
+  commissionValue?: number;
+  commissionAmount?: number;
 }
 
 export interface Patient {
@@ -56,12 +61,21 @@ export interface Patient {
   referringFacilityId?: string;
   // Per-visit commission snapshot
   commissionAssigned?: boolean;
-  commissionType?: 'percentage' | 'flat';
+  commissionType?: 'percentage' | 'flat' | 'none' | 'varies';
   commissionValue?: number;   // rate snapshot at registration time
   commissionAmount?: number;  // calculated amount at registration time
   commissionStatus?: 'pending' | 'paid';
   commissionPaidAt?: string;
   commissionPaidNotes?: string;
+  // Billing details
+  totalAmount?: number;
+  discountType?: 'none' | 'flat' | 'percentage';
+  discountValue?: number;
+  discountAmount?: number;
+  netAmount?: number;
+  paidAmount?: number;
+  paymentStatus?: 'paid' | 'partial' | 'unpaid';
+  paymentMethod?: string;
   tests: PatientTest[];
 }
 
@@ -328,6 +342,14 @@ export const fetchPatients = async (organizationId: string): Promise<Patient[]> 
     commissionStatus: p.commission_status,
     commissionPaidAt: p.commission_paid_at,
     commissionPaidNotes: p.commission_paid_notes,
+    totalAmount: p.total_amount,
+    discountType: p.discount_type,
+    discountValue: p.discount_value,
+    discountAmount: p.discount_amount,
+    netAmount: p.net_amount,
+    paidAmount: p.paid_amount,
+    paymentStatus: p.payment_status,
+    paymentMethod: p.payment_method,
     tests: (p.tests || []).map((t: any) => ({
       ...t,
       testId: t.test_id,
@@ -336,6 +358,10 @@ export const fetchPatients = async (organizationId: string): Promise<Patient[]> 
       completedBySignatureUrl: t.completed_by_signature_url,
       completedByTitle: t.completed_by_title,
       completedAt: t.completed_at,
+      price: t.price,
+      commissionType: t.commission_type,
+      commissionValue: t.commission_value,
+      commissionAmount: t.commission_amount,
     }))
   }));
 };
@@ -636,14 +662,14 @@ export const deleteReferringDoctor = async (id: string): Promise<void> => {
   if (error) throw error;
 };
 
-// ─── TEST PRICES ──────────────────────────────────────────────────────────────
-
 export interface TestPrice {
   id?: string;
   organization_id: string;
   test_id: string;
   test_name: string;
   price: number;
+  commission_type?: 'percentage' | 'flat' | 'none';
+  commission_value?: number;
 }
 
 export const fetchTestPrices = async (organizationId: string): Promise<TestPrice[]> => {
@@ -676,7 +702,14 @@ export const upsertTestPrices = async (prices: Omit<TestPrice, 'id'>[], organiza
   }
 
   const supabase = createClient();
-  const rows = prices.map(p => ({ ...p, organization_id: organizationId }));
+  const rows = prices.map(p => ({
+    organization_id: organizationId,
+    test_id: p.test_id || (p as any).testId,
+    test_name: p.test_name || (p as any).testName,
+    price: p.price,
+    commission_type: p.commission_type || 'percentage',
+    commission_value: p.commission_value || 0,
+  }));
   const { error } = await supabase
     .from('test_prices')
     .upsert(rows, { onConflict: 'organization_id,test_id' });
@@ -692,9 +725,9 @@ export interface CommissionEntry {
   registeredAt: string;
   referrerName: string;
   referrerType: 'doctor' | 'facility';
-  commissionType: 'percentage' | 'flat';
+  commissionType: 'percentage' | 'flat' | 'none' | 'varies';
   commissionValue: number;
-  tests: { testId: string; testName: string; price: number }[];
+  tests: { testId: string; testName: string; price: number; commissionType?: string; commissionValue?: number; commissionAmount?: number }[];
   totalAmount: number;
   commissionAmount: number;
   commissionStatus: 'pending' | 'paid';
@@ -728,7 +761,10 @@ export const fetchCommissionReport = async (organizationId: string, from?: strin
     const tests = (p.tests || []).map((t: any) => ({
       testId: t.testId,
       testName: t.testName,
-      price: priceMap.get(t.testId) || 0,
+      price: t.price || priceMap.get(t.testId) || 0,
+      commissionType: t.commissionType || 'none',
+      commissionValue: t.commissionValue || 0,
+      commissionAmount: t.commissionAmount || 0,
     }));
     const totalAmount = tests.reduce((sum: number, t: any) => sum + t.price, 0);
 
@@ -753,8 +789,8 @@ export const fetchCommissionReport = async (organizationId: string, from?: strin
       registeredAt: p.registeredAt,
       referrerName,
       referrerType,
-      commissionType: p.commissionType || 'percentage',
-      commissionValue: p.commissionValue || 0,
+      commissionType: 'varies',
+      commissionValue: 0,
       tests,
       totalAmount,
       commissionAmount: p.commissionAmount || 0,
@@ -802,12 +838,19 @@ export const addPatientWithReferral = async (
       referring_facility: patient.referringFacility,
       referring_doctor_id: patient.referringDoctorId || null,
       referring_facility_id: patient.referringFacilityId || null,
-      // Per-visit commission snapshot
       commission_assigned: patient.commissionAssigned ?? false,
       commission_type: patient.commissionType || null,
       commission_value: patient.commissionValue ?? null,
       commission_amount: patient.commissionAmount ?? null,
       commission_status: patient.commissionAssigned ? 'pending' : null,
+      total_amount: patient.totalAmount ?? 0,
+      discount_type: patient.discountType || 'none',
+      discount_value: patient.discountValue ?? 0,
+      discount_amount: patient.discountAmount ?? 0,
+      net_amount: patient.netAmount ?? 0,
+      paid_amount: patient.paidAmount ?? 0,
+      payment_status: patient.paymentStatus || 'paid',
+      payment_method: patient.paymentMethod || 'cash',
       organization_id: organizationId,
     }])
     .select()
@@ -821,6 +864,10 @@ export const addPatientWithReferral = async (
     department: t.department,
     status: t.status,
     specimen: t.specimen,
+    price: t.price ?? 0,
+    commission_type: t.commissionType || 'none',
+    commission_value: t.commissionValue ?? 0,
+    commission_amount: t.commissionAmount ?? 0,
     organization_id: organizationId,
   }));
   const { error: tError } = await supabase.from('patient_tests').insert(testsToInsert);

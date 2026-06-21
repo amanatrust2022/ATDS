@@ -11,9 +11,9 @@ import {
   Patient, PatientTest, TEST_CATALOGUE, getTestById, fetchPatients, addPatient, generateSlipNumber, subscribeToPatients,
   ReferringDoctor, ReferringFacility, TestPrice,
   fetchReferringDoctors, fetchReferringFacilities, fetchTestPrices,
-  addPatientWithReferral,
+  addPatientWithReferral, addReferringDoctor, addReferringFacility,
 } from '@/lib/store';
-import { getResultTemplate, getSlipTemplate } from '@/lib/templates';
+import { getResultTemplate, getSlipTemplate, getInvoiceTemplate } from '@/lib/templates';
 import { useAuth } from '@/components/AuthProvider';
 import { RiLogoutCircleLine } from '@remixicon/react';
 
@@ -22,6 +22,7 @@ type Tab = 'register' | 'queue' | 'results';
 export default function ReceptionPage() {
   const [tab, setTab] = useState<Tab>('register');
   const [patients, setPatients] = useState<Patient[]>([]);
+  const [dateFilter, setDateFilter] = useState<'today' | 'seven_days' | 'thirty_days'>('today');
   const [selectedTests, setSelectedTests] = useState<string[]>([]);
   const [showSlipModal, setShowSlipModal] = useState<Patient | null>(null);
   const [showResultModal, setShowResultModal] = useState<Patient | null>(null);
@@ -53,6 +54,20 @@ export default function ReceptionPage() {
   const [showFacilityDrop, setShowFacilityDrop] = useState(false);
   const doctorRef = useRef<HTMLDivElement>(null);
   const facilityRef = useRef<HTMLDivElement>(null);
+
+  // Billing and discount states
+  const [discountType, setDiscountType] = useState<'none' | 'flat' | 'percentage'>('none');
+  const [discountValue, setDiscountValue] = useState('');
+  const [paidAmount, setPaidAmount] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('cash');
+
+  // Quick register modal states
+  const [showQuickDoctor, setShowQuickDoctor] = useState(false);
+  const [showQuickFacility, setShowQuickFacility] = useState(false);
+  const [quickDoctorForm, setQuickDoctorForm] = useState({ name: '', phone: '', email: '', facility_id: '' });
+  const [quickFacilityForm, setQuickFacilityForm] = useState({ name: '', address: '', phone: '', email: '' });
+  const [quickError, setQuickError] = useState('');
+  const [quickSaving, setQuickSaving] = useState(false);
 
   const { profile, organization, signOut } = useAuth();
   const refresh = useCallback(async () => {
@@ -103,9 +118,26 @@ export default function ReceptionPage() {
       .includes(q);
   });
 
-  const pendingPatients = patients.filter(p => p.tests.some(t => t.status !== 'completed'));
-  const resultsPatients = patients.filter(p => p.tests.some(t => t.status === 'completed'));
-  const newResultsCount = patients.filter(p => p.tests.some(t => t.status === 'completed')).length;
+  const filterByDate = (dateString: string | number | Date) => {
+    const pDate = new Date(dateString);
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    if (dateFilter === 'today') {
+      return pDate >= startOfToday;
+    } else if (dateFilter === 'seven_days') {
+      const sevenDaysAgo = new Date(startOfToday.getTime() - 7 * 24 * 60 * 60 * 1000);
+      return pDate >= sevenDaysAgo;
+    } else if (dateFilter === 'thirty_days') {
+      const thirtyDaysAgo = new Date(startOfToday.getTime() - 30 * 24 * 60 * 60 * 1000);
+      return pDate >= thirtyDaysAgo;
+    }
+    return true;
+  };
+
+  const pendingPatients = patients.filter(p => p.tests.some(t => t.status !== 'completed') && filterByDate(p.registeredAt));
+  const resultsPatients = patients.filter(p => p.tests.some(t => t.status === 'completed') && filterByDate(p.registeredAt));
+  const newResultsCount = resultsPatients.length;
 
   const toggleTest = (id: string) => {
     setSelectedTests(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
@@ -131,6 +163,128 @@ export default function ReceptionPage() {
     return e;
   };
 
+  // ─── BILLING CALCULATIONS ───────────────────────────────────────────────────
+  const selectedTestDetails = selectedTests.map(tid => {
+    const test = getTestById(tid)!;
+    const catalog = testPrices.find(p => p.test_id === tid);
+    return {
+      testId: test.id,
+      testName: test.name,
+      department: test.department,
+      specimen: test.specimen,
+      price: catalog ? catalog.price : 0,
+      commissionType: catalog ? catalog.commission_type : 'none',
+      commissionValue: catalog ? catalog.commission_value : 0,
+    };
+  });
+
+  const subtotal = selectedTestDetails.reduce((sum, t) => sum + t.price, 0);
+  const discVal = parseFloat(discountValue) || 0;
+  const discountAmount = discountType === 'percentage'
+    ? (subtotal * discVal) / 100
+    : discountType === 'flat'
+      ? discVal
+      : 0;
+  const netBill = Math.max(0, subtotal - discountAmount);
+  const amountPaidVal = paidAmount === '' ? netBill : (parseFloat(paidAmount) || 0);
+  const balance = netBill - amountPaidVal;
+  const paymentStatus = amountPaidVal >= netBill
+    ? 'paid'
+    : amountPaidVal > 0
+      ? 'partial'
+      : 'unpaid';
+
+  const isReferral = !!(selectedDoctorId && selectedDoctorId !== 'none') || !!(selectedFacilityId && selectedFacilityId !== 'none');
+  const totalCommission = selectedTestDetails.reduce((sum, t) => {
+    let commAmt = 0;
+    if (isReferral && t.commissionType !== 'none') {
+      if (t.commissionType === 'percentage') {
+        commAmt = (t.price * (t.commissionValue || 0)) / 100;
+      } else if (t.commissionType === 'flat') {
+        commAmt = t.commissionValue || 0;
+      }
+    }
+    return sum + commAmt;
+  }, 0);
+
+  const handleQuickDoctorSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickDoctorForm.name.trim()) {
+      setQuickError('Name is required');
+      return;
+    }
+    if (!organization?.id) return;
+    setQuickSaving(true);
+    setQuickError('');
+    try {
+      const doc = await addReferringDoctor({
+        organization_id: organization.id,
+        name: quickDoctorForm.name.trim(),
+        phone: quickDoctorForm.phone.trim() || undefined,
+        email: quickDoctorForm.email.trim() || undefined,
+        facility_id: quickDoctorForm.facility_id || undefined,
+        commission_type: 'percentage',
+        commission_value: 0,
+        is_active: true,
+      }, organization.id);
+
+      const updatedDocs = await fetchReferringDoctors(organization.id);
+      setDoctors(updatedDocs.filter(d => d.is_active));
+      setSelectedDoctorId(doc.id);
+      setDoctorSearch('');
+      setForm(prev => ({ ...prev, referredBy: `Dr. ${doc.name}` }));
+
+      if (doc.facility_id) {
+        setSelectedFacilityId(doc.facility_id);
+        const fac = facilities.find(f => f.id === doc.facility_id);
+        if (fac) {
+          setForm(prev => ({ ...prev, referringFacility: fac.name }));
+        }
+      }
+
+      setShowQuickDoctor(false);
+    } catch (err: any) {
+      setQuickError(err.message || 'Failed to register doctor');
+    } finally {
+      setQuickSaving(false);
+    }
+  };
+
+  const handleQuickFacilitySubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickFacilityForm.name.trim()) {
+      setQuickError('Facility name is required');
+      return;
+    }
+    if (!organization?.id) return;
+    setQuickSaving(true);
+    setQuickError('');
+    try {
+      const fac = await addReferringFacility({
+        organization_id: organization.id,
+        name: quickFacilityForm.name.trim(),
+        address: quickFacilityForm.address.trim() || undefined,
+        phone: quickFacilityForm.phone.trim() || undefined,
+        email: quickFacilityForm.email.trim() || undefined,
+        commission_type: 'percentage',
+        commission_value: 0,
+        is_active: true,
+      }, organization.id);
+
+      const updatedFacs = await fetchReferringFacilities(organization.id);
+      setFacilities(updatedFacs.filter(f => f.is_active));
+      setSelectedFacilityId(fac.id);
+      setFacilitySearch('');
+      setForm(prev => ({ ...prev, referringFacility: fac.name }));
+
+      setShowQuickFacility(false);
+    } catch (err: any) {
+      setQuickError(err.message || 'Failed to register facility');
+    } finally {
+      setQuickSaving(false);
+    }
+  };
+
   const handleRegister = async () => {
     const e = validate();
     setErrors(e);
@@ -139,10 +293,31 @@ export default function ReceptionPage() {
 
     try {
       const slipNumber = await generateSlipNumber(organization?.id || '');
-      const tests: Omit<PatientTest, 'id' | 'patient_id'>[] = selectedTests.map(tid => {
-        const t = getTestById(tid)!;
-        return { testId: t.id, testName: t.name, department: t.department, status: 'pending', specimen: t.specimen };
+      const isReferral = !!(selectedDoctorId && selectedDoctorId !== 'none') || !!(selectedFacilityId && selectedFacilityId !== 'none');
+
+      const tests = selectedTestDetails.map(t => {
+        let commAmt = 0;
+        if (isReferral && t.commissionType !== 'none') {
+          if (t.commissionType === 'percentage') {
+            commAmt = (t.price * (t.commissionValue || 0)) / 100;
+          } else if (t.commissionType === 'flat') {
+            commAmt = t.commissionValue || 0;
+          }
+        }
+        return {
+          testId: t.testId,
+          testName: t.testName,
+          department: t.department,
+          status: 'pending' as const,
+          specimen: t.specimen,
+          price: t.price,
+          commissionType: t.commissionType as any || 'none',
+          commissionValue: t.commissionValue || 0,
+          commissionAmount: commAmt,
+        };
       });
+
+      const totalCommission = tests.reduce((sum, t) => sum + (t.commissionAmount || 0), 0);
 
       // Find selected doctor/facility names
       const selDoctor = doctors.find(d => d.id === selectedDoctorId);
@@ -157,6 +332,18 @@ export default function ReceptionPage() {
         referringFacility: selFacility ? selFacility.name : form.referringFacility,
         referringDoctorId: (selectedDoctorId && selectedDoctorId !== 'none') ? selectedDoctorId : undefined,
         referringFacilityId: (selectedFacilityId && selectedFacilityId !== 'none') ? selectedFacilityId : undefined,
+        commissionAssigned: isReferral && totalCommission > 0,
+        commissionType: isReferral && totalCommission > 0 ? 'varies' : undefined,
+        commissionValue: 0,
+        commissionAmount: totalCommission,
+        totalAmount: subtotal,
+        discountType: discountType,
+        discountValue: discVal,
+        discountAmount: discountAmount,
+        netAmount: netBill,
+        paidAmount: amountPaidVal,
+        paymentStatus: paymentStatus,
+        paymentMethod: paymentMethod,
       };
 
       await addPatientWithReferral(patientData, tests, organization?.id || '');
@@ -176,6 +363,10 @@ export default function ReceptionPage() {
       setFacilitySearch('');
       setLoadedPatientName('');
       setPatientSearchQuery('');
+      setDiscountType('none');
+      setDiscountValue('');
+      setPaidAmount('');
+      setPaymentMethod('cash');
       setErrors({});
     } catch (err: any) {
       alert('Registration failed: ' + err.message);
@@ -358,10 +549,10 @@ export default function ReceptionPage() {
                         const slipMatches = (p.slipNumber || '').toLowerCase().includes(q);
                         return nameMatches || phoneMatches || slipMatches;
                       }).length === 0 && (
-                        <div style={{ padding: '0.75rem', color: 'var(--gray-400)', fontSize: '0.75rem', textAlign: 'center' }}>
-                          No matching patients found.
-                        </div>
-                      )}
+                          <div style={{ padding: '0.75rem', color: 'var(--gray-400)', fontSize: '0.75rem', textAlign: 'center' }}>
+                            No matching patients found.
+                          </div>
+                        )}
                     </div>
                   )}
                 </div>
@@ -418,7 +609,23 @@ export default function ReceptionPage() {
                   <input style={inputStyle(false)} value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} placeholder="Patient address" />
                 </Field>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                  <Field label="Referred By (Doctor) *" error={errors.referredBy}>
+                  <Field
+                    label="Referred By (Doctor) *"
+                    error={errors.referredBy}
+                    actionNode={
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setQuickDoctorForm({ name: '', phone: '', email: '', facility_id: selectedFacilityId && selectedFacilityId !== 'none' ? selectedFacilityId : '' });
+                          setQuickError('');
+                          setShowQuickDoctor(true);
+                        }}
+                        style={{ background: 'none', border: 'none', color: 'var(--teal-600)', fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.15rem' }}
+                      >
+                        <RiAddLine size={12} /> Quick Register
+                      </button>
+                    }
+                  >
                     <div ref={doctorRef} style={{ position: 'relative' }}>
                       <div style={{ position: 'relative' }}>
                         <RiSearchLine size={13} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--gray-400)', pointerEvents: 'none' }} />
@@ -454,7 +661,7 @@ export default function ReceptionPage() {
                           {doctors.filter(d => !doctorSearch || d.name.toLowerCase().includes(doctorSearch.toLowerCase())).length === 0 && !doctorSearch && (
                             <div style={{ padding: '0.6rem 0.75rem', color: 'var(--gray-400)', fontSize: '0.78rem' }}>No doctors in database. Type to use a custom name.</div>
                           )}
-                          
+
                           {/* Not referred by anyone option */}
                           <div
                             onClick={() => {
@@ -476,7 +683,23 @@ export default function ReceptionPage() {
                       )}
                     </div>
                   </Field>
-                  <Field label="Referring Facility *" error={errors.referringFacility}>
+                  <Field
+                    label="Referring Facility *"
+                    error={errors.referringFacility}
+                    actionNode={
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setQuickFacilityForm({ name: '', address: '', phone: '', email: '' });
+                          setQuickError('');
+                          setShowQuickFacility(true);
+                        }}
+                        style={{ background: 'none', border: 'none', color: 'var(--teal-600)', fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.15rem' }}
+                      >
+                        <RiAddLine size={12} /> Quick Register
+                      </button>
+                    }
+                  >
                     <div ref={facilityRef} style={{ position: 'relative' }}>
                       <div style={{ position: 'relative' }}>
                         <RiSearchLine size={13} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--gray-400)', pointerEvents: 'none' }} />
@@ -584,20 +807,6 @@ export default function ReceptionPage() {
                   </div>
                 </div>
                 {errors.tests && <div style={{ color: 'var(--red)', fontSize: '0.75rem', background: 'var(--red-light)', padding: '0.5rem 0.75rem', borderRadius: 'var(--radius)', border: '1px solid #f5c6cb', display: 'flex', alignItems: 'center', gap: '0.25rem' }}><RiErrorWarningLine size={14} /> {errors.tests}</div>}
-                <button
-                  onClick={handleRegister}
-                  disabled={saving}
-                  style={{
-                    background: 'var(--teal-700)', color: 'white', border: 'none',
-                    borderRadius: 'var(--radius)', padding: '0.75rem',
-                    fontSize: '0.88rem', fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer',
-                    marginTop: '0.5rem', letterSpacing: '0.02em',
-                    opacity: saving ? 0.7 : 1,
-                    transition: 'all 0.15s',
-                  }}
-                >
-                  {saving ? 'Registering...' : <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}><RiCheckLine size={16} /> Register & Generate Slip</span>}
-                </button>
               </div>
             </div>
 
@@ -612,6 +821,7 @@ export default function ReceptionPage() {
                 </div>
                 {selectedTests.length > 0 && (
                   <button
+                    type="button"
                     onClick={() => setSelectedTests([])}
                     style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: 'white', cursor: 'pointer', borderRadius: 0, padding: '0.3rem 0.7rem', fontSize: '0.72rem' }}
                   >
@@ -619,10 +829,23 @@ export default function ReceptionPage() {
                   </button>
                 )}
               </div>
-              <div style={{ padding: '1rem', background: 'linear-gradient(180deg, #effaf8 0%, #f8fbfb 100%)', flex: 1 }}>
+              <div style={{ padding: '1rem', background: 'linear-gradient(180deg, #effaf8 0%, #f8fbfb 100%)', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: 200 }}>
                 {selectedTests.length === 0 ? (
-                  <div style={{ border: '1px dashed var(--gray-300)', background: 'rgba(255,255,255,0.92)', padding: '1rem', color: 'var(--gray-500)', fontSize: '0.78rem', textAlign: 'center' }}>
-                    No tests selected yet. Search and add tests from the patient information panel.
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', height: '100%', justifyContent: 'center' }}>
+                    <div style={{ border: '1px dashed var(--gray-300)', background: 'rgba(255,255,255,0.92)', padding: '1.5rem 1rem', color: 'var(--gray-500)', fontSize: '0.78rem', textAlign: 'center', borderRadius: 'var(--radius)' }}>
+                      No tests selected yet. Search and add tests from the patient information panel.
+                    </div>
+                    <button
+                      disabled
+                      style={{
+                        background: 'var(--gray-300)', color: 'var(--gray-500)', border: 'none',
+                        borderRadius: 'var(--radius)', padding: '0.75rem',
+                        fontSize: '0.82rem', fontWeight: 700, cursor: 'not-allowed',
+                        textAlign: 'center', width: '100%'
+                      }}
+                    >
+                      Select tests to proceed
+                    </button>
                   </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
@@ -630,70 +853,184 @@ export default function ReceptionPage() {
                       const t = getTestById(tid);
                       if (!t) return null;
 
+                      const priceDetail = selectedTestDetails.find(d => d.testId === tid);
+                      const price = priceDetail ? priceDetail.price : 0;
+
                       return (
                         <div key={tid} style={{ background: 'white', border: `1px solid ${t.department === 'lab' ? 'var(--teal-200)' : '#c4b5fd'}`, padding: '0.75rem 0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', boxShadow: '0 10px 20px -18px rgba(15,23,42,0.45)' }}>
-                          <div style={{ minWidth: 0 }}>
+                          <div style={{ minWidth: 0, flex: 1 }}>
                             <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--gray-900)' }}>{t.name}</div>
                             <div style={{ fontSize: '0.68rem', color: 'var(--gray-500)', marginTop: '0.15rem' }}>{t.category} • {t.specimen}</div>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => removeTest(tid)}
-                            aria-label={`Remove ${t.name}`}
-                            style={{
-                              border: '1px solid var(--gray-300)',
-                              background: 'white',
-                              color: 'var(--gray-600)',
-                              cursor: 'pointer',
-                              borderRadius: 0,
-                              width: 30,
-                              height: 30,
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              flexShrink: 0,
-                            }}
-                          >
-                            <RiCloseLine size={16} />
-                          </button>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexShrink: 0 }}>
+                            <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--teal-700)' }}>
+                              ₦{price.toLocaleString('en-NG', { minimumFractionDigits: 2 })}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => removeTest(tid)}
+                              aria-label={`Remove ${t.name}`}
+                              style={{
+                                border: '1px solid var(--gray-300)',
+                                background: 'white',
+                                color: 'var(--gray-600)',
+                                cursor: 'pointer',
+                                borderRadius: 0,
+                                width: 30,
+                                height: 30,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                flexShrink: 0,
+                              }}
+                            >
+                              <RiCloseLine size={16} />
+                            </button>
+                          </div>
                         </div>
                       );
                     })}
                   </div>
                 )}
               </div>
-              {/* Cost + Commission Summary */}
-              {selectedTests.length > 0 && (() => {
-                const priceMap = new Map(testPrices.map(p => [p.test_id, p.price]));
-                const totalCost = selectedTests.reduce((sum, tid) => sum + (priceMap.get(tid) || 0), 0);
-                const selDoctor = doctors.find(d => d.id === selectedDoctorId);
-                const selFacility = facilities.find(f => f.id === selectedFacilityId);
-                const referrer = selDoctor || selFacility;
-                const commissionAmt = referrer
-                  ? referrer.commission_type === 'percentage'
-                    ? (totalCost * referrer.commission_value) / 100
-                    : referrer.commission_value
-                  : 0;
-                if (totalCost === 0 && !referrer) return null;
-                return (
-                  <div style={{ borderTop: '1px solid var(--teal-100)', padding: '0.85rem 1rem', background: 'rgba(68,114,196,0.04)' }}>
-                    {totalCost > 0 && (
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: referrer ? '0.4rem' : 0 }}>
-                        <span style={{ fontSize: '0.75rem', color: 'var(--gray-600)', fontWeight: 600 }}>Est. Total Bill</span>
-                        <span style={{ fontSize: '0.95rem', fontWeight: 800, color: '#1a6aaf' }}>₦{totalCost.toLocaleString('en-NG', { minimumFractionDigits: 2 })}</span>
-                      </div>
-                    )}
-                    {referrer && commissionAmt > 0 && (
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: totalCost > 0 ? '0.35rem' : 0, borderTop: totalCost > 0 ? '1px dashed var(--teal-200)' : 'none' }}>
-                        <span style={{ fontSize: '0.72rem', color: 'var(--gray-500)' }}>
-                          Commission ({selDoctor ? `Dr. ${selDoctor.name}` : selFacility?.name})
-                        </span>
-                        <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--gold)' }}>₦{commissionAmt.toLocaleString('en-NG', { minimumFractionDigits: 2 })}</span>
+              {/* Checkout & Billing Panel */}
+              {selectedTests.length > 0 && (
+                <div style={{ borderTop: '1px solid var(--teal-100)', padding: '1rem', background: '#f8fafc', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  <h3 style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--teal-800)', borderBottom: '1px solid rgba(13,148,136,0.1)', paddingBottom: '0.35rem', marginBottom: '0.25rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    Billing & Checkout
+                  </h3>
+
+                  {/* Subtotal */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--gray-600)', fontWeight: 600 }}>Subtotal</span>
+                    <span style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--gray-800)' }}>
+                      ₦{subtotal.toLocaleString('en-NG', { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+
+                  {/* Discount Section */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '0.5rem', alignItems: 'center' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 600, color: 'var(--gray-600)', marginBottom: '0.15rem' }}>Discount Type</label>
+                      <select
+                        style={{ ...inputStyle(false), padding: '0.35rem 0.5rem', fontSize: '0.75rem' }}
+                        value={discountType}
+                        onChange={e => {
+                          setDiscountType(e.target.value as any);
+                          setDiscountValue('');
+                        }}
+                      >
+                        <option value="none">No Discount</option>
+                        <option value="percentage">Percentage (%)</option>
+                        <option value="flat">Flat (₦)</option>
+                      </select>
+                    </div>
+                    {discountType !== 'none' && (
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 600, color: 'var(--gray-600)', marginBottom: '0.15rem' }}>
+                          Value {discountType === 'percentage' ? '(%)' : '(₦)'}
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          style={{ ...inputStyle(false), padding: '0.35rem 0.5rem', fontSize: '0.75rem' }}
+                          placeholder={discountType === 'percentage' ? 'e.g. 10' : 'e.g. 1000'}
+                          value={discountValue}
+                          onChange={e => setDiscountValue(e.target.value)}
+                        />
                       </div>
                     )}
                   </div>
-                );
-              })()}
+
+                  {/* Discount Amount (if any) */}
+                  {discountAmount > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#fef2f2', padding: '0.35rem 0.5rem', border: '1px solid #fee2e2', borderRadius: 4 }}>
+                      <span style={{ fontSize: '0.72rem', color: '#b91c1c', fontWeight: 600 }}>Discount Allowed</span>
+                      <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#b91c1c' }}>
+                        -₦{discountAmount.toLocaleString('en-NG', { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Net Bill */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px dashed var(--gray-300)', paddingTop: '0.5rem' }}>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--gray-800)', fontWeight: 700 }}>Net Bill</span>
+                    <span style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--teal-700)' }}>
+                      ₦{netBill.toLocaleString('en-NG', { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+
+                  {/* Paid Amount & Payment Method */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 600, color: 'var(--gray-600)', marginBottom: '0.15rem' }}>Amount Paid (₦)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        style={{ ...inputStyle(false), padding: '0.35rem 0.5rem', fontSize: '0.75rem' }}
+                        placeholder={netBill.toString()}
+                        value={paidAmount}
+                        onChange={e => setPaidAmount(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 600, color: 'var(--gray-600)', marginBottom: '0.15rem' }}>Payment Method</label>
+                      <select
+                        style={{ ...inputStyle(false), padding: '0.35rem 0.5rem', fontSize: '0.75rem' }}
+                        value={paymentMethod}
+                        onChange={e => setPaymentMethod(e.target.value)}
+                      >
+                        <option value="cash">Cash</option>
+                        <option value="pos">POS</option>
+                        <option value="transfer">Bank Transfer</option>
+                        <option value="split">Split Payment</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Balance Due */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: balance > 0 ? '#fff7ed' : '#f0fdf4', padding: '0.4rem 0.6rem', border: `1px solid ${balance > 0 ? '#ffedd5' : '#bbf7d0'}`, borderRadius: 4 }}>
+                    <span style={{ fontSize: '0.72rem', color: balance > 0 ? '#c2410c' : '#15803d', fontWeight: 600 }}>
+                      {balance > 0 ? 'Balance Due (Unpaid)' : 'Payment Cleared'}
+                    </span>
+                    <span style={{ fontSize: '0.82rem', fontWeight: 700, color: balance > 0 ? '#c2410c' : '#15803d' }}>
+                      ₦{balance.toLocaleString('en-NG', { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+
+                  {/* Referral Commission Summary (informative) */}
+                  {isReferral && totalCommission > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#fefcf0', border: '1px solid #fef08a', padding: '0.4rem 0.6rem', borderRadius: 4 }}>
+                      <span style={{ fontSize: '0.72rem', color: '#a16207', fontWeight: 600 }}>
+                        Referral Commission
+                      </span>
+                      <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#a16207' }}>
+                        ₦{totalCommission.toLocaleString('en-NG', { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Submit Button */}
+                  <button
+                    onClick={handleRegister}
+                    disabled={saving}
+                    style={{
+                      background: 'var(--teal-700)', color: 'white', border: 'none',
+                      borderRadius: 'var(--radius)', padding: '0.65rem',
+                      fontSize: '0.82rem', fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer',
+                      marginTop: '0.25rem', letterSpacing: '0.02em',
+                      opacity: saving ? 0.7 : 1,
+                      transition: 'all 0.15s',
+                    }}
+                  >
+                    {saving ? 'Registering...' : (
+                      <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}>
+                        <RiCheckLine size={16} /> Register &amp; Print Receipt
+                      </span>
+                    )}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -701,15 +1038,36 @@ export default function ReceptionPage() {
         {/* ===== QUEUE TAB ===== */}
         {(tab === 'queue' || tab === 'results') && (
           <div>
-            <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem', alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
               <input
                 value={searchQ}
                 onChange={e => setSearchQ(e.target.value)}
                 placeholder="Search by name or slip number..."
                 style={{ ...inputStyle(false), flex: 1, maxWidth: 300 }}
               />
+
+              {/* Date Range Filters */}
+              <div style={{ display: 'flex', gap: '0.25rem', background: 'var(--gray-200)', padding: '0.2rem', borderRadius: 'var(--radius)' }}>
+                {[
+                  { id: 'today', label: 'Today' },
+                  { id: 'seven_days', label: 'Last 7 Days' },
+                  { id: 'thirty_days', label: 'Last 30 Days' }
+                ].map(f => (
+                  <button key={f.id} onClick={() => setDateFilter(f.id as any)} style={{
+                    padding: '0.4rem 0.85rem', border: 'none',
+                    borderRadius: 'calc(var(--radius) - 1px)', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer',
+                    background: dateFilter === f.id ? 'white' : 'transparent',
+                    color: dateFilter === f.id ? 'var(--teal-800)' : 'var(--gray-600)',
+                    boxShadow: dateFilter === f.id ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                    transition: 'all 0.15s'
+                  }}>
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+
               {tab === 'queue' && (
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <div style={{ display: 'flex', gap: '0.5rem', marginLeft: 'auto' }}>
                   {['all', 'lab', 'radiology'].map(d => (
                     <button key={d} onClick={() => setDeptFilter(d as any)} style={{
                       padding: '0.45rem 0.9rem', border: '1px solid var(--gray-300)',
@@ -756,15 +1114,176 @@ export default function ReceptionPage() {
       {showResultModal && (
         <ResultModal patient={showResultModal} org={organization} onClose={() => setShowResultModal(null)} />
       )}
+
+      {/* Quick Add Doctor Modal */}
+      {showQuickDoctor && (
+        <div style={modalOverlay}>
+          <form onSubmit={handleQuickDoctorSubmit} style={{ ...modalBox, maxWidth: 450 }}>
+            <div style={{ background: 'var(--teal-800)', padding: '1rem 1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <h2 style={{ color: 'white', fontFamily: 'var(--font-display)', fontSize: '1rem', fontWeight: 700 }}>Quick Register Referring Doctor</h2>
+                <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.7rem', marginTop: '0.15rem' }}>Add a new referring doctor to the system database</p>
+              </div>
+              <button type="button" onClick={() => setShowQuickDoctor(false)} style={closeBtn}><RiCloseLine size={16} /></button>
+            </div>
+
+            <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.9rem', background: 'white' }}>
+              {quickError && (
+                <div style={{ color: 'var(--red)', fontSize: '0.75rem', background: 'var(--red-light)', padding: '0.5rem 0.75rem', borderRadius: 'var(--radius)', border: '1px solid #f5c6cb' }}>
+                  {quickError}
+                </div>
+              )}
+
+              <Field label="Doctor's Name *">
+                <input
+                  required
+                  style={inputStyle(false)}
+                  placeholder="e.g. John Doe"
+                  value={quickDoctorForm.name}
+                  onChange={e => setQuickDoctorForm({ ...quickDoctorForm, name: e.target.value })}
+                />
+              </Field>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                <Field label="Phone Number">
+                  <input
+                    style={inputStyle(false)}
+                    placeholder="e.g. +234 80..."
+                    value={quickDoctorForm.phone}
+                    onChange={e => setQuickDoctorForm({ ...quickDoctorForm, phone: e.target.value })}
+                  />
+                </Field>
+                <Field label="Email Address">
+                  <input
+                    type="email"
+                    style={inputStyle(false)}
+                    placeholder="e.g. doc@hospital.com"
+                    value={quickDoctorForm.email}
+                    onChange={e => setQuickDoctorForm({ ...quickDoctorForm, email: e.target.value })}
+                  />
+                </Field>
+              </div>
+
+              <Field label="Affiliated Facility">
+                <select
+                  style={inputStyle(false)}
+                  value={quickDoctorForm.facility_id}
+                  onChange={e => setQuickDoctorForm({ ...quickDoctorForm, facility_id: e.target.value })}
+                >
+                  <option value="">Independent / None</option>
+                  {facilities.map(f => (
+                    <option key={f.id} value={f.id}>{f.name}</option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+
+            <div style={{ padding: '0.85rem 1.25rem', borderTop: '1px solid var(--gray-200)', display: 'flex', gap: '0.75rem', background: '#f8fafc', justifyContent: 'flex-end' }}>
+              <button type="button" onClick={() => setShowQuickDoctor(false)} style={btnStyle('outline')}>Cancel</button>
+              <button
+                type="submit"
+                disabled={quickSaving}
+                style={{
+                  ...btnStyle('primary'),
+                  cursor: quickSaving ? 'not-allowed' : 'pointer',
+                  opacity: quickSaving ? 0.7 : 1
+                }}
+              >
+                {quickSaving ? 'Saving...' : 'Register Doctor'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Quick Add Facility Modal */}
+      {showQuickFacility && (
+        <div style={modalOverlay}>
+          <form onSubmit={handleQuickFacilitySubmit} style={{ ...modalBox, maxWidth: 450 }}>
+            <div style={{ background: 'var(--teal-800)', padding: '1rem 1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <h2 style={{ color: 'white', fontFamily: 'var(--font-display)', fontSize: '1rem', fontWeight: 700 }}>Quick Register Referring Facility</h2>
+                <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.7rem', marginTop: '0.15rem' }}>Add a new referring facility to the system database</p>
+              </div>
+              <button type="button" onClick={() => setShowQuickFacility(false)} style={closeBtn}><RiCloseLine size={16} /></button>
+            </div>
+
+            <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.9rem', background: 'white' }}>
+              {quickError && (
+                <div style={{ color: 'var(--red)', fontSize: '0.75rem', background: 'var(--red-light)', padding: '0.5rem 0.75rem', borderRadius: 'var(--radius)', border: '1px solid #f5c6cb' }}>
+                  {quickError}
+                </div>
+              )}
+
+              <Field label="Facility Name *">
+                <input
+                  required
+                  style={inputStyle(false)}
+                  placeholder="e.g. City General Hospital"
+                  value={quickFacilityForm.name}
+                  onChange={e => setQuickFacilityForm({ ...quickFacilityForm, name: e.target.value })}
+                />
+              </Field>
+
+              <Field label="Address">
+                <input
+                  style={inputStyle(false)}
+                  placeholder="e.g. 12 Clinic Road, Kano"
+                  value={quickFacilityForm.address}
+                  onChange={e => setQuickFacilityForm({ ...quickFacilityForm, address: e.target.value })}
+                />
+              </Field>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                <Field label="Phone Number">
+                  <input
+                    style={inputStyle(false)}
+                    placeholder="e.g. +234 80..."
+                    value={quickFacilityForm.phone}
+                    onChange={e => setQuickFacilityForm({ ...quickFacilityForm, phone: e.target.value })}
+                  />
+                </Field>
+                <Field label="Email Address">
+                  <input
+                    type="email"
+                    style={inputStyle(false)}
+                    placeholder="e.g. contact@facility.com"
+                    value={quickFacilityForm.email}
+                    onChange={e => setQuickFacilityForm({ ...quickFacilityForm, email: e.target.value })}
+                  />
+                </Field>
+              </div>
+            </div>
+
+            <div style={{ padding: '0.85rem 1.25rem', borderTop: '1px solid var(--gray-200)', display: 'flex', gap: '0.75rem', background: '#f8fafc', justifyContent: 'flex-end' }}>
+              <button type="button" onClick={() => setShowQuickFacility(false)} style={btnStyle('outline')}>Cancel</button>
+              <button
+                type="submit"
+                disabled={quickSaving}
+                style={{
+                  ...btnStyle('primary'),
+                  cursor: quickSaving ? 'not-allowed' : 'pointer',
+                  opacity: quickSaving ? 0.7 : 1
+                }}
+              >
+                {quickSaving ? 'Saving...' : 'Register Facility'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   );
 }
 
 /* ---- Field wrapper ---- */
-function Field({ label, children, error }: { label: string; children: React.ReactNode; error?: string }) {
+function Field({ label, children, error, actionNode }: { label: string; children: React.ReactNode; error?: string; actionNode?: React.ReactNode }) {
   return (
     <div>
-      <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--gray-700)', marginBottom: '0.3rem' }}>{label}</label>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.3rem' }}>
+        <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--gray-700)' }}>{label}</label>
+        {actionNode}
+      </div>
       {children}
       {error && <p style={{ color: 'var(--red)', fontSize: '0.7rem', marginTop: '0.2rem' }}>{error}</p>}
     </div>
@@ -825,6 +1344,7 @@ function PatientCard({ patient, mode, onViewSlip, onViewResult }: any) {
 
 /* ---- Slip Modal ---- */
 function SlipModal({ patient, onClose, org }: { patient: Patient; onClose: () => void; org?: any }) {
+  const [modalTab, setModalTab] = useState<'slip' | 'invoice'>('slip');
   const regDate = new Date(patient.registeredAt).toLocaleDateString('en-NG');
   const specimens = Array.from(new Set(patient.tests.map((t: any) => t.specimen))).filter(Boolean).join(', ') || '—';
 
@@ -836,7 +1356,11 @@ function SlipModal({ patient, onClose, org }: { patient: Patient; onClose: () =>
   const handlePrint = () => {
     const win = window.open('', '_blank');
     if (!win) return;
-    win.document.write(getSlipTemplate(patient, org));
+    if (modalTab === 'slip') {
+      win.document.write(getSlipTemplate(patient, org));
+    } else {
+      win.document.write(getInvoiceTemplate(patient, org));
+    }
     win.document.close();
     setTimeout(() => {
       win.focus();
@@ -858,89 +1382,220 @@ function SlipModal({ patient, onClose, org }: { patient: Patient; onClose: () =>
         {/* Modal chrome header */}
         <div style={{ background: 'var(--teal-800)', padding: '1rem 1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
-            <h2 style={{ color: 'white', fontFamily: 'var(--font-display)', fontSize: '1rem', fontWeight: 700 }}>Investigation Request Slip</h2>
-            <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.7rem', marginTop: '0.15rem' }}>Live Preview — Slip as it will appear</p>
+            <h2 style={{ color: 'white', fontFamily: 'var(--font-display)', fontSize: '1rem', fontWeight: 700 }}>
+              {modalTab === 'slip' ? 'Investigation Request Slip' : 'Payment Receipt / Invoice'}
+            </h2>
+            <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.7rem', marginTop: '0.15rem' }}></p>
           </div>
           <button onClick={onClose} style={closeBtn}><RiCloseLine size={16} /></button>
         </div>
 
+        {/* Tab Switcher */}
+        <div style={{ background: 'white', borderBottom: '1px solid var(--gray-200)', display: 'flex' }}>
+          <button
+            type="button"
+            onClick={() => setModalTab('slip')}
+            style={{
+              flex: 1, padding: '0.75rem', border: 'none', background: modalTab === 'slip' ? 'var(--teal-50)' : 'white',
+              color: modalTab === 'slip' ? 'var(--teal-700)' : 'var(--gray-500)',
+              fontWeight: 600, fontSize: '0.8rem', borderBottom: modalTab === 'slip' ? '2px solid var(--teal-600)' : '2px solid transparent',
+              cursor: 'pointer', transition: 'all 0.15s'
+            }}
+          >
+            Investigation Request Slip
+          </button>
+          <button
+            type="button"
+            onClick={() => setModalTab('invoice')}
+            style={{
+              flex: 1, padding: '0.75rem', border: 'none', background: modalTab === 'invoice' ? 'var(--teal-50)' : 'white',
+              color: modalTab === 'invoice' ? 'var(--teal-700)' : 'var(--gray-500)',
+              fontWeight: 600, fontSize: '0.8rem', borderBottom: modalTab === 'invoice' ? '2px solid var(--teal-600)' : '2px solid transparent',
+              cursor: 'pointer', transition: 'all 0.15s'
+            }}
+          >
+            Payment Receipt
+          </button>
+        </div>
+
         {/* Live preview */}
-        <div style={{ padding: '1.25rem', background: 'var(--gray-100)' }}>
-          <div style={previewWrap}>
+        <div style={{ padding: '1.25rem', background: 'var(--gray-100)', maxHeight: '60vh', overflowY: 'auto' }}>
+          {modalTab === 'slip' ? (
+            <div style={previewWrap}>
+              {/* ── Org Header ── */}
+              <div style={{ textAlign: 'center', borderBottom: '1px dashed #000', paddingBottom: 8, marginBottom: 10 }}>
+                <div style={{ fontSize: 16, fontWeight: 'bold', lineHeight: 1.2, margin: 0 }}>{orgName.toUpperCase()}</div>
+                {orgLine2 && <div style={{ fontSize: 11, fontWeight: 'bold', margin: '2px 0 4px' }}>{orgLine2.toUpperCase()}</div>}
+                {orgAddress && <div style={{ fontSize: 10, margin: '2px 0' }}>{orgAddress}</div>}
+                {orgPhone && <div style={{ fontSize: 10, margin: 0 }}>{orgPhone}</div>}
+              </div>
 
-            {/* ── Org Header ── */}
-            <div style={{ textAlign: 'center', borderBottom: '1px dashed #000', paddingBottom: 8, marginBottom: 10 }}>
-              <div style={{ fontSize: 16, fontWeight: 'bold', lineHeight: 1.2, margin: 0 }}>{orgName.toUpperCase()}</div>
-              {orgLine2 && <div style={{ fontSize: 11, fontWeight: 'bold', margin: '2px 0 4px' }}>{orgLine2.toUpperCase()}</div>}
-              {orgAddress && <div style={{ fontSize: 10, margin: '2px 0' }}>{orgAddress}</div>}
-              {orgPhone && <div style={{ fontSize: 10, margin: 0 }}>{orgPhone}</div>}
-            </div>
+              {/* ── Slip title ── */}
+              <div style={{ fontSize: 14, fontWeight: 'bold', textAlign: 'center', margin: '8px 0 10px', borderBottom: '1px solid #000', paddingBottom: 4 }}>
+                INVESTIGATION SLIP
+              </div>
 
-            {/* ── Slip title ── */}
-            <div style={{ fontSize: 14, fontWeight: 'bold', textAlign: 'center', margin: '8px 0 10px', borderBottom: '1px solid #000', paddingBottom: 4 }}>
-              INVESTIGATION SLIP
-            </div>
-
-            {/* ── Patient info ── */}
-            <div style={{ marginBottom: 10, fontSize: 12, lineHeight: 1.6 }}>
-              {[
-                ['ID', patient.slipNumber],
-                ['Name', patient.name],
-                ['Age / Sex', `${patient.age} / ${patient.sex}`],
-                ['Date', regDate],
-                ['Specimen(s)', specimens],
-              ].map(([l, v]) => (
-                <div key={l} style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ fontWeight: 'bold' }}>{l}:</span>
-                  <span style={{ textAlign: 'right', maxWidth: '60%' }}>{v}</span>
-                </div>
-              ))}
-            </div>
-
-            {/* ── Tests ── */}
-            <div style={{ fontWeight: 'bold', borderBottom: '1px solid #000', paddingBottom: 2, marginTop: 10, fontSize: 12 }}>
-              TESTS ORDERED ({patient.tests.length})
-            </div>
-            <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 4, fontSize: 12 }}>
-              <thead>
-                <tr>
-                  <th style={{ borderBottom: '1px solid #000', textAlign: 'left', padding: '3px 0', fontWeight: 700 }}>Test</th>
-                  <th style={{ borderBottom: '1px solid #000', textAlign: 'right', padding: '3px 0', fontWeight: 700 }}>Dept</th>
-                </tr>
-              </thead>
-              <tbody>
-                {patient.tests.map((t: any) => (
-                  <tr key={t.testId} style={{ borderBottom: '1px dashed #ccc' }}>
-                    <td style={{ padding: '3px 0', fontSize: 11 }}>
-                      {t.testName}
-                      {t.specimen && <span style={{ fontSize: 9, color: '#666' }}> ({t.specimen})</span>}
-                    </td>
-                    <td style={{ padding: '3px 0', textAlign: 'right', fontSize: 11 }}>
-                      {t.department === 'lab' ? 'Lab' : 'Radio'}
-                    </td>
-                  </tr>
+              {/* ── Patient info ── */}
+              <div style={{ marginBottom: 10, fontSize: 12, lineHeight: 1.6 }}>
+                {[
+                  ['ID', patient.slipNumber],
+                  ['Name', patient.name],
+                  ['Age / Sex', `${patient.age} / ${patient.sex}`],
+                  ['Date', regDate],
+                  ['Specimen(s)', specimens],
+                ].map(([l, v]) => (
+                  <div key={l} style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ fontWeight: 'bold' }}>{l}:</span>
+                    <span style={{ textAlign: 'right', maxWidth: '60%' }}>{v}</span>
+                  </div>
                 ))}
-              </tbody>
-            </table>
+              </div>
 
-            {/* ── Footer ── */}
-            <div style={{ marginTop: 14, borderTop: '1px dashed #000', paddingTop: 8, fontSize: 10, textAlign: 'center', lineHeight: 1.5 }}>
-              Please proceed to the respective department with this slip<br />
-              {orgName} &copy; {new Date().getFullYear()}
+              {/* ── Tests ── */}
+              <div style={{ fontWeight: 'bold', borderBottom: '1px solid #000', paddingBottom: 2, marginTop: 10, fontSize: 12 }}>
+                TESTS ORDERED ({patient.tests.length})
+              </div>
+              <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 4, fontSize: 12 }}>
+                <thead>
+                  <tr>
+                    <th style={{ borderBottom: '1px solid #000', textAlign: 'left', padding: '3px 0', fontWeight: 700 }}>Test</th>
+                    <th style={{ borderBottom: '1px solid #000', textAlign: 'right', padding: '3px 0', fontWeight: 700 }}>Dept</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {patient.tests.map((t: any) => (
+                    <tr key={t.testId} style={{ borderBottom: '1px dashed #ccc' }}>
+                      <td style={{ padding: '3px 0', fontSize: 11 }}>
+                        {t.testName}
+                        {t.specimen && <span style={{ fontSize: 9, color: '#666' }}> ({t.specimen})</span>}
+                      </td>
+                      <td style={{ padding: '3px 0', textAlign: 'right', fontSize: 11 }}>
+                        {t.department === 'lab' ? 'Lab' : 'Radio'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              {/* ── Footer ── */}
+              <div style={{ marginTop: 14, borderTop: '1px dashed #000', paddingTop: 8, fontSize: 10, textAlign: 'center', lineHeight: 1.5 }}>
+                Please proceed to the respective department with this slip<br />
+                {orgName} &copy; {new Date().getFullYear()}
+              </div>
             </div>
-          </div>
+          ) : (
+            <div style={previewWrap}>
+              {/* ── Org Header ── */}
+              <div style={{ textAlign: 'center', borderBottom: '1px dashed #000', paddingBottom: 8, marginBottom: 10 }}>
+                <div style={{ fontSize: 16, fontWeight: 'bold', lineHeight: 1.2, margin: 0 }}>{orgName.toUpperCase()}</div>
+                {orgLine2 && <div style={{ fontSize: 11, fontWeight: 'bold', margin: '2px 0 4px' }}>{orgLine2.toUpperCase()}</div>}
+                {orgAddress && <div style={{ fontSize: 10, margin: '2px 0' }}>{orgAddress}</div>}
+                {orgPhone && <div style={{ fontSize: 10, margin: 0 }}>{orgPhone}</div>}
+              </div>
+
+              {/* ── Invoice Title ── */}
+              <div style={{ fontSize: 14, fontWeight: 'bold', textAlign: 'center', margin: '8px 0 10px', borderBottom: '1px solid #000', paddingBottom: 4 }}>
+                PAYMENT RECEIPT
+              </div>
+
+              {/* ── Patient & Referral Info ── */}
+              <div style={{ marginBottom: 10, fontSize: 12, lineHeight: 1.6, borderBottom: '1px dashed #000', paddingBottom: 8 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ fontWeight: 'bold' }}>Invoice No:</span> <span>{patient.slipNumber}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ fontWeight: 'bold' }}>Patient Name:</span> <span>{patient.name}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ fontWeight: 'bold' }}>Age/Sex:</span> <span>{patient.age} / {patient.sex}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ fontWeight: 'bold' }}>Date:</span> <span>{regDate}</span>
+                </div>
+              </div>
+
+              {/* ── Invoice Items ── */}
+              <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 4, fontSize: 12 }}>
+                <thead>
+                  <tr>
+                    <th style={{ borderBottom: '1px solid #000', textAlign: 'left', padding: '3px 0', fontWeight: 700 }}>Investigation</th>
+                    <th style={{ borderBottom: '1px solid #000', textAlign: 'right', padding: '3px 0', fontWeight: 700 }}>Price</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {patient.tests.map((t: any) => (
+                    <tr key={t.testId} style={{ borderBottom: '1px dashed #eee' }}>
+                      <td style={{ padding: '3px 0', fontSize: 11 }}>{t.testName}</td>
+                      <td style={{ padding: '3px 0', textAlign: 'right', fontSize: 11 }}>
+                        ₦{(t.price || 0).toLocaleString('en-NG', { minimumFractionDigits: 2 })}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              {/* ── Billing Summary ── */}
+              <div style={{ marginTop: 10, borderTop: '1px solid #000', paddingTop: 6, fontSize: 12, lineHeight: 1.6 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Subtotal:</span>
+                  <span>₦{(patient.totalAmount || 0).toLocaleString('en-NG', { minimumFractionDigits: 2 })}</span>
+                </div>
+                {(patient.discountAmount || 0) > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>
+                      {patient.discountType === 'percentage'
+                        ? `Discount (${patient.discountValue}%)`
+                        : patient.discountType === 'flat'
+                          ? 'Discount (Flat)'
+                          : 'Discount'}
+                      :
+                    </span>
+                    <span>-₦{(patient.discountAmount || 0).toLocaleString('en-NG', { minimumFractionDigits: 2 })}</span>
+                  </div>
+                )}
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: 13, borderBottom: '1px dashed #000', paddingBottom: 4, marginBottom: 4 }}>
+                  <span>Net Amount:</span>
+                  <span>₦{(patient.netAmount || 0).toLocaleString('en-NG', { minimumFractionDigits: 2 })}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Amount Paid:</span>
+                  <span>₦{(patient.paidAmount || 0).toLocaleString('en-NG', { minimumFractionDigits: 2 })}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', color: ((patient.netAmount || 0) - (patient.paidAmount || 0)) > 0 ? '#c0392b' : '#000' }}>
+                  <span>Balance Due:</span>
+                  <span>₦{((patient.netAmount || 0) - (patient.paidAmount || 0)).toLocaleString('en-NG', { minimumFractionDigits: 2 })}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#555', marginTop: 4 }}>
+                  <span>Payment Method:</span>
+                  <span style={{ textTransform: 'uppercase' }}>{patient.paymentMethod || 'cash'}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#555' }}>
+                  <span>Payment Status:</span>
+                  <span style={{ textTransform: 'uppercase', fontWeight: 'bold' }}>{patient.paymentStatus || 'paid'}</span>
+                </div>
+              </div>
+
+              {/* ── Footer ── */}
+              <div style={{ marginTop: 14, borderTop: '1px dashed #000', paddingTop: 8, fontSize: 10, textAlign: 'center', lineHeight: 1.5 }}>
+                Thank you for your patronage.<br />
+                Please retain this receipt for your records.<br />
+                {orgName} &copy; {new Date().getFullYear()}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Actions */}
         <div style={{ padding: '0.85rem 1.25rem', borderTop: '1px solid var(--gray-200)', display: 'flex', gap: '0.75rem', background: 'white' }}>
           <button
+            type="button"
             onClick={() => {
               handlePrint();
               onClose();
             }}
             style={{ ...btnStyle('primary'), flex: 1, justifyContent: 'center' }}
           >
-            <RiPrinterLine size={14} /> Print Slip &amp; Notify
+            <RiPrinterLine size={14} /> Print Document
           </button>
         </div>
       </div>
@@ -984,12 +1639,18 @@ function ResultModal({ patient, onClose, org }: { patient: Patient; onClose: () 
       return;
     }
 
+    const testsToPrint = completedTests.filter(t => selectedIds.includes(t.testId));
+    if (testsToPrint.length === 0) {
+      alert('Please select at least one test to email.');
+      return;
+    }
+
     setSendingEmail(true);
     try {
       const res = await fetch('/api/send-result', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ patient, completedTests, org }),
+        body: JSON.stringify({ patient, completedTests: testsToPrint, org }),
       });
 
       if (!res.ok) {
@@ -1007,7 +1668,7 @@ function ResultModal({ patient, onClose, org }: { patient: Patient; onClose: () 
 
   return (
     <div style={modalOverlay}>
-      <div style={{ ...modalBox, maxWidth: 700 }}>
+      <div style={{ ...modalBox, maxWidth: 900 }}>
         {/* Header */}
         <div style={{ background: 'var(--teal-800)', padding: '1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
@@ -1060,183 +1721,12 @@ function ResultModal({ patient, onClose, org }: { patient: Patient; onClose: () 
         </div>
 
         {/* Results preview */}
-        <div style={{ padding: '1.25rem', maxHeight: '45vh', overflowY: 'auto' }}>
-          {completedTests.map(t => {
-            const isSelected = selectedIds.includes(t.testId);
-            const isMcs = t.testId.toLowerCase().endsWith('_mcs') || t.testId.toLowerCase().includes('mcs') || t.testId.toLowerCase() === 'sfmcs' || t.testName.toLowerCase().includes('mcs') || t.testName.toLowerCase().includes('culture & sensitivity') || t.testName.toLowerCase().includes('culture and sensitivity');
-
-            let colour = '—';
-            let appearance = '—';
-            const microscopyRows: { parameter: string; value: string }[] = [];
-            let growth = '—';
-            let organism = '—';
-            let degree = '—';
-            let gramReaction = '—';
-            let shape = '—';
-            let incubationPeriod = '—';
-            let incubationTemperature = '—';
-
-            const sensitiveList: string[] = [];
-            const intermediateList: string[] = [];
-            const resistantList: string[] = [];
-
-            if (isMcs) {
-              (t.results || []).forEach(r => {
-                const param = r.parameter;
-                const val = r.result;
-
-                if (param.startsWith('Macroscopy: ')) {
-                  const field = param.replace('Macroscopy: ', '');
-                  if (field === 'Colour') colour = val || '—';
-                  if (field === 'Appearance') appearance = val || '—';
-                } else if (param.startsWith('Microscopy: ')) {
-                  const pName = param.replace('Microscopy: ', '');
-                  microscopyRows.push({ parameter: pName, value: val });
-                } else if (param.startsWith('Culture: ')) {
-                  const field = param.replace('Culture: ', '');
-                  if (field === 'Growth') growth = val || '—';
-                  if (field === 'Organism') organism = val || '—';
-                  if (field === 'Degree') degree = val || '—';
-                  if (field === 'Gram Reaction') gramReaction = val || '—';
-                  if (field === 'Shape') shape = val || '—';
-                  if (field === 'Incubation Period') incubationPeriod = val || '—';
-                  if (field === 'Incubation Temperature') incubationTemperature = val || '—';
-                } else if (param.startsWith('Sensitivity: ')) {
-                  const match = param.match(/Sensitivity:\s+(.+)\s+\((.+)\)/);
-                  if (match) {
-                    const antibioticText = `${match[1]} (${match[2]})`;
-                    if (val === 'S') sensitiveList.push(antibioticText);
-                    else if (val === 'I') intermediateList.push(antibioticText);
-                    else if (val === 'R') resistantList.push(antibioticText);
-                  }
-                }
-              });
-            }
-
-            const isNoGrowth = ['no growth', 'sterile', 'no-growth'].includes(growth.trim().toLowerCase());
-
-            const maxRows = Math.max(sensitiveList.length, intermediateList.length, resistantList.length);
-            const sensitivityRows = [];
-            for (let i = 0; i < maxRows; i++) {
-              sensitivityRows.push({
-                s: sensitiveList[i] || '',
-                i: intermediateList[i] || '',
-                r: resistantList[i] || ''
-              });
-            }
-
-            return (
-              <div key={t.testId} style={{
-                marginBottom: '1.25rem', border: `1px solid ${isSelected ? 'var(--teal-300)' : 'var(--gray-200)'}`,
-                borderRadius: 'var(--radius)', overflow: 'hidden', opacity: isSelected ? 1 : 0.45,
-                transition: 'opacity 0.2s',
-              }}>
-                <div style={{ background: isSelected ? 'var(--teal-800)' : 'var(--gray-400)', padding: '0.6rem 1rem', color: 'white', fontSize: '0.82rem', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span>{t.testName}</span>
-                  {!isSelected && <span style={{ fontSize: '0.65rem', opacity: 0.7 }}>excluded from print</span>}
-                </div>
-
-                {isMcs ? (
-                  <div style={{ padding: '0.85rem', fontSize: '0.78rem' }}>
-                    {/* Macroscopy & Microscopy */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
-                      <div style={{ border: '1px solid var(--gray-200)', borderRadius: 4, padding: '0.5rem' }}>
-                        <div style={{ fontWeight: 700, borderBottom: '1px solid var(--gray-200)', marginBottom: '0.35rem', color: 'var(--teal-800)' }}>MACROSCOPY</div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.15rem 0' }}>
-                          <span style={{ fontWeight: 600 }}>Colour:</span> <span>{colour}</span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.15rem 0' }}>
-                          <span style={{ fontWeight: 600 }}>Appearance:</span> <span>{appearance}</span>
-                        </div>
-                      </div>
-                      <div style={{ border: '1px solid var(--gray-200)', borderRadius: 4, padding: '0.5rem' }}>
-                        <div style={{ fontWeight: 700, borderBottom: '1px solid var(--gray-200)', marginBottom: '0.35rem', color: 'var(--teal-800)' }}>MICROSCOPY</div>
-                        {microscopyRows.length > 0 ? microscopyRows.map((m, idx) => (
-                          <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.15rem 0' }}>
-                            <span style={{ fontWeight: 600 }}>{m.parameter}:</span> <span>{m.value || 'Nil'}</span>
-                          </div>
-                        )) : <div style={{ fontStyle: 'italic', color: 'var(--gray-400)' }}>No microscopy parameters</div>}
-                      </div>
-                    </div>
-
-                    {/* Culture findings */}
-                    <div style={{ border: '1px solid var(--gray-200)', borderRadius: 4, padding: '0.5rem', marginBottom: '0.75rem' }}>
-                      <div style={{ fontWeight: 700, borderBottom: '1px solid var(--gray-200)', marginBottom: '0.35rem', color: 'var(--teal-800)' }}>CULTURE FINDINGS</div>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
-                        <div><span style={{ fontWeight: 600 }}>Growth:</span> {growth}</div>
-                        {!isNoGrowth && (
-                          <>
-                            <div><span style={{ fontWeight: 600 }}>Organism:</span> <span style={{ fontStyle: 'italic' }}>{organism}</span></div>
-                            <div><span style={{ fontWeight: 600 }}>Degree:</span> {degree}</div>
-                            <div><span style={{ fontWeight: 600 }}>Reaction:</span> {gramReaction} ({shape})</div>
-                            <div style={{ gridColumn: 'span 2' }}><span style={{ fontWeight: 600 }}>Incubation:</span> {incubationPeriod} @ {incubationTemperature}</div>
-                          </>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Sensitivity */}
-                    {!isNoGrowth && (
-                      <div style={{ border: '1px solid var(--gray-200)', borderRadius: 4, padding: '0.5rem' }}>
-                        <div style={{ fontWeight: 700, borderBottom: '1px solid var(--gray-200)', marginBottom: '0.35rem', color: 'var(--teal-800)' }}>ANTIBIOTIC SENSITIVITY PROFILE</div>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
-                          <thead>
-                            <tr style={{ background: 'var(--gray-50)' }}>
-                              <th style={{ padding: '0.3rem', textAlign: 'left', color: 'var(--green)', borderBottom: '1.5px solid var(--gray-200)' }}>SENSITIVE (S)</th>
-                              <th style={{ padding: '0.3rem', textAlign: 'left', color: 'var(--amber)', borderBottom: '1.5px solid var(--gray-200)' }}>INTERMEDIATE (I)</th>
-                              <th style={{ padding: '0.3rem', textAlign: 'left', color: 'var(--red)', borderBottom: '1.5px solid var(--gray-200)' }}>RESISTANT (R)</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {sensitivityRows.length > 0 ? sensitivityRows.map((row, idx) => (
-                              <tr key={idx} style={{ borderBottom: '1px solid var(--gray-100)' }}>
-                                <td style={{ padding: '0.25rem 0.3rem', color: 'var(--green)' }}>{row.s}</td>
-                                <td style={{ padding: '0.25rem 0.3rem', color: 'var(--amber)' }}>{row.i}</td>
-                                <td style={{ padding: '0.25rem 0.3rem', color: 'var(--red)', fontWeight: 600 }}>{row.r}</td>
-                              </tr>
-                            )) : (
-                              <tr>
-                                <td colSpan={3} style={{ textAlign: 'center', padding: '0.5rem', fontStyle: 'italic', color: 'var(--gray-400)' }}>No sensitivity results</td>
-                              </tr>
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  t.results && t.results.length > 0 && (
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
-                      <thead>
-                        <tr style={{ background: 'var(--teal-50)' }}>
-                          {['Parameter', 'Result', 'Unit', 'Reference Range'].map(h => (
-                            <th key={h} style={{ padding: '0.5rem 0.75rem', textAlign: 'left', color: 'var(--teal-800)', fontWeight: 700, borderBottom: '1px solid var(--teal-200)' }}>{h}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {t.results.map((r, i) => (
-                          <tr key={i} style={{ borderBottom: '1px solid var(--gray-100)' }}>
-                            <td style={{ padding: '0.45rem 0.75rem' }}>{r.parameter}</td>
-                            <td style={{ padding: '0.45rem 0.75rem', fontWeight: 700, color: r.flag === 'H' ? 'var(--red)' : r.flag === 'L' ? '#1a6aaf' : 'var(--gray-900)' }}>
-                              {r.result}{r.flag ? ` (${r.flag})` : ''}
-                            </td>
-                            <td style={{ padding: '0.45rem 0.75rem', color: 'var(--gray-500)' }}>{r.unit || '—'}</td>
-                            <td style={{ padding: '0.45rem 0.75rem', color: 'var(--gray-500)', fontFamily: 'var(--font-mono)', fontSize: '0.72rem' }}>{r.range || '—'}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )
-                )}
-
-                {t.notes && <div style={{ padding: '0.5rem 0.75rem', background: '#fffbe6', fontSize: '0.75rem', fontStyle: 'italic', borderTop: '1px solid var(--gray-200)' }}><b>Comment:</b> {t.notes}</div>}
-                <div style={{ padding: '0.45rem 0.75rem', background: 'var(--gray-50)', fontSize: '0.7rem', color: 'var(--gray-500)', borderTop: '1px solid var(--gray-200)' }}>
-                  Analysed by: <b style={{ color: 'var(--gray-700)' }}>{t.completedBy || '—'}</b> • {t.completedAt ? new Date(t.completedAt).toLocaleString('en-NG') : '—'}
-                </div>
-              </div>
-            );
-          })}
+        <div style={{ borderTop: '1px solid var(--gray-200)', borderBottom: '1px solid var(--gray-200)', height: '45vh', background: '#f8fafc' }}>
+          <iframe
+            srcDoc={getResultTemplate(patient, completedTests.filter(t => selectedIds.includes(t.testId)), org)}
+            style={{ width: '100%', height: '100%', border: 'none', background: 'white' }}
+            title="Result Preview"
+          />
         </div>
 
         {/* Actions */}

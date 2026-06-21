@@ -13,7 +13,13 @@ const CATEGORIES = Array.from(new Set(TEST_CATALOGUE.map(t => t.category)));
 export default function TestPricingPage() {
   const { organization } = useAuth();
   const [prices, setPrices] = useState<Record<string, number>>({});
-  const [saved, setSaved] = useState<Record<string, number>>({});
+  const [commTypes, setCommTypes] = useState<Record<string, 'percentage' | 'flat' | 'none'>>({});
+  const [commValues, setCommValues] = useState<Record<string, number>>({});
+  const [saved, setSaved] = useState<{
+    prices: Record<string, number>;
+    commTypes: Record<string, 'percentage' | 'flat' | 'none'>;
+    commValues: Record<string, number>;
+  }>({ prices: {}, commTypes: {}, commValues: {} });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
@@ -25,10 +31,18 @@ export default function TestPricingPage() {
   useEffect(() => {
     if (!organization?.id) return;
     fetchTestPrices(organization.id).then(data => {
-      const map: Record<string, number> = {};
-      data.forEach(p => { map[p.test_id] = p.price; });
-      setPrices(map);
-      setSaved(map);
+      const pMap: Record<string, number> = {};
+      const tMap: Record<string, 'percentage' | 'flat' | 'none'> = {};
+      const vMap: Record<string, number> = {};
+      data.forEach(p => {
+        pMap[p.test_id] = p.price;
+        tMap[p.test_id] = (p.commission_type as any) || 'percentage';
+        vMap[p.test_id] = p.commission_value || 0;
+      });
+      setPrices(pMap);
+      setCommTypes(tMap);
+      setCommValues(vMap);
+      setSaved({ prices: pMap, commTypes: tMap, commValues: vMap });
       setLoading(false);
     });
   }, [organization?.id]);
@@ -38,7 +52,19 @@ export default function TestPricingPage() {
     setPrices(prev => ({ ...prev, [testId]: isNaN(num) ? 0 : num }));
   };
 
-  const isDirty = JSON.stringify(prices) !== JSON.stringify(saved);
+  const setCommType = (testId: string, val: 'percentage' | 'flat' | 'none') => {
+    setCommTypes(prev => ({ ...prev, [testId]: val }));
+    if (val === 'none') {
+      setCommValues(prev => ({ ...prev, [testId]: 0 }));
+    }
+  };
+
+  const setCommValue = (testId: string, val: string) => {
+    const num = parseFloat(val);
+    setCommValues(prev => ({ ...prev, [testId]: isNaN(num) ? 0 : num }));
+  };
+
+  const isDirty = JSON.stringify({ prices, commTypes, commValues }) !== JSON.stringify(saved);
 
   const totalRevenue = TEST_CATALOGUE.reduce((sum, t) => sum + (prices[t.id] || 0), 0);
 
@@ -52,10 +78,12 @@ export default function TestPricingPage() {
         test_id: t.id,
         test_name: t.name,
         price: prices[t.id] || 0,
+        commission_type: commTypes[t.id] || 'percentage',
+        commission_value: commValues[t.id] || 0,
       }));
       await upsertTestPrices(rows, organization.id);
-      setSaved({ ...prices });
-      setSuccessMsg(`${rows.length} test prices saved successfully.`);
+      setSaved({ prices: { ...prices }, commTypes: { ...commTypes }, commValues: { ...commValues } });
+      setSuccessMsg(`${rows.length} test prices and commissions saved successfully.`);
       setTimeout(() => setSuccessMsg(''), 3000);
     } catch (e: any) {
       setErrorMsg(e.message);
@@ -80,10 +108,10 @@ export default function TestPricingPage() {
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.2rem' }}>
               <RiPriceTag3Line size={22} color="var(--teal-600)" />
-              <h1 style={{ fontSize: '1.3rem', fontWeight: 700, color: 'var(--gray-900)', margin: 0 }}>Test Price List</h1>
+              <h1 style={{ fontSize: '1.3rem', fontWeight: 700, color: 'var(--gray-900)', margin: 0 }}>Test Price &amp; Commission Catalog</h1>
             </div>
             <p style={{ color: 'var(--gray-500)', fontSize: '0.82rem', margin: 0 }}>
-              Set prices for all {TEST_CATALOGUE.length} tests. Prices are used for commission calculations.
+              Set prices and referral commission settings for all {TEST_CATALOGUE.length} tests.
             </p>
           </div>
           <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
@@ -103,7 +131,7 @@ export default function TestPricingPage() {
                 transition: 'background 0.2s',
               }}
             >
-              <RiSaveLine size={16} /> {saving ? 'Saving…' : isDirty ? 'Save All Prices' : 'All Saved'}
+              <RiSaveLine size={16} /> {saving ? 'Saving…' : isDirty ? 'Save All Changes' : 'All Saved'}
             </button>
           </div>
         </div>
@@ -120,8 +148,8 @@ export default function TestPricingPage() {
           {[
             { label: 'Total Tests', value: TEST_CATALOGUE.length, color: 'var(--teal-600)', fmt: (v: number) => v },
             { label: 'Tests with Prices', value: Object.values(prices).filter(v => v > 0).length, color: 'var(--green)', fmt: (v: number) => v },
-            { label: 'Unprice Tests', value: TEST_CATALOGUE.length - Object.values(prices).filter(v => v > 0).length, color: 'var(--amber)', fmt: (v: number) => v },
-            { label: 'Total Price List', value: totalRevenue, color: 'var(--gold)', fmt: (v: number) => `₦${v.toLocaleString()}` },
+            { label: 'Tests with Commission', value: Object.keys(commTypes).filter(k => commTypes[k] !== 'none' && (commValues[k] || 0) > 0).length, color: 'var(--gold)', fmt: (v: number) => v },
+            { label: 'Total Price List', value: totalRevenue, color: 'var(--teal-700)', fmt: (v: number) => `₦${v.toLocaleString()}` },
           ].map(s => (
             <div key={s.label} style={{ background: 'white', border: '1px solid var(--gray-200)', padding: '0.9rem 1.1rem' }}>
               <div style={{ fontSize: '1.4rem', fontWeight: 800, color: s.color }}>{(s.fmt as any)(s.value)}</div>
@@ -156,7 +184,7 @@ export default function TestPricingPage() {
 
         {/* Price grid by category */}
         {loading ? (
-          <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--gray-400)' }}>Loading prices…</div>
+          <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--gray-400)' }}>Loading pricing catalog…</div>
         ) : (
           CATEGORIES.filter(cat => !filterCat || cat === filterCat).map(cat => {
             const testsInCat = filteredTests.filter(t => t.category === cat);
@@ -173,7 +201,9 @@ export default function TestPricingPage() {
                         <th style={thStyle}>Test Name</th>
                         <th style={thStyle}>Department</th>
                         <th style={thStyle}>Specimen</th>
-                        <th style={{ ...thStyle, width: 180 }}>Price (₦)</th>
+                        <th style={{ ...thStyle, width: 140 }}>Price (₦)</th>
+                        <th style={{ ...thStyle, width: 150 }}>Comm. Type</th>
+                        <th style={{ ...thStyle, width: 130 }}>Comm. Value</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -201,9 +231,49 @@ export default function TestPricingPage() {
                                   flex: 1, padding: '0.4rem 0.6rem', border: '1px solid var(--gray-300)',
                                   borderRadius: 0, fontSize: '0.85rem', fontFamily: 'var(--font-body)',
                                   outline: 'none', textAlign: 'right', fontWeight: 700,
-                                  background: (prices[t.id] || 0) !== (saved[t.id] || 0) ? 'rgba(68,114,196,0.06)' : 'white',
-                                  borderColor: (prices[t.id] || 0) !== (saved[t.id] || 0) ? 'var(--teal-400)' : 'var(--gray-300)',
+                                  background: (prices[t.id] || 0) !== (saved.prices?.[t.id] || 0) ? 'rgba(68,114,196,0.06)' : 'white',
+                                  borderColor: (prices[t.id] || 0) !== (saved.prices?.[t.id] || 0) ? 'var(--teal-400)' : 'var(--gray-300)',
                                   color: 'var(--gray-900)',
+                                }}
+                              />
+                            </div>
+                          </td>
+                          <td style={{ padding: '0.5rem 1rem' }}>
+                            <select
+                              value={commTypes[t.id] || 'percentage'}
+                              onChange={e => setCommType(t.id, e.target.value as any)}
+                              style={{
+                                width: '100%', padding: '0.4rem 0.6rem', border: '1px solid var(--gray-300)',
+                                borderRadius: 0, fontSize: '0.82rem', fontFamily: 'var(--font-body)',
+                                outline: 'none', background: 'white', color: 'var(--gray-900)',
+                                borderColor: (commTypes[t.id] || 'percentage') !== (saved.commTypes?.[t.id] || 'percentage') ? 'var(--teal-400)' : 'var(--gray-300)',
+                              }}
+                            >
+                              <option value="percentage">Percentage (%)</option>
+                              <option value="flat">Flat Rate (₦)</option>
+                              <option value="none">None (0%)</option>
+                            </select>
+                          </td>
+                          <td style={{ padding: '0.5rem 1rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                              <span style={{ color: 'var(--gray-500)', fontSize: '0.85rem', fontWeight: 600 }}>
+                                {commTypes[t.id] === 'flat' ? '₦' : '%'}
+                              </span>
+                              <input
+                                type="number"
+                                min={0}
+                                step={commTypes[t.id] === 'flat' ? 100 : 1}
+                                disabled={commTypes[t.id] === 'none'}
+                                value={commTypes[t.id] === 'none' ? 0 : (commValues[t.id] ?? '')}
+                                onChange={e => setCommValue(t.id, e.target.value)}
+                                placeholder="0"
+                                style={{
+                                  flex: 1, padding: '0.4rem 0.6rem', border: '1px solid var(--gray-300)',
+                                  borderRadius: 0, fontSize: '0.85rem', fontFamily: 'var(--font-body)',
+                                  outline: 'none', textAlign: 'right', fontWeight: 700,
+                                  background: commTypes[t.id] === 'none' ? 'var(--gray-100)' : (commValues[t.id] || 0) !== (saved.commValues?.[t.id] || 0) ? 'rgba(68,114,196,0.06)' : 'white',
+                                  borderColor: commTypes[t.id] === 'none' ? 'var(--gray-300)' : (commValues[t.id] || 0) !== (saved.commValues?.[t.id] || 0) ? 'var(--teal-400)' : 'var(--gray-300)',
+                                  color: commTypes[t.id] === 'none' ? 'var(--gray-400)' : 'var(--gray-900)',
                                 }}
                               />
                             </div>
@@ -221,7 +291,7 @@ export default function TestPricingPage() {
         {/* Floating save bar when dirty */}
         {isDirty && (
           <div style={{ position: 'fixed', bottom: '1.5rem', right: '1.5rem', background: 'var(--teal-800)', color: 'white', padding: '0.75rem 1.25rem', display: 'flex', alignItems: 'center', gap: '0.75rem', boxShadow: '0 8px 24px rgba(0,0,0,0.25)', animation: 'fadeIn 0.2s ease', zIndex: 50 }}>
-            <span style={{ fontSize: '0.82rem', fontWeight: 600 }}>You have unsaved price changes</span>
+            <span style={{ fontSize: '0.82rem', fontWeight: 600 }}>You have unsaved catalog changes</span>
             <button onClick={handleSave} disabled={saving} style={{ background: 'white', color: 'var(--teal-800)', border: 'none', padding: '0.4rem 1rem', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
               <RiSaveLine size={14} /> {saving ? 'Saving…' : 'Save Now'}
             </button>
