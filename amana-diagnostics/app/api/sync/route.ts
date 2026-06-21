@@ -102,6 +102,9 @@ export async function POST(request: Request) {
           if (table_name === 'test_prices') {
             const [orgId, testId] = record_id.split(':');
             deleteQuery = supabase.from(table_name).delete().eq('organization_id', orgId).eq('test_id', testId);
+          } else if (table_name === 'custom_tests') {
+            const [orgId, testId] = record_id.split(':');
+            deleteQuery = supabase.from(table_name).delete().eq('organization_id', orgId).eq('id', testId);
           } else {
             deleteQuery = supabase.from(table_name).delete().eq('id', record_id);
           }
@@ -116,6 +119,9 @@ export async function POST(request: Request) {
           if (table_name === 'patient_tests' && data.results && typeof data.results === 'string') {
             data.results = JSON.parse(data.results);
           }
+          if (table_name === 'custom_tests' && data.parameters && typeof data.parameters === 'string') {
+            data.parameters = JSON.parse(data.parameters);
+          }
           
           // Map boolean values for Supabase
           if (table_name === 'patients' && 'commission_assigned' in data) {
@@ -127,11 +133,17 @@ export async function POST(request: Request) {
           if (table_name === 'referring_facilities' && 'is_active' in data) {
             data.is_active = data.is_active === 1 || data.is_active === true;
           }
+          if (table_name === 'custom_tests' && 'is_active' in data) {
+            data.is_active = data.is_active === 1 || data.is_active === true;
+          }
 
           let updateQuery;
           if (table_name === 'test_prices') {
             const [orgId, testId] = record_id.split(':');
             updateQuery = supabase.from(table_name).update(data).eq('organization_id', orgId).eq('test_id', testId);
+          } else if (table_name === 'custom_tests') {
+            const [orgId, testId] = record_id.split(':');
+            updateQuery = supabase.from(table_name).update(data).eq('organization_id', orgId).eq('id', testId);
           } else {
             updateQuery = supabase.from(table_name).update(data).eq('id', record_id);
           }
@@ -147,6 +159,9 @@ export async function POST(request: Request) {
           if (table_name === 'patient_tests' && data.results && typeof data.results === 'string') {
             data.results = JSON.parse(data.results);
           }
+          if (table_name === 'custom_tests' && data.parameters && typeof data.parameters === 'string') {
+            data.parameters = JSON.parse(data.parameters);
+          }
           
           // Map boolean values for Supabase
           if (table_name === 'patients' && 'commission_assigned' in data) {
@@ -156,6 +171,9 @@ export async function POST(request: Request) {
             data.is_active = data.is_active === 1 || data.is_active === true;
           }
           if (table_name === 'referring_facilities' && 'is_active' in data) {
+            data.is_active = data.is_active === 1 || data.is_active === true;
+          }
+          if (table_name === 'custom_tests' && 'is_active' in data) {
             data.is_active = data.is_active === 1 || data.is_active === true;
           }
 
@@ -303,6 +321,36 @@ export async function POST(request: Request) {
       `);
       prices.forEach((p) => {
         insertPrice.run(p.organization_id, p.test_id, p.test_name, p.price, p.commission_type || 'percentage', p.commission_value ?? 0);
+      });
+    }
+
+    // Pull Custom Tests
+    const { data: cTests } = await supabase.from('custom_tests').select('*').eq('organization_id', organizationId).gt('updated_at', lastPull);
+    if (cTests && cTests.length > 0) {
+      const insertCTest = db.prepare(`
+        INSERT INTO custom_tests (id, organization_id, name, department, category, specimen, parameters, is_active, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(organization_id, id) DO UPDATE SET
+          name = excluded.name,
+          department = excluded.department,
+          category = excluded.category,
+          specimen = excluded.specimen,
+          parameters = excluded.parameters,
+          is_active = excluded.is_active,
+          updated_at = excluded.updated_at
+      `);
+      cTests.forEach((t) => {
+        insertCTest.run(
+          t.id,
+          t.organization_id,
+          t.name,
+          t.department,
+          t.category,
+          t.specimen,
+          t.parameters ? JSON.stringify(t.parameters) : '[]',
+          t.is_active ? 1 : 0,
+          t.updated_at
+        );
       });
     }
 

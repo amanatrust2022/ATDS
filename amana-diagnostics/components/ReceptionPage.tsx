@@ -12,6 +12,7 @@ import {
   ReferringDoctor, ReferringFacility, TestPrice,
   fetchReferringDoctors, fetchReferringFacilities, fetchTestPrices,
   addPatientWithReferral, addReferringDoctor, addReferringFacility,
+  fetchCustomTests, setCustomCatalogueCache, Test
 } from '@/lib/store';
 import { getResultTemplate, getSlipTemplate, getInvoiceTemplate } from '@/lib/templates';
 import { useAuth } from '@/components/AuthProvider';
@@ -46,6 +47,7 @@ export default function ReceptionPage() {
   const [doctors, setDoctors] = useState<ReferringDoctor[]>([]);
   const [facilities, setFacilities] = useState<ReferringFacility[]>([]);
   const [testPrices, setTestPrices] = useState<TestPrice[]>([]);
+  const [catalogue, setCatalogue] = useState<Test[]>(TEST_CATALOGUE);
   const [selectedDoctorId, setSelectedDoctorId] = useState('');
   const [selectedFacilityId, setSelectedFacilityId] = useState('');
   const [doctorSearch, setDoctorSearch] = useState('');
@@ -77,16 +79,36 @@ export default function ReceptionPage() {
   }, [organization?.id]);
 
   // Load referral databases
+  // Load referral databases & custom tests
   useEffect(() => {
     if (!organization?.id) return;
     Promise.all([
       fetchReferringDoctors(organization.id),
       fetchReferringFacilities(organization.id),
       fetchTestPrices(organization.id),
-    ]).then(([docs, facs, prices]) => {
+      fetchCustomTests(organization.id),
+    ]).then(([docs, facs, prices, customTests]) => {
       setDoctors(docs.filter(d => d.is_active));
       setFacilities(facs.filter(f => f.is_active));
       setTestPrices(prices);
+
+      setCustomCatalogueCache(customTests);
+
+      // Merge defaults with custom tests
+      const merged = [...TEST_CATALOGUE];
+      customTests.forEach(ct => {
+        const idx = merged.findIndex(t => t.id === ct.id);
+        if (idx !== -1) {
+          if (ct.is_active === false) {
+            merged.splice(idx, 1);
+          } else {
+            merged[idx] = ct;
+          }
+        } else if (ct.is_active !== false) {
+          merged.push(ct);
+        }
+      });
+      setCatalogue(merged);
     });
   }, [organization?.id]);
 
@@ -108,7 +130,7 @@ export default function ReceptionPage() {
     return () => { unsubscribe(); };
   }, [organization?.id, refresh]);
 
-  const filteredTests = TEST_CATALOGUE.filter(test => {
+  const filteredTests = catalogue.filter(test => {
     const q = testSearch.trim().toLowerCase();
     if (!q) return true;
 

@@ -2,16 +2,16 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/components/AuthProvider';
-import { TEST_CATALOGUE, TestPrice, fetchTestPrices, upsertTestPrices } from '@/lib/store';
+import { TEST_CATALOGUE, TestPrice, fetchTestPrices, upsertTestPrices, fetchCustomTests, Test } from '@/lib/store';
 import {
   RiPriceTag3Line, RiSaveLine, RiCheckLine, RiErrorWarningLine,
   RiTestTubeLine, RiRadarLine,
 } from '@remixicon/react';
 
-const CATEGORIES = Array.from(new Set(TEST_CATALOGUE.map(t => t.category)));
-
 export default function TestPricingPage() {
   const { organization } = useAuth();
+  const [catalogue, setCatalogue] = useState<Test[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
   const [prices, setPrices] = useState<Record<string, number>>({});
   const [commTypes, setCommTypes] = useState<Record<string, 'percentage' | 'flat' | 'none'>>({});
   const [commValues, setCommValues] = useState<Record<string, number>>({});
@@ -30,11 +30,14 @@ export default function TestPricingPage() {
 
   useEffect(() => {
     if (!organization?.id) return;
-    fetchTestPrices(organization.id).then(data => {
+    Promise.all([
+      fetchTestPrices(organization.id),
+      fetchCustomTests(organization.id),
+    ]).then(([priceData, customTests]) => {
       const pMap: Record<string, number> = {};
       const tMap: Record<string, 'percentage' | 'flat' | 'none'> = {};
       const vMap: Record<string, number> = {};
-      data.forEach(p => {
+      priceData.forEach(p => {
         pMap[p.test_id] = p.price;
         tMap[p.test_id] = (p.commission_type as any) || 'percentage';
         vMap[p.test_id] = p.commission_value || 0;
@@ -43,6 +46,26 @@ export default function TestPricingPage() {
       setCommTypes(tMap);
       setCommValues(vMap);
       setSaved({ prices: pMap, commTypes: tMap, commValues: vMap });
+
+      // Merge defaults with custom tests
+      const merged = [...TEST_CATALOGUE];
+      customTests.forEach(ct => {
+        const idx = merged.findIndex(t => t.id === ct.id);
+        if (idx !== -1) {
+          if (ct.is_active === false) {
+            merged.splice(idx, 1);
+          } else {
+            merged[idx] = ct;
+          }
+        } else if (ct.is_active !== false) {
+          merged.push(ct);
+        }
+      });
+      setCatalogue(merged);
+
+      const uniqueCats = Array.from(new Set(merged.map(t => t.category)));
+      setCategories(uniqueCats);
+
       setLoading(false);
     });
   }, [organization?.id]);
@@ -66,14 +89,14 @@ export default function TestPricingPage() {
 
   const isDirty = JSON.stringify({ prices, commTypes, commValues }) !== JSON.stringify(saved);
 
-  const totalRevenue = TEST_CATALOGUE.reduce((sum, t) => sum + (prices[t.id] || 0), 0);
+  const totalRevenue = catalogue.reduce((sum, t) => sum + (prices[t.id] || 0), 0);
 
   const handleSave = async () => {
     if (!organization?.id) return;
     setSaving(true);
     setErrorMsg('');
     try {
-      const rows = TEST_CATALOGUE.map(t => ({
+      const rows = catalogue.map(t => ({
         organization_id: organization.id,
         test_id: t.id,
         test_name: t.name,
@@ -92,7 +115,7 @@ export default function TestPricingPage() {
     }
   };
 
-  const filteredTests = TEST_CATALOGUE.filter(t => {
+  const filteredTests = catalogue.filter(t => {
     const catMatch = !filterCat || t.category === filterCat;
     const deptMatch = filterDept === 'all' || t.department === filterDept;
     const q = search.toLowerCase();
@@ -111,7 +134,7 @@ export default function TestPricingPage() {
               <h1 style={{ fontSize: '1.3rem', fontWeight: 700, color: 'var(--gray-900)', margin: 0 }}>Test Price &amp; Commission Catalog</h1>
             </div>
             <p style={{ color: 'var(--gray-500)', fontSize: '0.82rem', margin: 0 }}>
-              Set prices and referral commission settings for all {TEST_CATALOGUE.length} tests.
+              Set prices and referral commission settings for all {catalogue.length} tests.
             </p>
           </div>
           <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
@@ -146,7 +169,7 @@ export default function TestPricingPage() {
         {/* Stats row */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.75rem', marginBottom: '1.5rem' }}>
           {[
-            { label: 'Total Tests', value: TEST_CATALOGUE.length, color: 'var(--teal-600)', fmt: (v: number) => v },
+            { label: 'Total Tests', value: catalogue.length, color: 'var(--teal-600)', fmt: (v: number) => v },
             { label: 'Tests with Prices', value: Object.values(prices).filter(v => v > 0).length, color: 'var(--green)', fmt: (v: number) => v },
             { label: 'Tests with Commission', value: Object.keys(commTypes).filter(k => commTypes[k] !== 'none' && (commValues[k] || 0) > 0).length, color: 'var(--gold)', fmt: (v: number) => v },
             { label: 'Total Price List', value: totalRevenue, color: 'var(--teal-700)', fmt: (v: number) => `₦${v.toLocaleString()}` },
@@ -172,7 +195,7 @@ export default function TestPricingPage() {
           </select>
           <select value={filterCat} onChange={e => setFilterCat(e.target.value)} style={selectStyle}>
             <option value="">All Categories</option>
-            {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+            {categories.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
           {(search || filterCat || filterDept !== 'all') && (
             <button onClick={() => { setSearch(''); setFilterCat(''); setFilterDept('all'); }} style={{ padding: '0.4rem 0.75rem', border: '1px solid var(--gray-300)', background: 'white', fontSize: '0.75rem', cursor: 'pointer', borderRadius: 0, color: 'var(--gray-600)' }}>
@@ -186,7 +209,7 @@ export default function TestPricingPage() {
         {loading ? (
           <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--gray-400)' }}>Loading pricing catalog…</div>
         ) : (
-          CATEGORIES.filter(cat => !filterCat || cat === filterCat).map(cat => {
+          categories.filter(cat => !filterCat || cat === filterCat).map(cat => {
             const testsInCat = filteredTests.filter(t => t.category === cat);
             if (testsInCat.length === 0) return null;
             return (

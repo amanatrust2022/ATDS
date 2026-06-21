@@ -66,8 +66,178 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
 
   const testSections = completedTests.map(t => {
     const isMcs = t.testId.toLowerCase().endsWith('_mcs') || t.testId.toLowerCase().includes('mcs') || t.testId.toLowerCase() === 'sfmcs' || t.testName.toLowerCase().includes('mcs') || t.testName.toLowerCase().includes('culture & sensitivity') || t.testName.toLowerCase().includes('culture and sensitivity');
+    const isWidal = t.testId.toLowerCase() === 'widal' || t.testId.toLowerCase().includes('widal') || t.testName.toLowerCase().includes('widal');
+    const isMps = t.testId.toLowerCase() === 'mps' || t.testId.toLowerCase() === 'mp' || t.testId.toLowerCase().includes('mps') || t.testId.toLowerCase().startsWith('mp_') || t.testId.toLowerCase().includes('_mp') || t.testName.toLowerCase().includes('mps') || t.testName.toLowerCase().includes('mp ') || t.testName.toLowerCase().includes('mp+') || t.testName.toLowerCase().includes('mp +') || t.testName.toLowerCase().includes('malaria parasite') || t.testName.toLowerCase().includes('malaria film') || t.testName.toLowerCase().includes('malaria');
+    const isFreeText = !isWidal && !isMps && (t.department === 'radiology' || (t.results || []).some(r => r.parameter === 'Radiology: Findings'));
 
-    if (t.department === 'radiology') {
+    if (isWidal || isMps) {
+      let mpsHtml = '';
+      if (isMps) {
+        let parasiteSeen = 'Not Seen';
+        let densityPlus = 'Nil';
+        let densityCount = 'Nil';
+        let species = 'Nil';
+        let stage = 'Nil';
+        let comment = 'Nil';
+
+        (t.results || []).forEach(r => {
+          const param = r.parameter;
+          const val = r.result;
+          if (param === 'MPs: Parasites') parasiteSeen = val || 'Not Seen';
+          if (param === 'MPs: Density (Plus)') densityPlus = val || 'Nil';
+          if (param === 'MPs: Density (Count)') densityCount = val || 'Nil';
+          if (param === 'MPs: Species') species = val || 'Nil';
+          if (param === 'MPs: Stage') stage = val || 'Nil';
+          if (param === 'MPs: Comment') comment = val || 'Nil';
+        });
+
+        mpsHtml = `
+          <div style="padding: 10px; ${isWidal ? 'border-bottom: 1px dashed #0563c1;' : ''}">
+            <div style="font-weight: bold; border-bottom: 1px solid #ddd; margin-bottom: 8px; font-size: 10pt; color: #0563c1; text-transform: uppercase;">MALARIA PARASITE MICROSCOPY REPORT</div>
+            <table style="width: 100%; border-collapse: collapse; margin-top: 5px;">
+              <tbody>
+                <tr>
+                  <td style="padding: 5px 8px; font-weight: bold; border: 1px solid #eee; width: 40%; font-size: 10pt;">Malaria Parasite:</td>
+                  <td style="padding: 5px 8px; border: 1px solid #eee; font-size: 10pt; font-weight: ${parasiteSeen === 'Seen' ? 'bold' : 'normal'}; color: ${parasiteSeen === 'Seen' ? '#c0392b' : '#000'}">${parasiteSeen.toUpperCase()}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 5px 8px; font-weight: bold; border: 1px solid #eee; font-size: 10pt;">Density (Plus System):</td>
+                  <td style="padding: 5px 8px; border: 1px solid #eee; font-size: 10pt; font-weight: ${densityPlus !== 'Nil' ? 'bold' : 'normal'}; color: ${densityPlus !== 'Nil' ? '#c0392b' : '#000'}">${densityPlus}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 5px 8px; font-weight: bold; border: 1px solid #eee; font-size: 10pt;">Quantitative Count:</td>
+                  <td style="padding: 5px 8px; border: 1px solid #eee; font-size: 10pt; font-family: monospace;">${densityCount}</td>
+                </tr>
+                ${parasiteSeen === 'Seen' ? `
+                <tr>
+                  <td style="padding: 5px 8px; font-weight: bold; border: 1px solid #eee; font-size: 10pt;">Species Isolated:</td>
+                  <td style="padding: 5px 8px; border: 1px solid #eee; font-size: 10pt; font-style: italic;">${species}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 5px 8px; font-weight: bold; border: 1px solid #eee; font-size: 10pt;">Parasite Stage:</td>
+                  <td style="padding: 5px 8px; border: 1px solid #eee; font-size: 10pt;">${stage}</td>
+                </tr>
+                ` : ''}
+                <tr>
+                  <td style="padding: 5px 8px; font-weight: bold; border: 1px solid #eee; font-size: 10pt;">Blood Film / Comments:</td>
+                  <td style="padding: 5px 8px; border: 1px solid #eee; font-size: 10pt;">${comment}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        `;
+      }
+
+      let widalHtml = '';
+      if (isWidal) {
+        let typhiO = 'Negative';
+        let typhiH = 'Negative';
+        let paratyphiAO = 'Negative';
+        let paratyphiAH = 'Negative';
+        let paratyphiBO = 'Negative';
+        let paratyphiBH = 'Negative';
+        let paratyphiCO = 'Negative';
+        let paratyphiCH = 'Negative';
+
+        (t.results || []).forEach(r => {
+          const param = r.parameter;
+          const val = r.result;
+          if (param === 'Widal: S. Typhi O') typhiO = val || 'Negative';
+          if (param === 'Widal: S. Typhi H') typhiH = val || 'Negative';
+          if (param === 'Widal: S. Paratyphi A O') paratyphiAO = val || 'Negative';
+          if (param === 'Widal: S. Paratyphi A H') paratyphiAH = val || 'Negative';
+          if (param === 'Widal: S. Paratyphi B O') paratyphiBO = val || 'Negative';
+          if (param === 'Widal: S. Paratyphi B H') paratyphiBH = val || 'Negative';
+          if (param === 'Widal: S. Paratyphi C O') paratyphiCO = val || 'Negative';
+          if (param === 'Widal: S. Paratyphi C H') paratyphiCH = val || 'Negative';
+        });
+
+        widalHtml = `
+          <div style="padding: 10px;">
+            <div style="font-weight: bold; border-bottom: 1px solid #ddd; margin-bottom: 8px; font-size: 10pt; color: #0563c1; text-transform: uppercase;">WIDAL AGGLUTINATION REACTION TITRES</div>
+            <table style="width: 100%; border-collapse: collapse; margin-top: 5px;">
+              <thead>
+                <tr style="background: #f2f2f2;">
+                  <th style="padding: 6px 8px; border: 1px dotted #0563c1; color: #0563c1; font-weight: bold; text-align: left; font-size: 10pt; background: #f2f2f2;">Antigen</th>
+                  <th style="padding: 6px 8px; border: 1px dotted #0563c1; color: #0563c1; font-weight: bold; text-align: center; font-size: 10pt; background: #f2f2f2; width: 40%;">O Titre</th>
+                  <th style="padding: 6px 8px; border: 1px dotted #0563c1; color: #0563c1; font-weight: bold; text-align: center; font-size: 10pt; background: #f2f2f2; width: 40%;">H Titre</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td style="padding: 6px 8px; border: 1px dotted #ddd; font-weight: bold; font-size: 10pt;">S. Typhi</td>
+                  <td style="padding: 6px 8px; border: 1px dotted #ddd; text-align: center; font-size: 10pt; font-weight: ${typhiO !== 'Negative' && typhiO !== '1:20' && typhiO !== '1:40' ? 'bold' : 'normal'}; color: ${typhiO !== 'Negative' && typhiO !== '1:20' && typhiO !== '1:40' ? '#c0392b' : '#000'}">${typhiO}</td>
+                  <td style="padding: 6px 8px; border: 1px dotted #ddd; text-align: center; font-size: 10pt; font-weight: ${typhiH !== 'Negative' && typhiH !== '1:20' && typhiH !== '1:40' ? 'bold' : 'normal'}; color: ${typhiH !== 'Negative' && typhiH !== '1:20' && typhiH !== '1:40' ? '#c0392b' : '#000'}">${typhiH}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 6px 8px; border: 1px dotted #ddd; font-weight: bold; font-size: 10pt;">S. Paratyphi A</td>
+                  <td style="padding: 6px 8px; border: 1px dotted #ddd; text-align: center; font-size: 10pt; font-weight: ${paratyphiAO !== 'Negative' && paratyphiAO !== '1:20' && paratyphiAO !== '1:40' ? 'bold' : 'normal'}; color: ${paratyphiAO !== 'Negative' && paratyphiAO !== '1:20' && paratyphiAO !== '1:40' ? '#c0392b' : '#000'}">${paratyphiAO}</td>
+                  <td style="padding: 6px 8px; border: 1px dotted #ddd; text-align: center; font-size: 10pt; font-weight: ${paratyphiAH !== 'Negative' && paratyphiAH !== '1:20' && paratyphiAH !== '1:40' ? 'bold' : 'normal'}; color: ${paratyphiAH !== 'Negative' && paratyphiAH !== '1:20' && paratyphiAH !== '1:40' ? '#c0392b' : '#000'}">${paratyphiAH}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 6px 8px; border: 1px dotted #ddd; font-weight: bold; font-size: 10pt;">S. Paratyphi B</td>
+                  <td style="padding: 6px 8px; border: 1px dotted #ddd; text-align: center; font-size: 10pt; font-weight: ${paratyphiBO !== 'Negative' && paratyphiBO !== '1:20' && paratyphiBO !== '1:40' ? 'bold' : 'normal'}; color: ${paratyphiBO !== 'Negative' && paratyphiBO !== '1:20' && paratyphiBO !== '1:40' ? '#c0392b' : '#000'}">${paratyphiBO}</td>
+                  <td style="padding: 6px 8px; border: 1px dotted #ddd; text-align: center; font-size: 10pt; font-weight: ${paratyphiBH !== 'Negative' && paratyphiBH !== '1:20' && paratyphiBH !== '1:40' ? 'bold' : 'normal'}; color: ${paratyphiBH !== 'Negative' && paratyphiBH !== '1:20' && paratyphiBH !== '1:40' ? '#c0392b' : '#000'}">${paratyphiBH}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 6px 8px; border: 1px dotted #ddd; font-weight: bold; font-size: 10pt;">S. Paratyphi C</td>
+                  <td style="padding: 6px 8px; border: 1px dotted #ddd; text-align: center; font-size: 10pt; font-weight: ${paratyphiCO !== 'Negative' && paratyphiCO !== '1:20' && paratyphiCO !== '1:40' ? 'bold' : 'normal'}; color: ${paratyphiCO !== 'Negative' && paratyphiCO !== '1:20' && paratyphiCO !== '1:40' ? '#c0392b' : '#000'}">${paratyphiCO}</td>
+                  <td style="padding: 6px 8px; border: 1px dotted #ddd; text-align: center; font-size: 10pt; font-weight: ${paratyphiCH !== 'Negative' && paratyphiCH !== '1:20' && paratyphiCH !== '1:40' ? 'bold' : 'normal'}; color: ${paratyphiCH !== 'Negative' && paratyphiCH !== '1:20' && paratyphiCH !== '1:40' ? '#c0392b' : '#000'}">${paratyphiCH}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        `;
+      }
+ 
+      const extraResults = (t.results || []).filter(r =>
+        !r.parameter.startsWith('Widal:') && !r.parameter.startsWith('MPs:')
+      );
+      let extraHtml = '';
+      if (extraResults.length > 0) {
+        const rows = extraResults.map(r => `
+          <tr style="border-bottom: 1px solid #eee;">
+            <td style="padding: 6px 8px; font-size: 10pt;">${r.parameter}</td>
+            <td style="padding: 6px 8px; font-weight: bold; font-size: 10pt; color:${r.flag === 'H' ? '#c0392b' : r.flag === 'L' ? '#1a6aaf' : '#000'}">
+              ${r.result}${r.flag ? ` (${r.flag})` : ''}
+            </td>
+            <td style="padding: 6px 8px; font-size: 10pt; color: #555;">${r.unit || '—'}</td>
+            <td style="padding: 6px 8px; font-size: 10pt; color: #555;">${r.range || '—'}</td>
+          </tr>`).join('');
+        extraHtml = `
+          <div style="padding: 10px; border-top: 1px dashed #0563c1; page-break-inside: avoid;">
+            <div style="font-weight: bold; border-bottom: 1px solid #ddd; margin-bottom: 8px; font-size: 10pt; color: #0563c1; text-transform: uppercase;">Additional Parameters</div>
+            <table style="width: 100%; border-collapse: collapse; margin-top: 5px;">
+              <thead>
+                <tr style="background: #f2f2f2; border-bottom: 2px solid #0563c1;">
+                  <th style="padding: 6px 8px; color: #0563c1; font-weight: bold; text-align: left; font-size: 10pt;">Parameter</th>
+                  <th style="padding: 6px 8px; color: #0563c1; font-weight: bold; text-align: left; font-size: 10pt;">Result</th>
+                  <th style="padding: 6px 8px; color: #0563c1; font-weight: bold; text-align: left; font-size: 10pt;">Unit</th>
+                  <th style="padding: 6px 8px; color: #0563c1; font-weight: bold; text-align: left; font-size: 10pt;">Reference Range</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rows}
+              </tbody>
+            </table>
+          </div>
+        `;
+      }
+
+      return `
+        <div class="test-block mps-widal-block" style="page-break-inside: avoid; border: 1px solid #0563c1; margin-bottom: 12px;">
+          <div class="test-header" style="background: #0563c1; color: white; padding: 6px 10px; font-weight: bold; font-size: 11pt;">
+            ${t.testName}
+          </div>
+          ${mpsHtml}
+          ${widalHtml}
+          ${extraHtml}
+          ${t.notes ? `<div class="notes" style="padding: 5px 8px; font-size: 9pt; background: #fffbe6; border-top: 1px solid #ddd; font-style: italic;"><b>Comment:</b> ${t.notes}</div>` : ''}
+        </div>
+      `;
+    }
+
+    if (isFreeText) {
       const radData = deserializeRadiologyResults(t.results || []);
       const imageSection = radData.images && radData.images.length > 0 
         ? `<div style="margin-top:20px; font-weight:bold; font-size:10pt; color:#0563c1; text-transform:uppercase; border-bottom:1px solid #0563c1; padding-bottom:4px; margin-bottom:10px;">Attached Imagery</div>

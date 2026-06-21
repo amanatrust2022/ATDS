@@ -17,9 +17,10 @@ export interface Test {
   id: string;
   name: string;
   department: Department;
-  category: 'Hematology' | 'Serology' | 'Chemical Pathology' | 'Microbiology' | 'Ultrasound' | 'Hormones' | 'Special Health Check Plans';
+  category: string;
   specimen: string;
   parameters: { name: string; unit: string; range: string }[];
+  is_active?: boolean;
 }
 
 export interface PatientTest {
@@ -104,16 +105,69 @@ export const TEST_CATALOGUE: Test[] = [
     { name: 'P-LCR', unit: '%', range: '11.0-45.0' },
     { name: 'P-LCC', unit: 'ul', range: '30-90' },
   ]},
-  { id: 'esr', name: 'ESR', department: 'lab', category: 'Hematology', specimen: 'Whole Blood', parameters: [{ name: 'ESR', unit: 'mm/hr', range: 'M: <15 / F: <20' }]},
+  { id: 'esr', name: 'ESR', department: 'lab', category: 'Hematology', specimen: 'Whole Blood', parameters: [{ name: 'ESR', unit: 'mm/hr', range: '<15' }]},
   { id: 'pcv', name: 'PCV', department: 'lab', category: 'Hematology', specimen: 'Whole Blood', parameters: [{ name: 'PCV', unit: '%', range: '35-48' }]},
   { id: 'genotype', name: 'Hb Genotype', department: 'lab', category: 'Hematology', specimen: 'Whole Blood', parameters: [{ name: 'HB Genotype', unit: '', range: '' }]},
   { id: 'blood_group', name: 'Blood Grouping', department: 'lab', category: 'Hematology', specimen: 'Whole Blood', parameters: [{ name: 'Blood Group', unit: '', range: '' }]},
   { id: 'rh_typing', name: 'Rh Typing', department: 'lab', category: 'Hematology', specimen: 'Whole Blood', parameters: [{ name: 'Rhesus Factor', unit: '', range: '' }]},
   { id: 'mps_rdt', name: 'MPs (RDT)', department: 'lab', category: 'Hematology', specimen: 'Whole Blood', parameters: [{ name: 'Malaria Parasite (RDT)', unit: '', range: 'Negative' }]},
-  { id: 'mps_bf', name: 'MPs (Blood Film)', department: 'lab', category: 'Hematology', specimen: 'Whole Blood', parameters: [{ name: 'Malaria Parasite (Blood Film)', unit: '', range: 'Not Seen' }]},
+  { id: 'mps_bf', name: 'MPs (Blood Film)', department: 'lab', category: 'Hematology', specimen: 'Whole Blood', parameters: [
+    { name: 'MPs: Parasites', unit: '', range: 'Not Seen' },
+    { name: 'MPs: Density (Plus)', unit: '', range: 'Nil' },
+    { name: 'MPs: Density (Count)', unit: 'p/µL', range: 'Nil' },
+    { name: 'MPs: Species', unit: '', range: 'Nil' },
+    { name: 'MPs: Stage', unit: '', range: 'Nil' },
+    { name: 'MPs: Comment', unit: '', range: 'Nil' },
+  ]},
   { id: 'mp_widal', name: 'MP + WIDAL', department: 'lab', category: 'Hematology', specimen: 'Whole Blood', parameters: [
-    { name: 'MPs', unit: '', range: 'Not Seen' },
-    { name: 'Widal Test', unit: '', range: '' },
+    { name: 'MPs: Parasites', unit: '', range: 'Not Seen' },
+    { name: 'MPs: Density (Plus)', unit: '', range: 'Nil' },
+    { name: 'MPs: Density (Count)', unit: 'p/µL', range: 'Nil' },
+    { name: 'MPs: Species', unit: '', range: 'Nil' },
+    { name: 'MPs: Stage', unit: '', range: 'Nil' },
+    { name: 'MPs: Comment', unit: '', range: 'Nil' },
+    { name: 'Widal: S. Typhi O', unit: 'Titer', range: '<1:80' },
+    { name: 'Widal: S. Typhi H', unit: 'Titer', range: '<1:80' },
+    { name: 'Widal: S. Paratyphi A O', unit: 'Titer', range: '<1:80' },
+    { name: 'Widal: S. Paratyphi A H', unit: 'Titer', range: '<1:80' },
+    { name: 'Widal: S. Paratyphi B O', unit: 'Titer', range: '<1:80' },
+    { name: 'Widal: S. Paratyphi B H', unit: 'Titer', range: '<1:80' },
+    { name: 'Widal: S. Paratyphi C O', unit: 'Titer', range: '<1:80' },
+    { name: 'Widal: S. Paratyphi C H', unit: 'Titer', range: '<1:80' },
+  ]},
+  { id: 'mp_widal_hpylori', name: 'MPs, Widal & H. Pylori', department: 'lab', category: 'Hematology', specimen: 'Whole Blood', parameters: [
+    { name: 'MPs: Parasites', unit: '', range: 'Not Seen' },
+    { name: 'MPs: Density (Plus)', unit: '', range: 'Nil' },
+    { name: 'MPs: Density (Count)', unit: 'p/µL', range: 'Nil' },
+    { name: 'MPs: Species', unit: '', range: 'Nil' },
+    { name: 'MPs: Stage', unit: '', range: 'Nil' },
+    { name: 'MPs: Comment', unit: '', range: 'Nil' },
+    { name: 'Widal: S. Typhi O', unit: 'Titer', range: '<1:80' },
+    { name: 'Widal: S. Typhi H', unit: 'Titer', range: '<1:80' },
+    { name: 'Widal: S. Paratyphi A O', unit: 'Titer', range: '<1:80' },
+    { name: 'Widal: S. Paratyphi A H', unit: 'Titer', range: '<1:80' },
+    { name: 'Widal: S. Paratyphi B O', unit: 'Titer', range: '<1:80' },
+    { name: 'Widal: S. Paratyphi B H', unit: 'Titer', range: '<1:80' },
+    { name: 'Widal: S. Paratyphi C O', unit: 'Titer', range: '<1:80' },
+    { name: 'Widal: S. Paratyphi C H', unit: 'Titer', range: '<1:80' },
+    { name: 'H. Pylori', unit: '', range: 'Non-Reactive' },
+  ]},
+  { id: 'mp_widal_hbsag', name: 'MPs, Widal & HBsAg', department: 'lab', category: 'Hematology', specimen: 'Whole Blood', parameters: [
+    { name: 'MPs: Parasites', unit: '', range: 'Not Seen' },
+    { name: 'MPs: Density (Plus)', unit: '', range: 'Nil' },
+    { name: 'MPs: Density (Count)', unit: 'p/µL', range: 'Nil' },
+    { name: 'MPs: Species', unit: '', range: 'Nil' },
+    { name: 'MPs: Stage', unit: '', range: 'Nil' },
+    { name: 'MPs: Comment', unit: '', range: 'Nil' },
+    { name: 'Widal: S. Typhi O', unit: 'Titer', range: '<1:80' },
+    { name: 'Widal: S. Typhi H', unit: 'Titer', range: '<1:80' },
+    { name: 'Widal: S. Paratyphi A O', unit: 'Titer', range: '<1:80' },
+    { name: 'Widal: S. Paratyphi A H', unit: 'Titer', range: '<1:80' },
+    { name: 'Widal: S. Paratyphi B O', unit: 'Titer', range: '<1:80' },
+    { name: 'Widal: S. Paratyphi B H', unit: 'Titer', range: '<1:80' },
+    { name: 'Widal: S. Paratyphi C O', unit: 'Titer', range: '<1:80' },
+    { name: 'Widal: S. Paratyphi C H', unit: 'Titer', range: '<1:80' },
+    { name: 'HBsAg', unit: '', range: 'Non-Reactive' },
   ]},
 
   // --- SEROLOGY ---
@@ -128,13 +182,30 @@ export const TEST_CATALOGUE: Test[] = [
   ]},
   { id: 'vdrl', name: 'VDRL', department: 'lab', category: 'Serology', specimen: 'Serum', parameters: [{ name: 'VDRL', unit: '', range: 'Non-Reactive' }]},
   { id: 'rvs', name: 'RVS', department: 'lab', category: 'Serology', specimen: 'Serum', parameters: [{ name: 'RVS', unit: '', range: 'Non-Reactive' }]},
-  { id: 'hcg', name: 'HCG', department: 'lab', category: 'Serology', specimen: 'Urine/Serum', parameters: [{ name: 'Pregnancy Test (HCG)', unit: '', range: 'Negative' }]},
+  { id: 'hcg', name: 'HCG', department: 'lab', category: 'Serology', specimen: 'Urine/Serum', parameters: [{ name: 'Pregnancy test', unit: '', range: 'Negative' }]},
   { id: 'h_pylori', name: 'H Pylori', department: 'lab', category: 'Serology', specimen: 'Serum/Stool', parameters: [{ name: 'H. Pylori', unit: '', range: 'Non-Reactive' }]},
   { id: 'widal', name: 'WIDAL', department: 'lab', category: 'Serology', specimen: 'Serum', parameters: [
-    { name: 'S. Typhi O', unit: 'titre', range: '1/20 - 1/80' },
-    { name: 'S. Typhi H', unit: 'titre', range: '1/20 - 1/80' },
+    { name: 'Widal: S. Typhi O', unit: 'Titer', range: '<1:80' },
+    { name: 'Widal: S. Typhi H', unit: 'Titer', range: '<1:80' },
+    { name: 'Widal: S. Paratyphi A O', unit: 'Titer', range: '<1:80' },
+    { name: 'Widal: S. Paratyphi A H', unit: 'Titer', range: '<1:80' },
+    { name: 'Widal: S. Paratyphi B O', unit: 'Titer', range: '<1:80' },
+    { name: 'Widal: S. Paratyphi B H', unit: 'Titer', range: '<1:80' },
+    { name: 'Widal: S. Paratyphi C O', unit: 'Titer', range: '<1:80' },
+    { name: 'Widal: S. Paratyphi C H', unit: 'Titer', range: '<1:80' },
   ]},
   { id: 'rheumatoid_factor', name: 'Rheumatoid Factor', department: 'lab', category: 'Serology', specimen: 'Serum', parameters: [{ name: 'Rheumatoid Factor', unit: '', range: 'Negative' }]},
+  { id: 'h_pylori_vdrl', name: 'H. Pylori & VDRL', department: 'lab', category: 'Serology', specimen: 'Serum', parameters: [
+    { name: 'H. Pylori', unit: '', range: 'Non-Reactive' },
+    { name: 'VDRL', unit: '', range: 'Non-Reactive' },
+  ]},
+  { id: 'hbsag_h_pylori', name: 'HBsAg & H. Pylori', department: 'lab', category: 'Serology', specimen: 'Serum', parameters: [
+    { name: 'H. Pylori', unit: '', range: 'Non-Reactive' },
+    { name: 'HBsAg', unit: '', range: 'Non-Reactive' },
+  ]},
+  { id: 'pregnancy_test', name: 'Pregnancy Test', department: 'lab', category: 'Serology', specimen: 'Urine/Serum', parameters: [
+    { name: 'Pregnancy test', unit: '', range: 'Negative' },
+  ]},
 
   // --- CHEMICAL PATHOLOGY ---
   { id: 'kft', name: 'Kidney Function Test (E/U/Cr)', department: 'lab', category: 'Chemical Pathology', specimen: 'Serum', parameters: [
@@ -146,19 +217,19 @@ export const TEST_CATALOGUE: Test[] = [
     { name: 'Bicarbonate HCO3-', unit: 'mmole/L', range: '21-31' },
   ]},
   { id: 'lft', name: 'Liver Function Test (LFT)', department: 'lab', category: 'Chemical Pathology', specimen: 'Serum', parameters: [
-    { name: 'AST (SGOT)', unit: 'U/L', range: '8-37' },
-    { name: 'ALT (SGPT)', unit: 'U/L', range: '4-41' },
+    { name: 'AST', unit: 'U/L', range: '8-37' },
+    { name: 'ALT', unit: 'U/L', range: '4-41' },
     { name: 'ALP', unit: 'U/L', range: '35-128' },
-    { name: 'Total Bilirubin', unit: 'mg/dL', range: '0-2' },
-    { name: 'Direct Bilirubin', unit: 'mg/dL', range: '0-0.2' },
-    { name: 'Total Protein', unit: 'g/dL', range: '6.4-8.2' },
-    { name: 'Albumin', unit: 'g/dL', range: '3.5-5.2' },
+    { name: 'TOTAL BILIRUBIN', unit: 'mg/dL', range: '0-2' },
+    { name: 'DIRECT BILIRUBIN', unit: 'mg/dL', range: '0-0.2' },
+    { name: 'TOTAL PROTEIN', unit: 'g/dL', range: '6.4-8.2' },
+    { name: 'ALBUMIN', unit: 'g/dL', range: '3.5-5.2' },
   ]},
   { id: 'lipid', name: 'Lipid Profile', department: 'lab', category: 'Chemical Pathology', specimen: 'Serum', parameters: [
-    { name: 'Total Cholesterol', unit: 'mg/dL', range: '200-239' },
-    { name: 'Triglycerides', unit: 'mg/dL', range: 'F:35-135 / M:40-160' },
-    { name: 'HDL Cholesterol', unit: 'mg/dL', range: 'M:35-55 / F:45-65' },
-    { name: 'LDL Cholesterol', unit: 'mg/dL', range: '<100' },
+    { name: 'Total Cholesterol (CHOL)', unit: 'mg/dL', range: '200-239' },
+    { name: 'Triglycerides (TRIG)', unit: 'mg/dL', range: 'F: 35-135 / M: 40-160' },
+    { name: 'HDL', unit: 'mg/dL', range: 'M: 35-55 / F: 45-65' },
+    { name: 'LDL', unit: 'mg/dL', range: '<100' },
   ]},
   { id: 'urea', name: 'Urea', department: 'lab', category: 'Chemical Pathology', specimen: 'Serum', parameters: [{ name: 'Urea', unit: 'mmol/L', range: '2.3-5.8' }]},
   { id: 'creatinine', name: 'Creatinine', department: 'lab', category: 'Chemical Pathology', specimen: 'Serum', parameters: [{ name: 'Creatinine', unit: 'umol/L', range: '53-124' }]},
@@ -168,32 +239,83 @@ export const TEST_CATALOGUE: Test[] = [
     { name: 'Chloride Cl-', unit: 'mmole/L', range: '98-106' },
     { name: 'Bicarbonate HCO3-', unit: 'mmole/L', range: '21-31' },
   ]},
-  { id: 'uric_acid', name: 'Uric Acid', department: 'lab', category: 'Chemical Pathology', specimen: 'Serum', parameters: [{ name: 'Uric Acid', unit: 'mg/dL', range: 'M:2.7-7.3 / F:3.5-6.4' }]},
+  { id: 'uric_acid', name: 'Uric Acid', department: 'lab', category: 'Chemical Pathology', specimen: 'Serum', parameters: [{ name: 'Uric Acid', unit: 'mg/dL', range: 'Female: 3.5-6.4 / Male: 2.7-7.3' }]},
   { id: 'hba1c', name: 'HBA1C', department: 'lab', category: 'Chemical Pathology', specimen: 'Whole Blood', parameters: [{ name: 'HbA1c', unit: '%', range: '4.0-6.5' }]},
-  { id: 'phosphate', name: 'PO4^3-', department: 'lab', category: 'Chemical Pathology', specimen: 'Serum', parameters: [{ name: 'Phosphate (Po42-)', unit: 'mg/dL', range: '2.5-4.4' }]},
-  { id: 'calcium', name: 'Ca^2+', department: 'lab', category: 'Chemical Pathology', specimen: 'Serum', parameters: [{ name: 'Calcium (Ca2+)', unit: 'mg/dL', range: '8.5-10.5' }]},
-  { id: 'fbs', name: 'Fasting Blood Sugar (FBS)', department: 'lab', category: 'Chemical Pathology', specimen: 'Fluoride Blood', parameters: [{ name: 'FBS', unit: 'mmol/L', range: '3.4-5.6' }]},
-  { id: 'rbs', name: 'Random Blood Sugar (RBS)', department: 'lab', category: 'Chemical Pathology', specimen: 'Plasma/Serum', parameters: [{ name: 'RBS', unit: 'mmol/L', range: '4.0-7.8' }]},
+  { id: 'phosphate', name: 'PO4^3-', department: 'lab', category: 'Chemical Pathology', specimen: 'Serum', parameters: [{ name: 'Po42-', unit: 'mg/dL', range: '2.5-4.4' }]},
+  { id: 'calcium', name: 'Ca^2+', department: 'lab', category: 'Chemical Pathology', specimen: 'Serum', parameters: [{ name: 'Ca2+', unit: 'mg/dL', range: '8.5-10.5' }]},
+  { id: 'fbs', name: 'Fasting Blood Sugar (FBS)', department: 'lab', category: 'Chemical Pathology', specimen: 'Fluoride Blood', parameters: [{ name: 'FBS', unit: 'mmol/L', range: '3.0-5.6' }]},
+  { id: 'rbs', name: 'Random Blood Sugar (RBS)', department: 'lab', category: 'Chemical Pathology', specimen: 'Plasma/Serum', parameters: [{ name: 'RBS', unit: 'mmol/L', range: '4-7' }]},
+  { id: 'e_u_cr', name: 'E U Cr', department: 'lab', category: 'Chemical Pathology', specimen: 'Serum', parameters: [
+    { name: 'Urea', unit: 'mmol/L', range: '2.3-5.8' },
+    { name: 'Creatinine', unit: 'umol/L', range: '53-124' },
+    { name: 'Sodium Na+', unit: 'mmole/L', range: '135-145' },
+    { name: 'Potassium K+', unit: 'mmole/L', range: '3.5-5.0' },
+    { name: 'Chloride Cl-', unit: 'mmole/L', range: '98-106' },
+    { name: 'Bicarbonate HCO3-', unit: 'mmole/L', range: '21-31' },
+  ]},
+  { id: 'ca_po4_alb_uric', name: 'Ca2+, Po42-, Albumin, Uric Acid', department: 'lab', category: 'Chemical Pathology', specimen: 'Serum', parameters: [
+    { name: 'Ca2+', unit: 'mg/dL', range: '8.5-10.5' },
+    { name: 'Po42-', unit: 'mg/dL', range: '2.5-4.4' },
+    { name: 'Albumin', unit: 'g/dL', range: '3.5-5.2' },
+    { name: 'Uric Acid', unit: 'mg/dL', range: 'Female: 3.5-6.4 / Male: 2.7-7.3' },
+  ]},
+  { id: 'ca_po4_alb', name: 'Ca2+, Po42-, Albumin', department: 'lab', category: 'Chemical Pathology', specimen: 'Serum', parameters: [
+    { name: 'Ca2+', unit: 'mg/dL', range: '2.2-2.6' },
+    { name: 'Po42-', unit: 'mg/dL', range: '0.8-1.5' },
+  ]},
+  { id: 'calcium_uric_acid', name: 'Calcium & Uric Acid', department: 'lab', category: 'Chemical Pathology', specimen: 'Serum', parameters: [
+    { name: 'Ca2+', unit: 'mg/dL', range: '8.5-10.5' },
+    { name: 'Uric Acid', unit: 'mg/dL', range: 'Female: 3.5-6.4 / Male: 2.7-7.3' },
+  ]},
+  { id: 'hba1c_ca_po4_mg', name: 'HbA1C, Ca2+, Po42-, Mg2+', department: 'lab', category: 'Chemical Pathology', specimen: 'Blood/Serum', parameters: [
+    { name: 'HbA1c', unit: '%', range: '4.0-6.5' },
+    { name: 'Ca2+', unit: 'mg/dL', range: '8.5-10.5' },
+    { name: 'Po42-', unit: 'mg/dL', range: '2.5-4.4' },
+    { name: 'Mg2+', unit: 'mg/dL', range: '1.6-2.6' },
+  ]},
+  { id: 'urea_cr_hpylori_pcv', name: 'Urea, Creatinine, H. Pylori & PCV', department: 'lab', category: 'Chemical Pathology', specimen: 'Blood', parameters: [
+    { name: 'Urea', unit: 'mmol/L', range: '2.3-5.8' },
+    { name: 'Creatinine', unit: 'umol/L', range: '53-124' },
+    { name: 'H. Pylori', unit: '', range: 'Non-Reactive' },
+    { name: 'PCV', unit: '%', range: '35-48' },
+  ]},
+  { id: 'uric_acid_mps_hpylori', name: 'Uric Acid, MPs & H. Pylori', department: 'lab', category: 'Chemical Pathology', specimen: 'Blood', parameters: [
+    { name: 'Uric Acid', unit: 'mg/dL', range: 'Female: 3.5-6.4 / Male: 2.7-7.3' },
+    { name: 'MPs', unit: '', range: 'Not Seen' },
+    { name: 'H. Pylori', unit: '', range: 'Non-Reactive' },
+  ]},
+  { id: 'ogtt', name: 'Oral Glucose Tolerance Test (OGTT)', department: 'lab', category: 'Chemical Pathology', specimen: 'Blood', parameters: [
+    { name: 'FBS', unit: 'mmol/L', range: '3.0-5.6' },
+    { name: '30 min', unit: 'mmol/L', range: '' },
+    { name: '1 hr', unit: 'mmol/L', range: '<11.1' },
+    { name: '1 hr 30 min', unit: 'mmol/L', range: '<7.8' },
+  ]},
 
   // --- MICROBIOLOGY ---
   { id: 'urinalysis', name: 'Urinalysis', department: 'lab', category: 'Microbiology', specimen: 'Urine', parameters: [
-    { name: 'Colour', unit: '', range: 'Amber' },
-    { name: 'Appearance', unit: '', range: 'Clear' },
-    { name: 'pH', unit: '', range: '5.0-8.5' },
+    { name: 'P.H', unit: '', range: '5.0-8.5' },
     { name: 'Specific Gravity', unit: '', range: '1.001-1.030' },
+    { name: 'Urobilinogen', unit: '', range: 'Normal' },
     { name: 'Protein', unit: '', range: 'Negative' },
-    { name: 'Glucose', unit: '', range: 'Negative' },
     { name: 'Nitrate', unit: '', range: 'Negative' },
     { name: 'Bilirubin', unit: '', range: 'Negative' },
+    { name: 'Ascorbate', unit: '', range: 'Negative' },
     { name: 'Ketone', unit: '', range: 'Negative' },
+    { name: 'Glucose', unit: '', range: 'Negative' },
     { name: 'Blood', unit: '', range: 'Negative' },
     { name: 'Leucocytes', unit: '', range: 'Negative' },
-    { name: 'Urobilinogen', unit: '', range: 'Normal' },
   ]},
   { id: 'urine_microscopy', name: 'Urine Microscopy', department: 'lab', category: 'Microbiology', specimen: 'Urine', parameters: [
-    { name: 'Microscopy (Pus Cells)', unit: '/hpf', range: '0-2' },
-    { name: 'Microscopy (Epithelial)', unit: '/hpf', range: '' },
-    { name: 'Crystals', unit: '', range: 'Not Seen' },
+    { name: 'RBS', unit: '', range: 'Nil' },
+    { name: 'WBC', unit: '', range: 'Nil' },
+    { name: 'Epithelial cell', unit: '', range: 'Nil' },
+    { name: 'Pus cells', unit: '/hpf', range: '0-2' },
+    { name: 'Casts', unit: '', range: 'Nil' },
+    { name: 'Crystals', unit: '', range: 'Nil' },
+    { name: 'Bacteria', unit: '', range: 'Nil' },
+    { name: 'Yeast', unit: '', range: 'Nil' },
+    { name: 'Parasites', unit: '', range: 'Nil' },
+    { name: 'Others', unit: '', range: 'Nil' },
   ]},
   { id: 'urine_mcs', name: 'Urine MCS', department: 'lab', category: 'Microbiology', specimen: 'Urine', parameters: [
     { name: 'Microscopy', unit: '', range: '' },
@@ -234,6 +356,11 @@ export const TEST_CATALOGUE: Test[] = [
     { name: 'Microscopy', unit: '', range: '' },
     { name: 'Culture (Growth)', unit: '', range: '' },
   ]},
+  { id: 'wound_swab_mcs', name: 'Wound Swab MCS', department: 'lab', category: 'Microbiology', specimen: 'Wound Swab', parameters: [
+    { name: 'Microscopy', unit: '', range: '' },
+    { name: 'Culture (Growth)', unit: '', range: '' },
+    { name: 'Antibiotic Sensitivity', unit: '', range: '' },
+  ]},
 
   // --- ULTRASOUND ---
   { id: 'us_obs', name: 'Obstetric', department: 'radiology', category: 'Ultrasound', specimen: 'Scan', parameters: [
@@ -267,9 +394,76 @@ export const TEST_CATALOGUE: Test[] = [
     { name: 'HBsAg', unit: '', range: 'Non-Reactive' },
     { name: 'Hb Genotype', unit: '', range: '' },
   ]},
+  { id: 'pkg_premarital_silver', name: 'Premarital Screening (Silver)', department: 'lab', category: 'Special Health Check Plans', specimen: 'Blood', parameters: [
+    { name: 'RVS', unit: '', range: 'Non-Reactive' },
+    { name: 'HBsAg', unit: '', range: 'Non-Reactive' },
+    { name: 'Hb Genotype', unit: '', range: '' },
+    { name: 'PT', unit: '', range: 'Negative' },
+  ]},
+  { id: 'pkg_premarital_gold', name: 'Premarital Screening (Gold)', department: 'lab', category: 'Special Health Check Plans', specimen: 'Blood', parameters: [
+    { name: 'RVS', unit: '', range: 'Non-Reactive' },
+    { name: 'HBsAg', unit: '', range: 'Non-Reactive' },
+    { name: 'Hb Genotype', unit: '', range: '' },
+    { name: 'PT', unit: '', range: 'Negative' },
+    { name: 'Blood Group', unit: '', range: '' },
+    { name: 'Rhesus Factor', unit: '', range: '' },
+  ]},
+  { id: 'pkg_premarital_diamond', name: 'Premarital Screening (Diamond)', department: 'lab', category: 'Special Health Check Plans', specimen: 'Blood', parameters: [
+    { name: 'RVS', unit: '', range: 'Non-Reactive' },
+    { name: 'HBsAg', unit: '', range: 'Non-Reactive' },
+    { name: 'HCV', unit: '', range: 'Non-Reactive' },
+    { name: 'VDRL', unit: '', range: 'Non-Reactive' },
+    { name: 'Hb Genotype', unit: '', range: '' },
+    { name: 'Blood Group', unit: '', range: '' },
+    { name: 'Rhesus Factor', unit: '', range: '' },
+    { name: 'PT', unit: '', range: 'Negative' },
+  ]},
   { id: 'pkg_antenatal', name: 'Antenatal Screening', department: 'lab', category: 'Special Health Check Plans', specimen: 'Blood', parameters: [
     { name: 'Blood Group', unit: '', range: '' },
-    { name: 'PCV', unit: '%', range: '' },
+    { name: 'Rhesus Factor', unit: '', range: '' },
+    { name: 'Hb Genotype', unit: '', range: '' },
+    { name: 'RVS', unit: '', range: 'Non-Reactive' },
+    { name: 'MPs', unit: '', range: 'Not Seen' },
+    { name: 'PCV', unit: '%', range: '35-48' },
+    { name: 'P.H', unit: '', range: '5.0-8.5' },
+    { name: 'Specific Gravity', unit: '', range: '1.001-1.030' },
+    { name: 'Urobilinogen', unit: '', range: 'Normal' },
+    { name: 'Protein', unit: '', range: 'Negative' },
+    { name: 'Nitrate', unit: '', range: 'Negative' },
+    { name: 'Bilirubin', unit: '', range: 'Negative' },
+    { name: 'Ascorbate', unit: '', range: 'Negative' },
+    { name: 'Ketone', unit: '', range: 'Negative' },
+    { name: 'Glucose', unit: '', range: 'Negative' },
+    { name: 'Blood', unit: '', range: 'Negative' },
+    { name: 'Leucocytes', unit: '', range: 'Negative' },
+  ]},
+  { id: 'pkg_health_checkup', name: 'Health Check Up', department: 'lab', category: 'Special Health Check Plans', specimen: 'Blood/Urine', parameters: [
+    { name: 'Blood Group', unit: '', range: '' },
+    { name: 'Rhesus Factor', unit: '', range: '' },
+    { name: 'Hb Genotype', unit: '', range: '' },
+    { name: 'HBsAg', unit: '', range: 'Non-Reactive' },
+    { name: 'HCV', unit: '', range: 'Non-Reactive' },
+    { name: 'RVS', unit: '', range: 'Non-Reactive' },
+    { name: 'VDRL', unit: '', range: 'Non-Reactive' },
+    { name: 'P.H', unit: '', range: '5.0-8.5' },
+    { name: 'Specific Gravity', unit: '', range: '1.001-1.030' },
+    { name: 'Urobilinogen', unit: '', range: 'Normal' },
+    { name: 'Protein', unit: '', range: 'Negative' },
+    { name: 'Nitrate', unit: '', range: 'Negative' },
+    { name: 'Bilirubin', unit: '', range: 'Negative' },
+    { name: 'Ascorbate', unit: '', range: 'Negative' },
+    { name: 'Ketone', unit: '', range: 'Negative' },
+    { name: 'Glucose', unit: '', range: 'Negative' },
+    { name: 'Blood', unit: '', range: 'Negative' },
+    { name: 'Leucocytes', unit: '', range: 'Negative' },
+  ]},
+  { id: 'pkg_health_screening', name: 'Health Screening', department: 'lab', category: 'Special Health Check Plans', specimen: 'Blood', parameters: [
+    { name: 'Blood Group', unit: '', range: '' },
+    { name: 'Rhesus Factor', unit: '', range: '' },
+    { name: 'HBsAg', unit: '', range: 'Non-Reactive' },
+    { name: 'HCV', unit: '', range: 'Non-Reactive' },
+    { name: 'RVS', unit: '', range: 'Non-Reactive' },
+    { name: 'MPs', unit: '', range: 'Not Seen' },
   ]},
   { id: 'pkg_basic', name: 'Basic', department: 'lab', category: 'Special Health Check Plans', specimen: 'Blood/Urine', parameters: [{ name: 'Basic Profile', unit: '', range: '' }]},
   { id: 'pkg_silver', name: 'Silver', department: 'lab', category: 'Special Health Check Plans', specimen: 'Blood/Urine', parameters: [{ name: 'Silver Profile', unit: '', range: '' }]},
@@ -472,8 +666,17 @@ export const subscribeToPatients = (organizationId: string, callback: () => void
   return () => { supabase.removeChannel(channel); };
 };
 
-export const getTestById = (id: string): Test | undefined =>
-  TEST_CATALOGUE.find(t => t.id === id);
+let customCatalogueCache: Test[] = [];
+
+export const setCustomCatalogueCache = (tests: Test[]) => {
+  customCatalogueCache = tests;
+};
+
+export const getTestById = (id: string): Test | undefined => {
+  const cached = customCatalogueCache.find(t => t.id === id);
+  if (cached) return cached;
+  return TEST_CATALOGUE.find(t => t.id === id);
+};
 
 // ─── REFERRING FACILITIES ─────────────────────────────────────────────────────
 
@@ -1052,6 +1255,143 @@ export const deleteCustomTemplate = async (id: string): Promise<void> => {
   const { error } = await supabase
     .from('radiology_templates')
     .delete()
+    .eq('id', id);
+  if (error) throw error;
+};
+
+// ─── DYNAMIC CUSTOM TESTS ─────────────────────────────────────────────────────
+
+export const fetchCustomTests = async (organizationId: string): Promise<Test[]> => {
+  if (IS_LOCAL_MODE) {
+    const res = await fetch(`/api/custom-tests?organizationId=${organizationId}`);
+    if (!res.ok) return [];
+    return res.json();
+  }
+
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from('custom_tests')
+    .select('*')
+    .eq('organization_id', organizationId);
+  if (error) {
+    console.error('Error fetching custom tests:', error);
+    return [];
+  }
+
+  return (data || []).map((t: any) => ({
+    id: t.id,
+    name: t.name,
+    department: t.department,
+    category: t.category,
+    specimen: t.specimen,
+    parameters: typeof t.parameters === 'string' ? JSON.parse(t.parameters) : t.parameters,
+    is_active: t.is_active
+  }));
+};
+
+export const addCustomTest = async (test: Omit<Test, 'is_active'>, organizationId: string): Promise<void> => {
+  const payload = {
+    id: test.id,
+    organization_id: organizationId,
+    name: test.name,
+    department: test.department,
+    category: test.category,
+    specimen: test.specimen,
+    parameters: JSON.stringify(test.parameters),
+    is_active: 1,
+    updated_at: new Date().toISOString()
+  };
+
+  if (IS_LOCAL_MODE) {
+    const res = await fetch('/api/custom-tests', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'add', test: payload, organizationId })
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Failed to add custom test locally');
+    }
+    return;
+  }
+
+  const supabase = createClient();
+  const { error } = await supabase
+    .from('custom_tests')
+    .insert([{
+      ...payload,
+      parameters: test.parameters,
+      is_active: true
+    }]);
+  if (error) throw error;
+};
+
+export const updateCustomTest = async (id: string, updates: Partial<Test>, organizationId: string): Promise<void> => {
+  const payload: any = {
+    updated_at: new Date().toISOString()
+  };
+  if (updates.name !== undefined) payload.name = updates.name;
+  if (updates.department !== undefined) payload.department = updates.department;
+  if (updates.category !== undefined) payload.category = updates.category;
+  if (updates.specimen !== undefined) payload.specimen = updates.specimen;
+  if (updates.parameters !== undefined) payload.parameters = JSON.stringify(updates.parameters);
+  if (updates.is_active !== undefined) payload.is_active = updates.is_active ? 1 : 0;
+
+  if (IS_LOCAL_MODE) {
+    const res = await fetch('/api/custom-tests', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'update', id, updates: payload, organizationId })
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Failed to update custom test locally');
+    }
+    return;
+  }
+
+  const supabase = createClient();
+  if ('is_active' in payload) {
+    payload.is_active = payload.is_active === 1;
+  }
+  if (payload.parameters) {
+    payload.parameters = JSON.parse(payload.parameters);
+  }
+  const { error } = await supabase
+    .from('custom_tests')
+    .update(payload)
+    .eq('organization_id', organizationId)
+    .eq('id', id);
+  if (error) throw error;
+};
+
+export const deleteCustomTest = async (id: string, organizationId: string): Promise<void> => {
+  const isDefault = TEST_CATALOGUE.some(t => t.id === id);
+
+  if (isDefault) {
+    const defaultTest = TEST_CATALOGUE.find(t => t.id === id)!;
+    await updateCustomTest(id, { ...defaultTest, is_active: false }, organizationId);
+    return;
+  }
+
+  if (IS_LOCAL_MODE) {
+    const res = await fetch('/api/custom-tests', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'delete', id, organizationId })
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Failed to delete custom test locally');
+    }
+    return;
+  }
+
+  const supabase = createClient();
+  const { error } = await supabase
+    .from('custom_tests')
+    .delete()
+    .eq('organization_id', organizationId)
     .eq('id', id);
   if (error) throw error;
 };

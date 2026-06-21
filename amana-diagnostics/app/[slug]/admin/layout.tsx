@@ -1,7 +1,7 @@
 'use client';
 import { useAuth } from '@/components/AuthProvider';
 import { useParams, useRouter, usePathname } from 'next/navigation';
-import { RiDashboardLine, RiTeamLine, RiSettings3Line, RiHospitalLine, RiTestTubeLine, RiRadarLine, RiArrowLeftLine, RiUserHeartLine, RiPriceTag3Line, RiMoneyDollarCircleLine, RiUserLine } from '@remixicon/react';
+import { RiDashboardLine, RiTeamLine, RiSettings3Line, RiHospitalLine, RiTestTubeLine, RiRadarLine, RiArrowLeftLine, RiUserHeartLine, RiPriceTag3Line, RiMoneyDollarCircleLine, RiUserLine, RiFileList2Line } from '@remixicon/react';
 import Link from 'next/link';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -22,6 +22,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const navItems = [
     { name: 'Workspace Overview', path: `/${slug}/admin`, icon: <RiDashboardLine size={18} /> },
     { name: 'Staff Management', path: `/${slug}/admin/staff`, icon: <RiTeamLine size={18} /> },
+    { name: 'Test Catalogue', path: `/${slug}/admin/tests`, icon: <RiFileList2Line size={18} /> },
     { name: 'Patient Database', path: `/${slug}/admin/patients`, icon: <RiUserLine size={18} /> },
     { name: 'Organization Settings', path: `/${slug}/admin/settings`, icon: <RiSettings3Line size={18} /> },
   ];

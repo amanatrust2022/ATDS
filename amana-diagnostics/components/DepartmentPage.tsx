@@ -1,11 +1,12 @@
 'use client';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import Header from './Header';
-import { Department, Patient, PatientTest, getTestById, fetchPatients, updateTestResult, subscribeToPatients, fetchCustomTemplates, RadiologyTemplate } from '@/lib/store';
+import { Department, Patient, PatientTest, getTestById, fetchPatients, updateTestResult, subscribeToPatients, fetchCustomTemplates, RadiologyTemplate, fetchCustomTests, setCustomCatalogueCache } from '@/lib/store';
 import { RiTestTubeLine, RiRadarLine, RiCheckLine, RiMoreLine, RiLogoutCircleLine, RiTimeLine, RiSettings3Line } from '@remixicon/react';
 import { useAuth } from '@/components/AuthProvider';
 import { RADIOLOGY_TEMPLATES, serializeRadiologyResults, deserializeRadiologyResults, RadiologyFormState, convertTextToFormattedHtml } from '@/lib/radiology-templates';
 import TemplateManager from '@/components/TemplateManager';
+import TestManager from '@/components/TestManager';
 import RichTextEditor from '@/components/RichTextEditor';
 
 interface Props { department: Department; }
@@ -203,13 +204,131 @@ export const deserializeMcsResults = (results: any[]): McsFormState => {
   return mcsState;
 };
 
+export function isWidalTest(testId: string, testName: string) {
+  const id = testId.toLowerCase();
+  const name = testName.toLowerCase();
+  return id === 'widal' || id.includes('widal') || name.includes('widal');
+}
+
+export function isMPsTest(testId: string, testName: string) {
+  const id = testId.toLowerCase();
+  const name = testName.toLowerCase();
+  return (
+    id === 'mps' ||
+    id === 'mp' ||
+    id.includes('mps') ||
+    id.startsWith('mp_') ||
+    id.includes('_mp') ||
+    name.includes('mps') ||
+    name.includes('mp ') ||
+    name.includes('mp+') ||
+    name.includes('mp +') ||
+    name.includes('malaria parasite') ||
+    name.includes('malaria film') ||
+    name.includes('malaria')
+  );
+}
+
+
+export interface WidalFormState {
+  typhiO: string;
+  typhiH: string;
+  paratyphiAO: string;
+  paratyphiAH: string;
+  paratyphiBO: string;
+  paratyphiBH: string;
+  paratyphiCO: string;
+  paratyphiCH: string;
+}
+
+export const serializeWidalResults = (widalState: WidalFormState) => {
+  return [
+    { parameter: 'Widal: S. Typhi O', result: widalState.typhiO || 'Negative', unit: 'Titer', range: '<1:80' },
+    { parameter: 'Widal: S. Typhi H', result: widalState.typhiH || 'Negative', unit: 'Titer', range: '<1:80' },
+    { parameter: 'Widal: S. Paratyphi A O', result: widalState.paratyphiAO || 'Negative', unit: 'Titer', range: '<1:80' },
+    { parameter: 'Widal: S. Paratyphi A H', result: widalState.paratyphiAH || 'Negative', unit: 'Titer', range: '<1:80' },
+    { parameter: 'Widal: S. Paratyphi B O', result: widalState.paratyphiBO || 'Negative', unit: 'Titer', range: '<1:80' },
+    { parameter: 'Widal: S. Paratyphi B H', result: widalState.paratyphiBH || 'Negative', unit: 'Titer', range: '<1:80' },
+    { parameter: 'Widal: S. Paratyphi C O', result: widalState.paratyphiCO || 'Negative', unit: 'Titer', range: '<1:80' },
+    { parameter: 'Widal: S. Paratyphi C H', result: widalState.paratyphiCH || 'Negative', unit: 'Titer', range: '<1:80' },
+  ];
+};
+
+export const deserializeWidalResults = (results: any[]): WidalFormState => {
+  const state: WidalFormState = {
+    typhiO: 'Negative', typhiH: 'Negative',
+    paratyphiAO: 'Negative', paratyphiAH: 'Negative',
+    paratyphiBO: 'Negative', paratyphiBH: 'Negative',
+    paratyphiCO: 'Negative', paratyphiCH: 'Negative',
+  };
+  results.forEach(r => {
+    const param = r.parameter;
+    const val = r.result;
+    if (param === 'Widal: S. Typhi O') state.typhiO = val;
+    if (param === 'Widal: S. Typhi H') state.typhiH = val;
+    if (param === 'Widal: S. Paratyphi A O') state.paratyphiAO = val;
+    if (param === 'Widal: S. Paratyphi A H') state.paratyphiAH = val;
+    if (param === 'Widal: S. Paratyphi B O') state.paratyphiBO = val;
+    if (param === 'Widal: S. Paratyphi B H') state.paratyphiBH = val;
+    if (param === 'Widal: S. Paratyphi C O') state.paratyphiCO = val;
+    if (param === 'Widal: S. Paratyphi C H') state.paratyphiCH = val;
+  });
+  return state;
+};
+
+export interface MpsFormState {
+  parasiteSeen: 'Seen' | 'Not Seen' | '';
+  densityPlus: '+' | '++' | '+++' | '++++' | 'Nil' | '';
+  densityCount: string;
+  species: string;
+  stage: string;
+  comment: string;
+}
+
+export const serializeMpsResults = (mpsState: MpsFormState) => {
+  return [
+    { parameter: 'MPs: Parasites', result: mpsState.parasiteSeen || 'Not Seen', unit: '', range: 'Not Seen' },
+    { parameter: 'MPs: Density (Plus)', result: mpsState.densityPlus || 'Nil', unit: '', range: 'Nil' },
+    { parameter: 'MPs: Density (Count)', result: mpsState.densityCount || 'Nil', unit: 'p/µL', range: 'Nil' },
+    { parameter: 'MPs: Species', result: mpsState.species || 'Nil', unit: '', range: '' },
+    { parameter: 'MPs: Stage', result: mpsState.stage || 'Nil', unit: '', range: '' },
+    { parameter: 'MPs: Comment', result: mpsState.comment || 'Nil', unit: '', range: '' },
+  ];
+};
+
+export const deserializeMpsResults = (results: any[]): MpsFormState => {
+  const state: MpsFormState = {
+    parasiteSeen: 'Not Seen',
+    densityPlus: 'Nil',
+    densityCount: 'Nil',
+    species: 'Nil',
+    stage: 'Nil',
+    comment: 'Nil'
+  };
+  results.forEach(r => {
+    const param = r.parameter;
+    const val = r.result;
+    if (param === 'MPs: Parasites') state.parasiteSeen = val as any;
+    if (param === 'MPs: Density (Plus)') state.densityPlus = val as any;
+    if (param === 'MPs: Density (Count)') state.densityCount = val;
+    if (param === 'MPs: Species') state.species = val;
+    if (param === 'MPs: Stage') state.stage = val;
+    if (param === 'MPs: Comment') state.comment = val;
+  });
+  return state;
+};
+
 export default function DepartmentPage({ department }: Props) {
   const { profile, organization, signOut } = useAuth();
   const [patients, setPatients] = useState<Patient[]>([]);
   const [selected, setSelected] = useState<{ patient: Patient; test: PatientTest } | null>(null);
   const [results, setResults] = useState<{ parameter: string; result: string; unit: string; range: string; flag: string }[]>([]);
   const [isMcs, setIsMcs] = useState(false);
+  const [isWidal, setIsWidal] = useState(false);
+  const [isMPs, setIsMPs] = useState(false);
   const [mcsState, setMcsState] = useState<McsFormState | null>(null);
+  const [widalState, setWidalState] = useState<WidalFormState | null>(null);
+  const [mpsState, setMpsState] = useState<MpsFormState | null>(null);
   const [radiologyState, setRadiologyState] = useState<RadiologyFormState | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
@@ -220,6 +339,7 @@ export default function DepartmentPage({ department }: Props) {
   const [loadingData, setLoadingData] = useState(true);
   const [customTemplates, setCustomTemplates] = useState<RadiologyTemplate[]>([]);
   const [showTemplateManager, setShowTemplateManager] = useState(false);
+  const [showTestManager, setShowTestManager] = useState(false);
 
   const loadCustomTemplates = useCallback(async () => {
     if (!organization?.id) return;
@@ -250,6 +370,12 @@ export default function DepartmentPage({ department }: Props) {
 
   const refresh = useCallback(async () => {
     if (!organization?.id) return;
+    try {
+      const customTests = await fetchCustomTests(organization.id);
+      setCustomCatalogueCache(customTests);
+    } catch (e) {
+      console.error('Failed to pre-cache custom tests:', e);
+    }
     const data = await fetchPatients(organization.id);
     setPatients(data);
     setLoadingData(false);
@@ -348,7 +474,14 @@ export default function DepartmentPage({ department }: Props) {
   const openEntry = async (patient: Patient, test: PatientTest) => {
     const testDef = getTestById(test.testId);
     const mcsCheck = isMcsTest(test.testId, test.testName);
+    const widalCheck = isWidalTest(test.testId, test.testName);
+    const mpsCheck = isMPsTest(test.testId, test.testName);
+
     setIsMcs(mcsCheck);
+    setIsWidal(widalCheck);
+    setIsMPs(mpsCheck);
+
+    const isFreeText = !mcsCheck && !widalCheck && !mpsCheck && (department === 'radiology' || !testDef?.parameters || testDef.parameters.length === 0);
 
     if (mcsCheck) {
       const existingResults = test.results || [];
@@ -374,11 +507,49 @@ export default function DepartmentPage({ department }: Props) {
           sensitivity: []
         });
       }
-    } else if (department === 'radiology') {
+    } else {
+      setMcsState(null);
+    }
+
+    if (widalCheck) {
+      const existingResults = test.results || [];
+      if (existingResults.length > 0) {
+        setWidalState(deserializeWidalResults(existingResults));
+      } else {
+        setWidalState({
+          typhiO: 'Negative', typhiH: 'Negative',
+          paratyphiAO: 'Negative', paratyphiAH: 'Negative',
+          paratyphiBO: 'Negative', paratyphiBH: 'Negative',
+          paratyphiCO: 'Negative', paratyphiCH: 'Negative',
+        });
+      }
+    } else {
+      setWidalState(null);
+    }
+
+    if (mpsCheck) {
+      const existingResults = test.results || [];
+      if (existingResults.length > 0) {
+        setMpsState(deserializeMpsResults(existingResults));
+      } else {
+        setMpsState({
+          parasiteSeen: 'Not Seen',
+          densityPlus: 'Nil',
+          densityCount: 'Nil',
+          species: 'Nil',
+          stage: 'Nil',
+          comment: 'Nil'
+        });
+      }
+    } else {
+      setMpsState(null);
+    }
+
+    if (isFreeText) {
       const existingResults = test.results || [];
       const deserialized = deserializeRadiologyResults(existingResults);
-      // Pre-fill default template based on test name if empty
-      if (!deserialized.findings && !deserialized.impression) {
+      // Pre-fill default template based on test name if empty (only for radiology)
+      if (department === 'radiology' && !deserialized.findings && !deserialized.impression) {
         let defaultTemplate = '';
         if (test.testId === 'us_obs') {
           defaultTemplate = 'bpd_3_hc_ac_fl_efw_(cephalic)';
@@ -395,11 +566,34 @@ export default function DepartmentPage({ department }: Props) {
       }
       setRadiologyState(deserialized);
     } else {
+      setRadiologyState(null);
+    }
+
+    const extraParams = (testDef?.parameters || []).filter(p =>
+      !p.name.startsWith('Widal:') && !p.name.startsWith('MPs:')
+    );
+
+    if ((widalCheck || mpsCheck) && extraParams.length > 0) {
+      if (test.results && test.results.length > 0) {
+        const extraResults = test.results.filter(r =>
+          !r.parameter.startsWith('Widal:') && !r.parameter.startsWith('MPs:')
+        );
+        if (extraResults.length > 0) {
+          setResults(extraResults.map(r => ({ ...r, flag: r.flag || '' })));
+        } else {
+          setResults(extraParams.map(p => ({ parameter: p.name, result: '', unit: p.unit, range: p.range, flag: '' })));
+        }
+      } else {
+        setResults(extraParams.map(p => ({ parameter: p.name, result: '', unit: p.unit, range: p.range, flag: '' })));
+      }
+    } else if (!mcsCheck && !widalCheck && !mpsCheck && !isFreeText) {
       if (test.results && test.results.length > 0) {
         setResults(test.results.map(r => ({ ...r, flag: r.flag || '' })));
       } else {
         setResults((testDef?.parameters || []).map(p => ({ parameter: p.name, result: '', unit: p.unit, range: p.range, flag: '' })));
       }
+    } else {
+      setResults([]);
     }
 
     setNotes(test.notes || '');
@@ -413,11 +607,20 @@ export default function DepartmentPage({ department }: Props) {
     if (!selected) return;
     if (!professional.trim()) { showToast('Please enter your name or staff ID', 'error'); return; }
     setSaving(true);
-
+ 
     let finalResults = results;
     if (isMcs && mcsState) {
       finalResults = serializeMcsResults(mcsState) as any;
-    } else if (department === 'radiology' && radiologyState) {
+    } else if (isWidal && widalState && isMPs && mpsState) {
+      const extraResults = results.filter(r => !r.parameter.startsWith('Widal:') && !r.parameter.startsWith('MPs:'));
+      finalResults = [...serializeMpsResults(mpsState), ...serializeWidalResults(widalState), ...extraResults] as any;
+    } else if (isWidal && widalState) {
+      const extraResults = results.filter(r => !r.parameter.startsWith('Widal:') && !r.parameter.startsWith('MPs:'));
+      finalResults = [...serializeWidalResults(widalState), ...extraResults] as any;
+    } else if (isMPs && mpsState) {
+      const extraResults = results.filter(r => !r.parameter.startsWith('Widal:') && !r.parameter.startsWith('MPs:'));
+      finalResults = [...serializeMpsResults(mpsState), ...extraResults] as any;
+    } else if (radiologyState) {
       finalResults = serializeRadiologyResults(radiologyState) as any;
     }
 
@@ -434,7 +637,11 @@ export default function DepartmentPage({ department }: Props) {
       showToast(`"${selected.test.testName}" result sent to reception ✓`);
       setSelected(null);
       setIsMcs(false);
+      setIsWidal(false);
+      setIsMPs(false);
       setMcsState(null);
+      setWidalState(null);
+      setMpsState(null);
       setRadiologyState(null);
     } catch (err: any) {
       showToast('Failed to save result: ' + err.message, 'error');
@@ -445,6 +652,299 @@ export default function DepartmentPage({ department }: Props) {
 
   const updateResult = (i: number, field: string, value: string) =>
     setResults(prev => prev.map((r, idx) => idx === i ? { ...r, [field]: value } : r));
+
+  const renderWidalEntryForm = () => {
+    if (!widalState) return null;
+
+    const antigens = [
+      { name: 'S. Typhi', keys: { O: 'typhiO', H: 'typhiH' } },
+      { name: 'S. Paratyphi A', keys: { O: 'paratyphiAO', H: 'paratyphiAH' } },
+      { name: 'S. Paratyphi B', keys: { O: 'paratyphiBO', H: 'paratyphiBH' } },
+      { name: 'S. Paratyphi C', keys: { O: 'paratyphiCO', H: 'paratyphiCH' } }
+    ] as const;
+
+    const titerOptions = ['Negative', '1:20', '1:40', '1:80', '1:160', '1:320'];
+
+    const updateWidalVal = (key: keyof WidalFormState, val: string) => {
+      setWidalState(prev => prev ? { ...prev, [key]: val } : null);
+    };
+
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '1rem' }}>
+        <div style={{
+          background: 'white',
+          border: '1px solid var(--teal-200)',
+          borderRadius: 'var(--radius-lg)',
+          overflow: 'hidden',
+          boxShadow: 'var(--shadow-sm)'
+        }}>
+          <h3 style={{
+            background: 'var(--teal-50)',
+            color: 'var(--teal-850)',
+            fontSize: '0.8rem',
+            fontWeight: 700,
+            padding: '0.6rem 1rem',
+            borderBottom: '1px solid var(--teal-200)',
+            textTransform: 'uppercase',
+            letterSpacing: '0.05em'
+          }}>
+            Salmonella Antigen Titers (Widal Reaction Matrix)
+          </h3>
+          <div style={{ padding: '1rem' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+              <thead>
+                <tr style={{ borderBottom: '2px solid var(--teal-200)' }}>
+                  <th style={{ padding: '0.5rem', textAlign: 'left', fontWeight: 700, color: 'var(--teal-800)' }}>Antigen</th>
+                  <th style={{ padding: '0.5rem', textAlign: 'center', fontWeight: 700, color: 'var(--teal-800)', width: '40%' }}>O Titer</th>
+                  <th style={{ padding: '0.5rem', textAlign: 'center', fontWeight: 700, color: 'var(--teal-800)', width: '40%' }}>H Titer</th>
+                </tr>
+              </thead>
+              <tbody>
+                {antigens.map(a => (
+                  <tr key={a.name} style={{ borderBottom: '1px solid var(--gray-200)' }}>
+                    <td style={{ padding: '0.5rem', fontWeight: 600, color: 'var(--gray-800)' }}>{a.name}</td>
+                    <td style={{ padding: '0.35rem' }}>
+                      <select
+                        value={widalState[a.keys.O]}
+                        onChange={e => updateWidalVal(a.keys.O, e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '0.4rem 0.6rem',
+                          border: '1px solid var(--gray-300)',
+                          borderRadius: 'var(--radius)',
+                          fontSize: '0.8rem',
+                          outline: 'none',
+                          background: widalState[a.keys.O] !== 'Negative' && widalState[a.keys.O] !== '1:20' && widalState[a.keys.O] !== '1:40' ? 'var(--red-light)' : 'white',
+                          color: widalState[a.keys.O] !== 'Negative' && widalState[a.keys.O] !== '1:20' && widalState[a.keys.O] !== '1:40' ? 'var(--red)' : 'var(--gray-900)',
+                          fontWeight: widalState[a.keys.O] !== 'Negative' && widalState[a.keys.O] !== '1:20' && widalState[a.keys.O] !== '1:40' ? 'bold' : 'normal'
+                        }}
+                      >
+                        {titerOptions.map(t => (
+                          <option key={t} value={t}>{t}</option>
+                        ))}
+                      </select>
+                    </td>
+                    <td style={{ padding: '0.35rem' }}>
+                      <select
+                        value={widalState[a.keys.H]}
+                        onChange={e => updateWidalVal(a.keys.H, e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '0.4rem 0.6rem',
+                          border: '1px solid var(--gray-300)',
+                          borderRadius: 'var(--radius)',
+                          fontSize: '0.8rem',
+                          outline: 'none',
+                          background: widalState[a.keys.H] !== 'Negative' && widalState[a.keys.H] !== '1:20' && widalState[a.keys.H] !== '1:40' ? 'var(--red-light)' : 'white',
+                          color: widalState[a.keys.H] !== 'Negative' && widalState[a.keys.H] !== '1:20' && widalState[a.keys.H] !== '1:40' ? 'var(--red)' : 'var(--gray-900)',
+                          fontWeight: widalState[a.keys.H] !== 'Negative' && widalState[a.keys.H] !== '1:20' && widalState[a.keys.H] !== '1:40' ? 'bold' : 'normal'
+                        }}
+                      >
+                        {titerOptions.map(t => (
+                          <option key={t} value={t}>{t}</option>
+                        ))}
+                      </select>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderMpsEntryForm = () => {
+    if (!mpsState) return null;
+
+    const updateMpsVal = (key: keyof MpsFormState, val: string) => {
+      setMpsState(prev => prev ? { ...prev, [key]: val } : null);
+    };
+
+    const densityPlusOptions = ['Nil', '+', '++', '+++', '++++'];
+    const speciesOptions = ['Nil', 'Plasmodium falciparum', 'Plasmodium vivax', 'Plasmodium malariae', 'Plasmodium ovale'];
+    const stageOptions = ['Nil', 'Trophozoites (ring forms)', 'Gametocytes', 'Schizonts', 'Trophozoites & Gametocytes'];
+
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '1rem' }}>
+        <div style={{
+          background: 'white',
+          border: '1px solid var(--teal-200)',
+          borderRadius: 'var(--radius-lg)',
+          overflow: 'hidden',
+          boxShadow: 'var(--shadow-sm)'
+        }}>
+          <h3 style={{
+            background: 'var(--teal-50)',
+            color: 'var(--teal-850)',
+            fontSize: '0.8rem',
+            fontWeight: 700,
+            padding: '0.6rem 1rem',
+            borderBottom: '1px solid var(--teal-200)',
+            textTransform: 'uppercase',
+            letterSpacing: '0.05em'
+          }}>
+            Malaria Parasite (MPs) Microscopy Form
+          </h3>
+          <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--gray-700)', marginBottom: '0.25rem', textTransform: 'uppercase' }}>
+                  Malaria Parasite Detection
+                </label>
+                <select
+                  value={mpsState.parasiteSeen}
+                  onChange={e => {
+                    const val = e.target.value;
+                    updateMpsVal('parasiteSeen', val);
+                    if (val === 'Not Seen') {
+                      updateMpsVal('densityPlus', 'Nil');
+                      updateMpsVal('densityCount', 'Nil');
+                      updateMpsVal('species', 'Nil');
+                      updateMpsVal('stage', 'Nil');
+                    } else if (mpsState.densityPlus === 'Nil') {
+                      updateMpsVal('densityPlus', '+');
+                      updateMpsVal('species', 'Plasmodium falciparum');
+                      updateMpsVal('stage', 'Trophozoites (ring forms)');
+                    }
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '0.45rem 0.65rem',
+                    border: '1px solid var(--gray-300)',
+                    borderRadius: 'var(--radius)',
+                    fontSize: '0.8rem',
+                    outline: 'none',
+                    background: mpsState.parasiteSeen === 'Seen' ? 'var(--red-light)' : 'white',
+                    color: mpsState.parasiteSeen === 'Seen' ? 'var(--red)' : 'var(--gray-900)',
+                    fontWeight: mpsState.parasiteSeen === 'Seen' ? 'bold' : 'normal'
+                  }}
+                >
+                  <option value="Not Seen">Not Seen (Negative)</option>
+                  <option value="Seen">Seen (Positive)</option>
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--gray-700)', marginBottom: '0.25rem', textTransform: 'uppercase' }}>
+                  Density (+ Plus System)
+                </label>
+                <select
+                  value={mpsState.densityPlus}
+                  onChange={e => updateMpsVal('densityPlus', e.target.value)}
+                  disabled={mpsState.parasiteSeen === 'Not Seen'}
+                  style={{
+                    width: '100%',
+                    padding: '0.45rem 0.65rem',
+                    border: '1px solid var(--gray-300)',
+                    borderRadius: 'var(--radius)',
+                    fontSize: '0.8rem',
+                    outline: 'none',
+                    background: mpsState.parasiteSeen === 'Not Seen' ? 'var(--gray-100)' : 'white'
+                  }}
+                >
+                  {densityPlusOptions.map(o => (
+                    <option key={o} value={o}>{o === 'Nil' ? 'Nil (Not Seen)' : o}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {mpsState.parasiteSeen === 'Seen' && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', borderTop: '1px solid var(--gray-100)', paddingTop: '1rem' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--gray-700)', marginBottom: '0.25rem', textTransform: 'uppercase' }}>
+                    Parasite Species
+                  </label>
+                  <select
+                    value={mpsState.species}
+                    onChange={e => updateMpsVal('species', e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '0.45rem 0.65rem',
+                      border: '1px solid var(--gray-300)',
+                      borderRadius: 'var(--radius)',
+                      fontSize: '0.8rem',
+                      outline: 'none'
+                    }}
+                  >
+                    {speciesOptions.map(o => (
+                      <option key={o} value={o}>{o}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--gray-700)', marginBottom: '0.25rem', textTransform: 'uppercase' }}>
+                    Parasite Stage
+                  </label>
+                  <select
+                    value={mpsState.stage}
+                    onChange={e => updateMpsVal('stage', e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '0.45rem 0.65rem',
+                      border: '1px solid var(--gray-300)',
+                      borderRadius: 'var(--radius)',
+                      fontSize: '0.8rem',
+                      outline: 'none'
+                    }}
+                  >
+                    {stageOptions.map(o => (
+                      <option key={o} value={o}>{o}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', borderTop: '1px solid var(--gray-100)', paddingTop: '1rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--gray-700)', marginBottom: '0.25rem', textTransform: 'uppercase' }}>
+                  Quantitative Density (parasites / µL)
+                </label>
+                <input
+                  value={mpsState.densityCount}
+                  onChange={e => updateMpsVal('densityCount', e.target.value)}
+                  placeholder="e.g. 240 / µL or Nil"
+                  style={{
+                    width: '100%',
+                    padding: '0.45rem 0.65rem',
+                    border: '1px solid var(--gray-300)',
+                    borderRadius: 'var(--radius)',
+                    fontSize: '0.8rem',
+                    outline: 'none',
+                    fontFamily: 'var(--font-body)'
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--gray-700)', marginBottom: '0.25rem', textTransform: 'uppercase' }}>
+                  Microscopy Comments / RBC Morphology
+                </label>
+                <input
+                  value={mpsState.comment}
+                  onChange={e => updateMpsVal('comment', e.target.value)}
+                  placeholder="e.g. Normocytic, normochromic RBCs. No other haemoparasite seen."
+                  style={{
+                    width: '100%',
+                    padding: '0.45rem 0.65rem',
+                    border: '1px solid var(--gray-300)',
+                    borderRadius: 'var(--radius)',
+                    fontSize: '0.8rem',
+                    outline: 'none',
+                    fontFamily: 'var(--font-body)'
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   const renderRadiologyEntryForm = () => {
     if (!radiologyState) return null;
@@ -641,93 +1141,95 @@ export default function DepartmentPage({ department }: Props) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', marginBottom: '1.25rem' }}>
         
-        <div style={{ position: 'relative' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
-            <label style={labelStyle}>Search & Select Report Template</label>
-            <button
-              onClick={() => setShowTemplateManager(true)}
-              style={{
-                background: 'none', border: 'none', color: '#7c3aed',
-                fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer',
-                display: 'flex', alignItems: 'center', gap: '0.2rem',
-                textTransform: 'uppercase', padding: 0
-              }}
-            >
-              <RiSettings3Line size={13} /> Manage Templates
-            </button>
-          </div>
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
-            <input
-              value={searchQuery}
-              onChange={e => {
-                setSearchQuery(e.target.value);
-                setShowDropdown(true);
-              }}
-              onFocus={() => setShowDropdown(true)}
-              placeholder="Type to search e.g. Appendicitis, Pelvic, Normal..."
-              style={inputStyle}
-            />
-            {searchQuery && (
+        {department === 'radiology' && (
+          <div style={{ position: 'relative' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
+              <label style={labelStyle}>Search & Select Report Template</label>
               <button
-                onClick={() => {
-                  setSearchQuery('');
-                  setShowDropdown(false);
-                }}
+                onClick={() => setShowTemplateManager(true)}
                 style={{
-                  background: '#f3f4f6', border: '1px solid #d1d5db',
-                  padding: '0.45rem 0.75rem', borderRadius: 'var(--radius)',
-                  cursor: 'pointer', fontSize: '0.8rem'
+                  background: 'none', border: 'none', color: '#7c3aed',
+                  fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: '0.2rem',
+                  textTransform: 'uppercase', padding: 0
                 }}
               >
-                Clear
+                <RiSettings3Line size={13} /> Manage Templates
               </button>
+            </div>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <input
+                value={searchQuery}
+                onChange={e => {
+                  setSearchQuery(e.target.value);
+                  setShowDropdown(true);
+                }}
+                onFocus={() => setShowDropdown(true)}
+                placeholder="Type to search e.g. Appendicitis, Pelvic, Normal..."
+                style={inputStyle}
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => {
+                    setSearchQuery('');
+                    setShowDropdown(false);
+                  }}
+                  style={{
+                    background: '#f3f4f6', border: '1px solid #d1d5db',
+                    padding: '0.45rem 0.75rem', borderRadius: 'var(--radius)',
+                    cursor: 'pointer', fontSize: '0.8rem'
+                  }}
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+
+            {showDropdown && filteredTemplates.length > 0 && (
+              <div style={{
+                position: 'absolute', top: '100%', left: 0, right: 0,
+                background: 'white', border: '1px solid #d1d5db',
+                borderRadius: 'var(--radius)', marginTop: '0.25rem',
+                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+                zIndex: 50, maxHeight: '250px', overflowY: 'auto'
+              }}>
+                {filteredTemplates.map(t => (
+                  <div
+                    key={t.key}
+                    onClick={() => handleSelectTemplate(t.key)}
+                    style={{
+                      padding: '0.6rem 0.75rem', cursor: 'pointer',
+                      fontSize: '0.8rem', borderBottom: '1px solid #f3f4f6',
+                      display: 'flex', justifyContent: 'space-between',
+                      alignItems: 'center', transition: 'background 0.1s'
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.background = '#f3f4f6'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  >
+                    <span style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      {t.name}
+                      {!t.isSystem && (
+                        <span style={{ fontSize: '0.65rem', padding: '1px 5px', background: '#f5f3ff', color: '#7c3aed', border: '1px solid #ddd6fe', borderRadius: '4px', fontWeight: 700 }}>Custom</span>
+                      )}
+                    </span>
+                    <span style={{ fontSize: '0.65rem', color: '#9ca3af' }}>{t.key.replace(/_/g, ' ')}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {showDropdown && filteredTemplates.length === 0 && (
+              <div style={{
+                position: 'absolute', top: '100%', left: 0, right: 0,
+                background: 'white', border: '1px solid #d1d5db',
+                borderRadius: 'var(--radius)', marginTop: '0.25rem',
+                padding: '0.75rem', fontSize: '0.8rem', color: '#9ca3af',
+                zIndex: 50, textAlign: 'center'
+              }}>
+                No matching templates found
+              </div>
             )}
           </div>
-
-          {showDropdown && filteredTemplates.length > 0 && (
-            <div style={{
-              position: 'absolute', top: '100%', left: 0, right: 0,
-              background: 'white', border: '1px solid #d1d5db',
-              borderRadius: 'var(--radius)', marginTop: '0.25rem',
-              boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
-              zIndex: 50, maxHeight: '250px', overflowY: 'auto'
-            }}>
-              {filteredTemplates.map(t => (
-                <div
-                  key={t.key}
-                  onClick={() => handleSelectTemplate(t.key)}
-                  style={{
-                    padding: '0.6rem 0.75rem', cursor: 'pointer',
-                    fontSize: '0.8rem', borderBottom: '1px solid #f3f4f6',
-                    display: 'flex', justifyContent: 'space-between',
-                    alignItems: 'center', transition: 'background 0.1s'
-                  }}
-                  onMouseEnter={e => e.currentTarget.style.background = '#f3f4f6'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                >
-                  <span style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                    {t.name}
-                    {!t.isSystem && (
-                      <span style={{ fontSize: '0.65rem', padding: '1px 5px', background: '#f5f3ff', color: '#7c3aed', border: '1px solid #ddd6fe', borderRadius: '4px', fontWeight: 700 }}>Custom</span>
-                    )}
-                  </span>
-                  <span style={{ fontSize: '0.65rem', color: '#9ca3af' }}>{t.key.replace(/_/g, ' ')}</span>
-                </div>
-              ))}
-            </div>
-          )}
-          {showDropdown && filteredTemplates.length === 0 && (
-            <div style={{
-              position: 'absolute', top: '100%', left: 0, right: 0,
-              background: 'white', border: '1px solid #d1d5db',
-              borderRadius: 'var(--radius)', marginTop: '0.25rem',
-              padding: '0.75rem', fontSize: '0.8rem', color: '#9ca3af',
-              zIndex: 50, textAlign: 'center'
-            }}>
-              No matching templates found
-            </div>
-          )}
-        </div>
+        )}
 
         {isObs && (
           <div style={{
@@ -901,59 +1403,61 @@ export default function DepartmentPage({ department }: Props) {
           />
         </div>
 
-        <div style={{
-          border: '1px solid var(--gray-300)', borderRadius: 'var(--radius-lg)',
-          padding: '1rem', background: '#f9fafb'
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-            <h4 style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--gray-700)', textTransform: 'uppercase', margin: 0 }}>
-              Attach Key Scan Images (Optional)
-            </h4>
-            {radiologyState.images.length > 0 && (
-              <span style={{ fontSize: '0.72rem', background: '#d1fae5', color: '#065f46', padding: '0.1rem 0.5rem', borderRadius: '9999px', fontWeight: 600 }}>
-                {radiologyState.images.length} Image(s) Attached
-              </span>
-            )}
+        {department === 'radiology' && (
+          <div style={{
+            border: '1px solid var(--gray-300)', borderRadius: 'var(--radius-lg)',
+            padding: '1rem', background: '#f9fafb'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+              <h4 style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--gray-700)', textTransform: 'uppercase', margin: 0 }}>
+                Attach Key Scan Images (Optional)
+              </h4>
+              {radiologyState.images.length > 0 && (
+                <span style={{ fontSize: '0.72rem', background: '#d1fae5', color: '#065f46', padding: '0.1rem 0.5rem', borderRadius: '9999px', fontWeight: 600 }}>
+                  {radiologyState.images.length} Image(s) Attached
+                </span>
+              )}
+            </div>
+            
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '0.75rem' }}>
+              {picOptions.map(pic => {
+                const isAttached = radiologyState.images.includes(`/uss-pics/${pic.file}`);
+                return (
+                  <div
+                    key={pic.file}
+                    onClick={() => toggleImage(pic.file)}
+                    style={{
+                      border: `2px solid ${isAttached ? '#7c3aed' : '#e5e7eb'}`,
+                      borderRadius: 'var(--radius)', background: 'white',
+                      padding: '0.4rem', cursor: 'pointer', position: 'relative',
+                      textAlign: 'center', overflow: 'hidden', display: 'flex',
+                      flexDirection: 'column', alignItems: 'center', gap: '0.25rem'
+                    }}
+                  >
+                    <img
+                      src={`/uss-pics/${pic.file}`}
+                      style={{ width: '100%', height: '50px', objectFit: 'cover', borderRadius: '2px' }}
+                      alt={pic.name}
+                    />
+                    <span style={{ fontSize: '0.62rem', fontWeight: 600, display: 'block', height: '28px', overflow: 'hidden', color: '#374151' }}>
+                      {pic.name}
+                    </span>
+                    {isAttached && (
+                      <div style={{
+                        position: 'absolute', top: 2, right: 2,
+                        background: '#7c3aed', color: 'white', width: 14, height: 14,
+                        borderRadius: '50%', fontSize: '9px', fontWeight: 'bold',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center'
+                      }}>
+                        ✓
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
-          
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '0.75rem' }}>
-            {picOptions.map(pic => {
-              const isAttached = radiologyState.images.includes(`/uss-pics/${pic.file}`);
-              return (
-                <div
-                  key={pic.file}
-                  onClick={() => toggleImage(pic.file)}
-                  style={{
-                    border: `2px solid ${isAttached ? '#7c3aed' : '#e5e7eb'}`,
-                    borderRadius: 'var(--radius)', background: 'white',
-                    padding: '0.4rem', cursor: 'pointer', position: 'relative',
-                    textAlign: 'center', overflow: 'hidden', display: 'flex',
-                    flexDirection: 'column', alignItems: 'center', gap: '0.25rem'
-                  }}
-                >
-                  <img
-                    src={`/uss-pics/${pic.file}`}
-                    style={{ width: '100%', height: '50px', objectFit: 'cover', borderRadius: '2px' }}
-                    alt={pic.name}
-                  />
-                  <span style={{ fontSize: '0.62rem', fontWeight: 600, display: 'block', height: '28px', overflow: 'hidden', color: '#374151' }}>
-                    {pic.name}
-                  </span>
-                  {isAttached && (
-                    <div style={{
-                      position: 'absolute', top: 2, right: 2,
-                      background: '#7c3aed', color: 'white', width: 14, height: 14,
-                      borderRadius: '50%', fontSize: '9px', fontWeight: 'bold',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center'
-                    }}>
-                      ✓
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        )}
 
       </div>
     );
@@ -1686,7 +2190,20 @@ export default function DepartmentPage({ department }: Props) {
             </div>
           ))}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <button
+            onClick={() => setShowTestManager(true)}
+            style={{
+              background: 'none', border: '1px solid var(--gray-300)',
+              color: 'var(--gray-700)', padding: '0.4rem 0.8rem',
+              fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer',
+              display: 'flex', alignItems: 'center', gap: '0.3rem',
+              borderRadius: 0, transition: 'all 0.15s'
+            }}
+          >
+            <RiSettings3Line size={14} /> Manage Tests
+          </button>
+
           {department === 'radiology' && (
             <button
               onClick={() => setShowTemplateManager(true)}
@@ -1742,9 +2259,19 @@ export default function DepartmentPage({ department }: Props) {
                   </div>
                 </div>
               </div>
-              {isMcs && mcsState ? (
+              {isWidal && widalState && isMPs && mpsState ? (
+                <>
+                  {renderMpsEntryForm()}
+                  <div style={{ height: '1px', borderBottom: '1px dashed var(--gray-300)', margin: '1.5rem 0' }} />
+                  {renderWidalEntryForm()}
+                </>
+              ) : isWidal && widalState ? (
+                renderWidalEntryForm()
+              ) : isMPs && mpsState ? (
+                renderMpsEntryForm()
+              ) : isMcs && mcsState ? (
                 renderMcsEntryForm()
-              ) : department === 'radiology' && radiologyState ? (
+              ) : radiologyState ? (
                 renderRadiologyEntryForm()
               ) : (
                 <div style={{ overflowX: 'auto', marginBottom: '1rem' }}>
@@ -1781,6 +2308,48 @@ export default function DepartmentPage({ department }: Props) {
                       ))}
                     </tbody>
                   </table>
+                </div>
+              )}
+              {((isWidal && widalState) || (isMPs && mpsState)) && results.length > 0 && (
+                <div style={{ marginTop: '1.5rem', marginBottom: '1rem' }}>
+                  <h3 style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--teal-800)', textTransform: 'uppercase', marginBottom: '0.75rem', letterSpacing: '0.05em' }}>
+                    Additional Parameters
+                  </h3>
+                  <div style={{ overflowX: 'auto', border: '1px solid var(--gray-200)', borderRadius: 'var(--radius)' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                      <thead>
+                        <tr style={{ background: lightColor }}>
+                          {['Parameter', 'Result', 'Unit', 'Reference Range', 'Flag'].map(h => (
+                            <th key={h} style={{ padding: '0.6rem 0.75rem', textAlign: 'left', fontWeight: 700, color: textColor, borderBottom: `1px solid ${borderColor}`, whiteSpace: 'nowrap', fontSize: '0.75rem' }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {results.map((r, i) => (
+                          <tr key={i} style={{ borderBottom: '1px solid var(--gray-100)' }}>
+                            <td style={{ padding: '0.45rem 0.75rem', fontWeight: 500 }}>{r.parameter}</td>
+                            <td style={{ padding: '0.3rem 0.5rem' }}>
+                              <input
+                                value={r.result}
+                                onChange={e => updateResult(i, 'result', e.target.value)}
+                                placeholder="Enter result"
+                                style={{ padding: '0.35rem 0.6rem', border: '1px solid var(--gray-300)', borderRadius: 0, fontSize: '0.8rem', width: '100%', minWidth: 120, background: r.flag === 'H' ? '#fdf2f2' : r.flag === 'L' ? '#eff6ff' : 'white', fontFamily: 'var(--font-body)' }}
+                              />
+                            </td>
+                            <td style={{ padding: '0.45rem 0.75rem', color: 'var(--gray-500)' }}>{r.unit || '—'}</td>
+                            <td style={{ padding: '0.45rem 0.75rem', color: 'var(--gray-500)', fontFamily: 'var(--font-mono)', fontSize: '0.72rem' }}>{r.range || '—'}</td>
+                            <td style={{ padding: '0.3rem 0.5rem' }}>
+                              <select value={r.flag} onChange={e => updateResult(i, 'flag', e.target.value)} style={{ padding: '0.35rem 0.5rem', borderRadius: 0, fontSize: '0.8rem', border: '1px solid var(--gray-300)', background: r.flag === 'H' ? '#fdf2f2' : r.flag === 'L' ? '#eff6ff' : 'white', color: r.flag === 'H' ? 'var(--red)' : r.flag === 'L' ? '#1a6aaf' : 'var(--gray-500)', fontWeight: r.flag ? 700 : 400, fontFamily: 'var(--font-body)' }}>
+                                <option value="">Normal</option>
+                                <option value="H">H (High)</option>
+                                <option value="L">L (Low)</option>
+                              </select>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )}
               <div style={{ marginBottom: '1rem' }}>
@@ -1871,6 +2440,25 @@ export default function DepartmentPage({ department }: Props) {
         userId={profile?.id}
         onTemplateChange={loadCustomTemplates}
       />
+      {showTestManager && organization?.id && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(15, 23, 42, 0.45)', backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 9999, padding: '1.5rem'
+        }}>
+          <div style={{ width: '100%', maxWidth: 1000 }}>
+            <TestManager
+              organizationId={organization.id}
+              restrictDepartment={department}
+              onClose={() => {
+                setShowTestManager(false);
+                refresh();
+              }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -232,6 +232,23 @@ function initDb(db: any) {
     );
   `);
 
+  // 12. Custom Tests table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS custom_tests (
+      id TEXT NOT NULL,
+      organization_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      department TEXT NOT NULL,
+      category TEXT NOT NULL,
+      specimen TEXT NOT NULL,
+      parameters TEXT NOT NULL DEFAULT '[]',
+      is_active INTEGER DEFAULT 1,
+      updated_at TEXT,
+      PRIMARY KEY (organization_id, id),
+      FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE
+    );
+  `);
+
   // 12. Safe Migrations for existing databases
   try {
     db.exec(`ALTER TABLE test_prices ADD COLUMN commission_type TEXT DEFAULT 'percentage';`);

@@ -5,6 +5,63 @@
 
 import type { Patient, PatientTest } from './store';
 import type { OrgForTemplate } from './templates';
+import { deserializeRadiologyResults } from './radiology-templates';
+
+function parseHtmlToPdfmake(html: string): any[] {
+  if (!html) return [];
+  
+  // Split into tokens: tags and plain text
+  const tagRegex = /(<\/?[a-zA-Z0-9]+(?:\s+[^>]*)?>)/g;
+  const tokens = html.split(tagRegex);
+  
+  const paragraphs: any[] = [];
+  let currentParagraph: any[] = [];
+  
+  let bold = false;
+  let underline = false;
+  
+  for (const token of tokens) {
+    if (!token) continue;
+    
+    if (token.startsWith('<')) {
+      const lower = token.toLowerCase();
+      if (lower.startsWith('<p') || lower.startsWith('</p>')) {
+        if (currentParagraph.length > 0) {
+          paragraphs.push({ text: currentParagraph, margin: [0, 2, 0, 4], leading: 1.4 });
+          currentParagraph = [];
+        }
+      } else if (lower.startsWith('<br')) {
+        currentParagraph.push({ text: '\n' });
+      } else if (lower === '<b>' || lower === '<strong>') {
+        bold = true;
+      } else if (lower === '</b>' || lower === '</strong>') {
+        bold = false;
+      } else if (lower === '<u>') {
+        underline = true;
+      } else if (lower === '</u>') {
+        underline = false;
+      }
+    } else {
+      const text = token
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"');
+      
+      const styles: any = { text };
+      if (bold) styles.bold = true;
+      if (underline) styles.decoration = 'underline';
+      currentParagraph.push(styles);
+    }
+  }
+  
+  if (currentParagraph.length > 0) {
+    paragraphs.push({ text: currentParagraph, margin: [0, 2, 0, 4], leading: 1.4 });
+  }
+  
+  return paragraphs;
+}
 
 /** Build the pdfmake document definition for a result report */
 export function buildReportPdfDefinition(
@@ -48,9 +105,281 @@ export function buildReportPdfDefinition(
       margin: [0, 8, 0, 0],
     });
 
-    const isMcs = t.testId.toLowerCase().endsWith('_mcs') || t.testId.toLowerCase().includes('mcs') || t.testId.toLowerCase() === 'sfmcs' || t.testName.toLowerCase().includes('mcs') || t.testName.toLowerCase().includes('culture & sensitivity') || t.testName.toLowerCase().includes('culture and sensitivity');
+    const isWidal = t.testId.toLowerCase() === 'widal' || t.testId.toLowerCase().includes('widal') || t.testName.toLowerCase().includes('widal');
+    const isMps = t.testId.toLowerCase() === 'mps' || t.testId.toLowerCase() === 'mp' || t.testId.toLowerCase().includes('mps') || t.testId.toLowerCase().startsWith('mp_') || t.testId.toLowerCase().includes('_mp') || t.testName.toLowerCase().includes('mps') || t.testName.toLowerCase().includes('mp ') || t.testName.toLowerCase().includes('mp+') || t.testName.toLowerCase().includes('mp +') || t.testName.toLowerCase().includes('malaria parasite') || t.testName.toLowerCase().includes('malaria film') || t.testName.toLowerCase().includes('malaria');
 
-    if (isMcs) {
+    const isMcs = !isWidal && !isMps && (t.testId.toLowerCase().endsWith('_mcs') || t.testId.toLowerCase().includes('mcs') || t.testId.toLowerCase() === 'sfmcs' || t.testName.toLowerCase().includes('mcs') || t.testName.toLowerCase().includes('culture & sensitivity') || t.testName.toLowerCase().includes('culture and sensitivity'));
+
+    const isFreeText = !isWidal && !isMps && (t.department === 'radiology' || (t.results || []).some(r => r.parameter === 'Radiology: Findings'));
+
+    if (isWidal || isMps) {
+      const stackElements: any[] = [];
+      if (isMps) {
+        let parasiteSeen = 'Not Seen';
+        let densityPlus = 'Nil';
+        let densityCount = 'Nil';
+        let species = 'Nil';
+        let stage = 'Nil';
+        let comment = 'Nil';
+
+        (t.results || []).forEach(r => {
+          const param = r.parameter;
+          const val = r.result;
+          if (param === 'MPs: Parasites') parasiteSeen = val || 'Not Seen';
+          if (param === 'MPs: Density (Plus)') densityPlus = val || 'Nil';
+          if (param === 'MPs: Density (Count)') densityCount = val || 'Nil';
+          if (param === 'MPs: Species') species = val || 'Nil';
+          if (param === 'MPs: Stage') stage = val || 'Nil';
+          if (param === 'MPs: Comment') comment = val || 'Nil';
+        });
+
+        const mpsTableBody: any[] = [
+          [
+            { text: 'Malaria Parasite:', bold: true, fontSize: 10 },
+            { text: parasiteSeen.toUpperCase(), fontSize: 10, bold: parasiteSeen === 'Seen', color: parasiteSeen === 'Seen' ? '#c0392b' : '#000000' }
+          ],
+          [
+            { text: 'Density (Plus System):', bold: true, fontSize: 10 },
+            { text: densityPlus, fontSize: 10, bold: densityPlus !== 'Nil', color: densityPlus !== 'Nil' ? '#c0392b' : '#000000' }
+          ],
+          [
+            { text: 'Quantitative Count:', bold: true, fontSize: 10 },
+            { text: densityCount, fontSize: 10 }
+          ]
+        ];
+
+        if (parasiteSeen === 'Seen') {
+          mpsTableBody.push(
+            [
+              { text: 'Species Isolated:', bold: true, fontSize: 10 },
+              { text: species, fontSize: 10, fontStyle: 'italic' }
+            ],
+            [
+              { text: 'Parasite Stage:', bold: true, fontSize: 10 },
+              { text: stage, fontSize: 10 }
+            ]
+          );
+        }
+
+        mpsTableBody.push([
+          { text: 'Blood Film / Comments:', bold: true, fontSize: 10 },
+          { text: comment, fontSize: 10 }
+        ]);
+
+        stackElements.push(
+          { text: 'MALARIA PARASITE MICROSCOPY REPORT', bold: true, fontSize: 10, color: '#0563c1', margin: [0, 6, 0, 4] },
+          {
+            table: {
+              widths: ['40%', '60%'],
+              body: mpsTableBody
+            },
+            layout: {
+              hLineColor: () => '#eeeeee',
+              vLineColor: () => '#eeeeee',
+              hLineWidth: () => 1,
+              vLineWidth: () => 1
+            },
+            margin: [0, 0, 0, isWidal ? 12 : 0]
+          }
+        );
+      }
+
+      if (isWidal) {
+        let typhiO = 'Negative';
+        let typhiH = 'Negative';
+        let paratyphiAO = 'Negative';
+        let paratyphiAH = 'Negative';
+        let paratyphiBO = 'Negative';
+        let paratyphiBH = 'Negative';
+        let paratyphiCO = 'Negative';
+        let paratyphiCH = 'Negative';
+
+        (t.results || []).forEach(r => {
+          const param = r.parameter;
+          const val = r.result;
+          if (param === 'Widal: S. Typhi O') typhiO = val || 'Negative';
+          if (param === 'Widal: S. Typhi H') typhiH = val || 'Negative';
+          if (param === 'Widal: S. Paratyphi A O') paratyphiAO = val || 'Negative';
+          if (param === 'Widal: S. Paratyphi A H') paratyphiAH = val || 'Negative';
+          if (param === 'Widal: S. Paratyphi B O') paratyphiBO = val || 'Negative';
+          if (param === 'Widal: S. Paratyphi B H') paratyphiBH = val || 'Negative';
+          if (param === 'Widal: S. Paratyphi C O') paratyphiCO = val || 'Negative';
+          if (param === 'Widal: S. Paratyphi C H') paratyphiCH = val || 'Negative';
+        });
+
+        const antigenRow = (antigenName: string, oVal: string, hVal: string) => {
+          const isOAlt = oVal !== 'Negative' && oVal !== '1:20' && oVal !== '1:40';
+          const isHAlt = hVal !== 'Negative' && hVal !== '1:20' && hVal !== '1:40';
+          return [
+            { text: antigenName, bold: true, fontSize: 10, margin: [0, 3, 0, 3] },
+            {
+              text: oVal,
+              alignment: 'center',
+              fontSize: 10,
+              bold: isOAlt,
+              color: isOAlt ? '#c0392b' : '#000000',
+              margin: [0, 3, 0, 3]
+            },
+            {
+              text: hVal,
+              alignment: 'center',
+              fontSize: 10,
+              bold: isHAlt,
+              color: isHAlt ? '#c0392b' : '#000000',
+              margin: [0, 3, 0, 3]
+            }
+          ];
+        };
+
+        stackElements.push(
+          { text: 'WIDAL AGGLUTINATION REACTION TITRES', bold: true, fontSize: 10, color: '#0563c1', margin: [0, 6, 0, 4] },
+          {
+            table: {
+              widths: ['*', 160, 160],
+              headerRows: 1,
+              body: [
+                [
+                  { text: 'Antigen', bold: true, fontSize: 10, color: '#0563c1', fillColor: '#f2f2f2' },
+                  { text: 'O Titre', bold: true, fontSize: 10, color: '#0563c1', alignment: 'center', fillColor: '#f2f2f2' },
+                  { text: 'H Titre', bold: true, fontSize: 10, color: '#0563c1', alignment: 'center', fillColor: '#f2f2f2' }
+                ],
+                antigenRow('S. Typhi', typhiO, typhiH),
+                antigenRow('S. Paratyphi A', paratyphiAO, paratyphiAH),
+                antigenRow('S. Paratyphi B', paratyphiBO, paratyphiBH),
+                antigenRow('S. Paratyphi C', paratyphiCO, paratyphiCH)
+              ]
+            },
+            layout: {
+              hLineColor: () => '#dddddd',
+              vLineColor: () => '#dddddd',
+              hLineWidth: () => 1,
+              vLineWidth: () => 1,
+              hLineStyle: () => ({ dash: { length: 2, space: 2 } }),
+              vLineStyle: () => ({ dash: { length: 2, space: 2 } })
+            }
+          }
+        );
+      }
+
+      const extraResults = (t.results || []).filter(r => 
+        !r.parameter.startsWith('Widal:') && !r.parameter.startsWith('MPs:')
+      );
+      if (extraResults.length > 0) {
+        stackElements.push(
+          { text: 'ADDITIONAL PARAMETERS', bold: true, fontSize: 10, color: '#0563c1', margin: [0, 8, 0, 4] },
+          {
+            table: {
+              widths: ['*', 80, 60, 100],
+              headerRows: 1,
+              body: [
+                [
+                  { text: 'Parameter', style: 'tableHeader', fillColor: '#4472c4', color: 'white' },
+                  { text: 'Result', style: 'tableHeader', fillColor: '#4472c4', color: 'white' },
+                  { text: 'Unit', style: 'tableHeader', fillColor: '#4472c4', color: 'white' },
+                  { text: 'Reference Range', style: 'tableHeader', fillColor: '#4472c4', color: 'white' },
+                ],
+                ...extraResults.map(r => [
+                  { text: r.parameter, style: 'tableCell' },
+                  {
+                    text: `${r.result}${r.flag ? ` (${r.flag})` : ''}`,
+                    style: 'tableCell',
+                    bold: true,
+                    color: r.flag === 'H' ? '#c0392b' : r.flag === 'L' ? '#1a6aaf' : '#000',
+                  },
+                  { text: r.unit || '—', style: 'tableCell', color: '#555' },
+                  { text: r.range || '—', style: 'tableCell', color: '#555' },
+                ])
+              ]
+            },
+            layout: {
+              hLineColor: () => '#eeeeee',
+              vLineColor: () => '#eeeeee',
+            },
+            margin: [0, 0, 0, 8]
+          }
+        );
+      }
+
+      if (t.notes) {
+        stackElements.push({
+          text: [
+            { text: 'Comment: ', bold: true, fontSize: 9 },
+            { text: t.notes, fontSize: 9 }
+          ],
+          margin: [0, 6, 0, 0]
+        });
+      }
+
+      testContent.push({
+        unbreakable: true,
+        stack: stackElements,
+        margin: [0, 0, 0, 10]
+      });
+    } else if (isFreeText) {
+      const radData = deserializeRadiologyResults(t.results || []);
+      
+      if (radData.findings) {
+        testContent.push({
+          stack: parseHtmlToPdfmake(radData.findings),
+          margin: [0, 8, 0, 8]
+        });
+      }
+      
+      if (radData.impression) {
+        testContent.push({
+          margin: [0, 8, 0, 8],
+          table: {
+            widths: ['*'],
+            body: [
+              [{
+                stack: [
+                  { text: 'IMPRESSION / CONCLUSION:', bold: true, color: '#0563c1', fontSize: 10, margin: [0, 0, 0, 4] },
+                  ...parseHtmlToPdfmake(radData.impression)
+                ],
+                margin: [8, 8, 8, 8],
+                fillColor: '#f8fafc'
+              }]
+            ]
+          },
+          layout: {
+            hLineColor: () => '#0563c1',
+            vLineColor: () => '#0563c1',
+            hLineWidth: (i: number) => 0,
+            vLineWidth: (i: number) => i === 0 ? 3 : 0,
+          }
+        });
+      }
+
+      if (radData.images && radData.images.length > 0) {
+        const imagesRow: any[] = [];
+        for (const img of radData.images) {
+          if (img.startsWith('data:image/') || img.startsWith('http')) {
+            try {
+              imagesRow.push({
+                stack: [
+                  { image: img, fit: [200, 150], alignment: 'center' },
+                  { text: img.split('/').pop()?.replace(/_/g, ' ') || 'Scan Image', fontSize: 8, color: '#555', margin: [0, 4, 0, 0], alignment: 'center' }
+                ],
+                margin: [5, 5, 5, 5]
+              });
+            } catch (err) {
+              console.error('Failed to include scan image in PDF:', err);
+            }
+          }
+        }
+        
+        if (imagesRow.length > 0) {
+          testContent.push({ text: 'ATTACHED IMAGERY', bold: true, fontSize: 10, color: '#0563c1', margin: [0, 12, 0, 6] });
+          const columnsGroup: any[] = [];
+          for (let i = 0; i < imagesRow.length; i += 2) {
+            const cols = [imagesRow[i]];
+            if (imagesRow[i + 1]) cols.push(imagesRow[i + 1]);
+            columnsGroup.push({ columns: cols, columnGap: 10, margin: [0, 5, 0, 5] });
+          }
+          testContent.push(...columnsGroup);
+        }
+      }
+    } else if (isMcs) {
       let colour = '—';
       let appearance = '—';
       const microscopyRows: any[] = [];
