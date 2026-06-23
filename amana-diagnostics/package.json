@@ -20,7 +20,8 @@
     "nodemailer": "^8.0.7",
     "pdfmake": "^0.3.8",
     "react": "^19.2.5",
-    "react-dom": "^19.2.5"
+    "react-dom": "^19.2.5",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "25.6.0",
