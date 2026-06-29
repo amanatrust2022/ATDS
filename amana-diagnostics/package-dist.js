@@ -181,9 +181,9 @@ async function main() {
     const portableZipDest = path.join(distDir, 'amana-hub-portable.zip');
 
     if (process.platform === 'win32') {
-      execSync(`powershell -Command "Compress-Archive -Path 'dist/amana-server.exe', 'dist/node.exe', 'dist/server', 'dist/version.json' -DestinationPath '${portableZipDest}' -Force"`);
+      execSync(`powershell -Command "Compress-Archive -Path '${path.join(distDir, 'amana-server.exe')}', '${path.join(distDir, 'server')}', '${path.join(distDir, 'version.json')}' -DestinationPath '${portableZipDest}' -Force"`);
     } else {
-      execSync(`cd "${distDir}" && zip -r amana-hub-portable.zip amana-server.exe node.exe server version.json`);
+      execSync(`cd "${distDir}" && zip -r amana-hub-portable.zip amana-server.exe server version.json`);
     }
     console.log('✅ Packaged amana-hub-portable.zip successfully.');
 

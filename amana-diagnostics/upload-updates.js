@@ -1,68 +1,87 @@
-const { createClient } = require('@supabase/supabase-js');
 const fs = require('fs');
 const path = require('path');
+const https = require('https');
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 if (!supabaseUrl || !supabaseServiceKey) {
-  console.error('❌ Error: NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables must be set.');
+  console.error('❌ Error: NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set.');
   process.exit(1);
 }
 
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
+// Upload a file using native HTTPS streams (handles large files without OOM)
+function uploadToSupabase(filePath, destName, contentType) {
+  return new Promise((resolve, reject) => {
+    if (!fs.existsSync(filePath)) {
+      return reject(new Error(`File does not exist: ${filePath}`));
+    }
 
-async function uploadFile(filePath, destName, contentType) {
-  if (!fs.existsSync(filePath)) {
-    throw new Error(`File does not exist: ${filePath}`);
-  }
-  
-  const fileBuffer = fs.readFileSync(filePath);
-  
-  // Upload to the public bucket named 'updates'
-  const { data, error } = await supabase.storage
-    .from('updates')
-    .upload(destName, fileBuffer, {
-      contentType,
-      upsert: true // Overwrites existing file
+    const fileSize = fs.statSync(filePath).size;
+    const url = new URL(`${supabaseUrl}/storage/v1/object/updates/${destName}`);
+
+    const options = {
+      hostname: url.hostname,
+      path: url.pathname,
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${supabaseServiceKey}`,
+        'Content-Type': contentType,
+        'Content-Length': fileSize,
+        'x-upsert': 'true',
+      },
+    };
+
+    const req = https.request(options, (res) => {
+      let body = '';
+      res.on('data', (chunk) => { body += chunk; });
+      res.on('end', () => {
+        if (res.statusCode === 200 || res.statusCode === 201) {
+          console.log(`✅ Uploaded ${destName} (${(fileSize / 1024 / 1024).toFixed(1)} MB)`);
+          resolve();
+        } else {
+          reject(new Error(`Upload ${destName} failed: HTTP ${res.statusCode} - ${body}`));
+        }
+      });
     });
 
-  if (error) {
-    throw new Error(`Failed to upload ${destName}: ${error.message}`);
-  }
-  
-  console.log(`✅ Uploaded ${destName} successfully!`);
+    req.on('error', reject);
+
+    // Stream file directly without loading into memory
+    const readStream = fs.createReadStream(filePath);
+    readStream.on('error', reject);
+    readStream.pipe(req);
+  });
 }
 
 async function main() {
   try {
     const distDir = path.join(__dirname, 'dist');
-    
-    // Upload version.json
+
     console.log('Uploading version.json...');
-    await uploadFile(
+    await uploadToSupabase(
       path.join(distDir, 'version.json'),
       'version.json',
       'application/json'
     );
-    
-    // Upload update-latest.zip
+
     console.log('Uploading update-latest.zip...');
-    await uploadFile(
+    await uploadToSupabase(
       path.join(distDir, 'update-latest.zip'),
       'update-latest.zip',
       'application/zip'
     );
 
-    // Upload amana-hub-portable.zip
     console.log('Uploading amana-hub-portable.zip...');
-    await uploadFile(
+    await uploadToSupabase(
       path.join(distDir, 'amana-hub-portable.zip'),
       'amana-hub-portable.zip',
       'application/zip'
     );
-    
-    console.log('🎉 Update files deployed successfully to Supabase Storage!');
+
+    console.log('');
+    console.log('🎉 All files deployed to Supabase Storage!');
+    console.log(`Download URL: ${supabaseUrl}/storage/v1/object/public/updates/amana-hub-portable.zip`);
   } catch (error) {
     console.error('❌ Deployment failed:', error.message);
     process.exit(1);

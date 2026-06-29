@@ -248,8 +248,35 @@ async function runAutoUpdate() {
   console.log('');
 }
 
+// Download portable node.exe on first run if not present
+async function downloadNodeIfMissing() {
+  const nodeDest = path.join(baseDir, 'node.exe');
+  if (fs.existsSync(nodeDest)) return; // Already present
+
+  console.log('[2b] node.exe not found. Downloading portable Node.js v22 for Windows...');
+  const nodeUrl = 'https://nodejs.org/dist/v22.2.0/win-x64/node.exe';
+  const tmpDest = nodeDest + '.tmp';
+
+  let lastErr;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      await downloadFile(nodeUrl, tmpDest, 120000); // 2 min timeout for 75MB
+      fs.renameSync(tmpDest, nodeDest);
+      console.log('✅ node.exe downloaded successfully.');
+      return;
+    } catch (e) {
+      lastErr = e;
+      if (fs.existsSync(tmpDest)) fs.unlinkSync(tmpDest);
+      console.warn(`⚠️  Attempt ${attempt} failed: ${e.message}. Retrying...`);
+      await new Promise(r => setTimeout(r, 2000));
+    }
+  }
+  console.warn(`⚠️  Could not download node.exe (${lastErr.message}). Will try system Node.js if available.`);
+}
+
 async function startServer() {
   await runAutoUpdate();
+  await downloadNodeIfMissing();
 
   console.log('=====================================================================');
   console.log('                  CLINIC STAFF CONNECTION INSTRUCTIONS               ');
