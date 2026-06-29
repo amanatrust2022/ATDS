@@ -129,7 +129,7 @@ export async function POST(request: Request) {
         const pdfMake = require('pdfmake');
         
         // Resolve font paths
-        const fontDir = path.join(process.cwd(), 'node_modules', 'pdfmake', 'fonts', 'Roboto');
+        const fontDir = path.join(process.cwd(), 'public', 'fonts', 'Roboto');
         const fonts = {
           Roboto: {
             normal: path.join(fontDir, 'Roboto-Regular.ttf'),

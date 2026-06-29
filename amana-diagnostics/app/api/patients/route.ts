@@ -1,17 +1,42 @@
 import { NextResponse } from 'next/server';
 import { getDb, queueSync } from '@/lib/localDb';
 import { sendEmail } from '@/lib/brevo';
+import { getNextNumericID } from '@/lib/idGenerator';
 
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const orgId = searchParams.get('organizationId');
+    const action = searchParams.get('action');
 
     if (!orgId) {
       return NextResponse.json({ error: 'Missing organizationId' }, { status: 400 });
     }
 
     const db = getDb();
+
+    if (action === 'getPatientProfiles') {
+      const profilesStmt = db.prepare(`
+        SELECT * FROM patient_profiles 
+        WHERE organization_id = ? 
+        ORDER BY created_at DESC
+      `);
+      const profiles = profilesStmt.all(orgId) as any[];
+      const formatted = profiles.map(p => ({
+        id: p.id,
+        organizationId: p.organization_id,
+        firstName: p.first_name,
+        surname: p.surname,
+        middleName: p.middle_name || '',
+        phone: p.phone,
+        email: p.email || '',
+        address: p.address || '',
+        sex: p.sex,
+        createdAt: p.created_at,
+        updatedAt: p.updated_at
+      }));
+      return NextResponse.json(formatted);
+    }
     
     // Fetch patients
     const patientsStmt = db.prepare(`
@@ -29,7 +54,7 @@ export async function GET(request: Request) {
     const tests = testsStmt.all(orgId) as any[];
 
     // Map tests to patients
-    const testsByPatientId = new Map<string, any[]>();
+    const testsByPatientId = new Map<number | string, any[]>();
     tests.forEach((t) => {
       if (!testsByPatientId.has(t.patient_id)) {
         testsByPatientId.set(t.patient_id, []);
@@ -87,6 +112,8 @@ export async function GET(request: Request) {
       paidAmount: p.paid_amount || 0,
       paymentStatus: p.payment_status || 'paid',
       paymentMethod: p.payment_method || 'cash',
+      billingAccountId: p.billing_account_id || null,
+      patientProfileId: p.patient_profile_id || null,
       tests: testsByPatientId.get(p.id) || []
     }));
 
@@ -106,87 +133,261 @@ export async function POST(request: Request) {
 
     if (action === 'addPatient') {
       const { patient, tests, organizationId } = body;
-      const patientId = crypto.randomUUID();
+      
+      const patientId = getNextNumericID(db, 'patients', 1);
+      let patientProfileId = patient.patientProfileId ? Number(patient.patientProfileId) : null;
 
-      // Insert patient
-      const patientStmt = db.prepare(`
-        INSERT INTO patients (
-          id, slip_number, registered_at, first_name, surname, middle_name, age, sex, phone, email, address,
-          referred_by, referring_facility, referring_doctor_id, referring_facility_id,
-          commission_assigned, commission_type, commission_value, commission_amount, commission_status,
-          total_amount, discount_type, discount_value, discount_amount, net_amount, paid_amount, payment_status, payment_method,
-          organization_id, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `);
+      let finalPaidAmount = patient.paidAmount ?? 0;
+      let finalPaymentStatus = patient.paymentStatus || 'paid';
 
-      patientStmt.run(
-        patientId,
-        patient.slipNumber,
-        patient.registeredAt || nowStr,
-        patient.firstName,
-        patient.surname,
-        patient.middleName || null,
-        patient.age,
-        patient.sex,
-        patient.phone,
-        patient.email || null,
-        patient.address,
-        patient.referredBy || null,
-        patient.referringFacility || null,
-        patient.referringDoctorId || null,
-        patient.referringFacilityId || null,
-        patient.commissionAssigned ? 1 : 0,
-        patient.commissionType || null,
-        patient.commissionValue || null,
-        patient.commissionAmount || null,
-        patient.commissionAssigned ? 'pending' : null,
-        patient.totalAmount ?? 0,
-        patient.discountType || 'none',
-        patient.discountValue ?? 0,
-        patient.discountAmount ?? 0,
-        patient.netAmount ?? 0,
-        patient.paidAmount ?? 0,
-        patient.paymentStatus || 'paid',
-        patient.paymentMethod || 'cash',
-        organizationId,
-        nowStr
-      );
+      if (patient.paymentMethod === 'wallet' && patient.billingAccountId) {
+        finalPaidAmount = patient.netAmount ?? 0;
+        finalPaymentStatus = 'paid';
+      }
 
-      // Log patient insert in outbox
-      queueSync(db, 'patients', 'INSERT', patientId, {
-        id: patientId,
-        slip_number: patient.slipNumber,
-        registered_at: patient.registeredAt || nowStr,
-        first_name: patient.firstName,
-        surname: patient.surname,
-        middle_name: patient.middleName || null,
-        age: patient.age,
-        sex: patient.sex,
-        phone: patient.phone,
-        email: patient.email || null,
-        address: patient.address,
-        referred_by: patient.referredBy || null,
-        referring_facility: patient.referringFacility || null,
-        referring_doctor_id: patient.referringDoctorId || null,
-        referring_facility_id: patient.referringFacilityId || null,
-        commission_assigned: patient.commissionAssigned ?? false,
-        commission_type: patient.commissionType || null,
-        commission_value: patient.commissionValue ?? null,
-        commission_amount: patient.commissionAmount ?? null,
-        commission_status: patient.commissionAssigned ? 'pending' : null,
-        total_amount: patient.totalAmount ?? 0,
-        discount_type: patient.discountType || 'none',
-        discount_value: patient.discountValue ?? 0,
-        discount_amount: patient.discountAmount ?? 0,
-        net_amount: patient.netAmount ?? 0,
-        paid_amount: patient.paidAmount ?? 0,
-        payment_status: patient.paymentStatus || 'paid',
-        payment_method: patient.paymentMethod || 'cash',
-        organization_id: organizationId,
-        updated_at: nowStr
-      });
+      db.exec('BEGIN TRANSACTION');
+      try {
+        // If it's a new patient profile, we insert it
+        if (!patientProfileId) {
+          patientProfileId = getNextNumericID(db, 'patient_profiles', 1);
+          
+          const profileStmt = db.prepare(`
+            INSERT INTO patient_profiles (
+              id, organization_id, first_name, surname, middle_name, phone, email, address, sex, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `);
+          profileStmt.run(
+            patientProfileId,
+            organizationId,
+            patient.firstName,
+            patient.surname,
+            patient.middleName || null,
+            patient.phone,
+            patient.email || null,
+            patient.address,
+            patient.sex,
+            nowStr,
+            nowStr
+          );
 
-      // Send welcome email if email exists (async, safe)
+          // Queue sync for the new patient profile
+          queueSync(db, 'patient_profiles', 'INSERT', String(patientProfileId), {
+            id: patientProfileId,
+            organization_id: organizationId,
+            first_name: patient.firstName,
+            surname: patient.surname,
+            middle_name: patient.middleName || null,
+            phone: patient.phone,
+            email: patient.email || null,
+            address: patient.address,
+            sex: patient.sex,
+            created_at: nowStr,
+            updated_at: nowStr
+          });
+        }
+
+        if (patient.paymentMethod === 'wallet' && patient.billingAccountId) {
+          // Fetch current account
+          const accStmt = db.prepare(`SELECT balance, credit_limit, name FROM billing_accounts WHERE id = ?`);
+          const acc = accStmt.get(patient.billingAccountId) as { balance: number; credit_limit: number; name: string } | undefined;
+          if (!acc) {
+            throw new Error('Billing account not found');
+          }
+
+          const currentBalance = acc.balance || 0;
+          const creditLimit = acc.credit_limit || 0;
+          const netAmount = patient.netAmount || 0;
+
+          if (currentBalance + creditLimit < netAmount) {
+            throw new Error(`Insufficient wallet balance on "${acc.name}". Available: ₦${(currentBalance + creditLimit).toLocaleString('en-NG')}`);
+          }
+
+          // Deduct balance
+          const newBalance = currentBalance - netAmount;
+          const upAccStmt = db.prepare(`UPDATE billing_accounts SET balance = ?, updated_at = ? WHERE id = ?`);
+          upAccStmt.run(newBalance, nowStr, patient.billingAccountId);
+
+          // Queue sync account update
+          const fullAcc = db.prepare('SELECT * FROM billing_accounts WHERE id = ?').get(patient.billingAccountId) as any;
+          if (fullAcc) {
+            queueSync(db, 'billing_accounts', 'UPDATE', patient.billingAccountId, {
+              ...fullAcc,
+              balance: newBalance,
+              updated_at: nowStr
+            });
+          }
+        }
+
+        // Insert patient (Must happen before ledger transaction to satisfy FOREIGN KEY constraint on patient_id)
+        const patientStmt = db.prepare(`
+          INSERT INTO patients (
+            id, patient_profile_id, slip_number, registered_at, first_name, surname, middle_name, age, sex, phone, email, address,
+            referred_by, referring_facility, referring_doctor_id, referring_facility_id,
+            commission_assigned, commission_type, commission_value, commission_amount, commission_status,
+            total_amount, discount_type, discount_value, discount_amount, net_amount, paid_amount, payment_status, payment_method,
+            organization_id, billing_account_id, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+
+        patientStmt.run(
+          patientId,
+          patientProfileId,
+          patient.slipNumber,
+          patient.registeredAt || nowStr,
+          patient.firstName,
+          patient.surname,
+          patient.middleName || null,
+          patient.age,
+          patient.sex,
+          patient.phone,
+          patient.email || null,
+          patient.address,
+          patient.referredBy || null,
+          patient.referringFacility || null,
+          patient.referringDoctorId || null,
+          patient.referringFacilityId || null,
+          patient.commissionAssigned ? 1 : 0,
+          patient.commissionType || null,
+          patient.commissionValue || null,
+          patient.commissionAmount || null,
+          patient.commissionAssigned ? 'pending' : null,
+          patient.totalAmount ?? 0,
+          patient.discountType || 'none',
+          patient.discountValue ?? 0,
+          patient.discountAmount ?? 0,
+          patient.netAmount ?? 0,
+          finalPaidAmount,
+          finalPaymentStatus,
+          patient.paymentMethod || 'cash',
+          organizationId,
+          patient.billingAccountId || null,
+          nowStr
+        );
+
+        // Log patient insert in outbox
+        queueSync(db, 'patients', 'INSERT', String(patientId), {
+          id: patientId,
+          patient_profile_id: patientProfileId,
+          slip_number: patient.slipNumber,
+          registered_at: patient.registeredAt || nowStr,
+          first_name: patient.firstName,
+          surname: patient.surname,
+          middle_name: patient.middleName || null,
+          age: patient.age,
+          sex: patient.sex,
+          phone: patient.phone,
+          email: patient.email || null,
+          address: patient.address,
+          referred_by: patient.referredBy || null,
+          referring_facility: patient.referringFacility || null,
+          referring_doctor_id: patient.referringDoctorId || null,
+          referring_facility_id: patient.referringFacilityId || null,
+          commission_assigned: patient.commissionAssigned ?? false,
+          commission_type: patient.commissionType || null,
+          commission_value: patient.commissionValue ?? null,
+          commission_amount: patient.commissionAmount ?? null,
+          commission_status: patient.commissionAssigned ? 'pending' : null,
+          total_amount: patient.totalAmount ?? 0,
+          discount_type: patient.discountType || 'none',
+          discount_value: patient.discountValue ?? 0,
+          discount_amount: patient.discountAmount ?? 0,
+          net_amount: patient.netAmount ?? 0,
+          paid_amount: finalPaidAmount,
+          payment_status: finalPaymentStatus,
+          payment_method: patient.paymentMethod || 'cash',
+          organization_id: organizationId,
+          billing_account_id: patient.billingAccountId || null,
+          updated_at: nowStr
+        });
+
+        // Insert ledger transaction (Only if wallet payment - now patient exists, so FK check succeeds)
+        if (patient.paymentMethod === 'wallet' && patient.billingAccountId) {
+          const txId = crypto.randomUUID();
+          const txStmt = db.prepare(`
+            INSERT INTO billing_ledger_transactions (
+              id, organization_id, billing_account_id, patient_id, type, amount, description, reference_id, payment_method, created_by, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `);
+          txStmt.run(
+            txId,
+            organizationId,
+            patient.billingAccountId,
+            patientId,
+            'charge',
+            -patient.netAmount,
+            `Diagnostics Charge - Slip: ${patient.slipNumber}`,
+            patient.slipNumber,
+            'wallet',
+            'Reception Desk',
+            nowStr
+          );
+
+          // Queue sync transaction
+          queueSync(db, 'billing_ledger_transactions', 'INSERT', txId, {
+            id: txId,
+            organization_id: organizationId,
+            billing_account_id: patient.billingAccountId,
+            patient_id: patientId,
+            type: 'charge',
+            amount: -patient.netAmount,
+            description: `Diagnostics Charge - Slip: ${patient.slipNumber}`,
+            reference_id: patient.slipNumber,
+            payment_method: 'wallet',
+            created_by: 'Reception Desk',
+            created_at: nowStr
+          });
+        }
+
+        // Insert tests
+        for (const t of tests) {
+          const testId = crypto.randomUUID();
+          const testStmt = db.prepare(`
+            INSERT INTO patient_tests (
+              id, patient_id, test_id, test_name, department, status, specimen, price, commission_type, commission_value, commission_amount, organization_id, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `);
+          testStmt.run(
+            testId,
+            patientId,
+            t.testId,
+            t.testName,
+            t.department,
+            t.status,
+            t.specimen || null,
+            t.price ?? 0,
+            t.commissionType || 'none',
+            t.commissionValue ?? 0,
+            t.commissionAmount ?? 0,
+            organizationId,
+            nowStr
+          );
+
+          // Log test insert in outbox
+          queueSync(db, 'patient_tests', 'INSERT', testId, {
+            id: testId,
+            patient_id: patientId,
+            test_id: t.testId,
+            test_name: t.testName,
+            department: t.department,
+            status: t.status,
+            specimen: t.specimen || null,
+            price: t.price ?? 0,
+            commission_type: t.commissionType || 'none',
+            commission_value: t.commissionValue ?? 0,
+            commission_amount: t.commissionAmount ?? 0,
+            organization_id: organizationId,
+            updated_at: nowStr
+          });
+        }
+
+        db.exec('COMMIT');
+      } catch (err: any) {
+        db.exec('ROLLBACK');
+        console.error('Patient registration transaction failed, rolled back:', err);
+        return NextResponse.json({ error: err.message }, { status: 400 });
+      }
+
+      // Send welcome email if email exists (async, safe - done outside of transaction)
       if (patient.email && patient.email.trim()) {
         try {
           const org = db.prepare('SELECT * FROM organizations WHERE id = ?').get(organizationId) as any;
@@ -224,48 +425,6 @@ export async function POST(request: Request) {
         } catch (err: any) {
           console.warn('Failed to construct or queue welcome email:', err.message);
         }
-      }
-
-      // Insert tests
-      for (const t of tests) {
-        const testId = crypto.randomUUID();
-        const testStmt = db.prepare(`
-          INSERT INTO patient_tests (
-            id, patient_id, test_id, test_name, department, status, specimen, price, commission_type, commission_value, commission_amount, organization_id, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `);
-        testStmt.run(
-          testId,
-          patientId,
-          t.testId,
-          t.testName,
-          t.department,
-          t.status,
-          t.specimen || null,
-          t.price ?? 0,
-          t.commissionType || 'none',
-          t.commissionValue ?? 0,
-          t.commissionAmount ?? 0,
-          organizationId,
-          nowStr
-        );
-
-        // Log test insert in outbox
-        queueSync(db, 'patient_tests', 'INSERT', testId, {
-          id: testId,
-          patient_id: patientId,
-          test_id: t.testId,
-          test_name: t.testName,
-          department: t.department,
-          status: t.status,
-          specimen: t.specimen || null,
-          price: t.price ?? 0,
-          commission_type: t.commissionType || 'none',
-          commission_value: t.commissionValue ?? 0,
-          commission_amount: t.commissionAmount ?? 0,
-          organization_id: organizationId,
-          updated_at: nowStr
-        });
       }
 
       return NextResponse.json({ success: true, id: patientId });

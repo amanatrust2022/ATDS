@@ -66,10 +66,28 @@ function initDb(db: any) {
     );
   `);
 
-  // 3. Patients table
+  // 3. Patient Profiles table (Permanent patient records)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS patient_profiles (
+      id INTEGER PRIMARY KEY,
+      organization_id TEXT NOT NULL,
+      first_name TEXT NOT NULL,
+      surname TEXT NOT NULL,
+      middle_name TEXT,
+      phone TEXT,
+      email TEXT,
+      address TEXT,
+      sex TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+  `);
+
+  // 4. Patients table (Visits/Encounters)
   db.exec(`
     CREATE TABLE IF NOT EXISTS patients (
-      id TEXT PRIMARY KEY,
+      id INTEGER PRIMARY KEY,
+      patient_profile_id INTEGER,
       slip_number TEXT,
       registered_at TEXT,
       first_name TEXT,
@@ -100,15 +118,17 @@ function initDb(db: any) {
       paid_amount REAL DEFAULT 0.0,
       payment_status TEXT DEFAULT 'paid',
       payment_method TEXT DEFAULT 'cash',
-      updated_at TEXT
+      billing_account_id TEXT,
+      updated_at TEXT,
+      FOREIGN KEY (patient_profile_id) REFERENCES patient_profiles(id) ON DELETE SET NULL
     );
   `);
 
-  // 4. Patient Tests table
+  // 5. Patient Tests table
   db.exec(`
     CREATE TABLE IF NOT EXISTS patient_tests (
       id TEXT PRIMARY KEY,
-      patient_id TEXT,
+      patient_id INTEGER,
       test_id TEXT NOT NULL,
       test_name TEXT NOT NULL,
       department TEXT NOT NULL,
@@ -294,7 +314,86 @@ function initDb(db: any) {
   try {
     db.exec(`ALTER TABLE patients ADD COLUMN payment_method TEXT DEFAULT 'cash';`);
   } catch (e) {}
+
+  // 13. Billing and Wallets Tables
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS billing_accounts (
+      id TEXT PRIMARY KEY,
+      organization_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      owner_patient_id TEXT NOT NULL,
+      balance REAL DEFAULT 0.0,
+      credit_limit REAL DEFAULT 0.0,
+      type TEXT NOT NULL, -- 'individual' | 'family' | 'corporate'
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS billing_ledger_transactions (
+      id TEXT PRIMARY KEY,
+      organization_id TEXT NOT NULL,
+      billing_account_id TEXT NOT NULL,
+      patient_id TEXT, -- nullable
+      type TEXT NOT NULL, -- 'deposit' | 'charge' | 'refund' | 'adjustment'
+      amount REAL NOT NULL,
+      description TEXT NOT NULL,
+      reference_id TEXT,
+      payment_method TEXT,
+      created_by TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (billing_account_id) REFERENCES billing_accounts(id) ON DELETE CASCADE,
+      FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE SET NULL
+    );
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS external_department_charges (
+      id TEXT PRIMARY KEY,
+      organization_id TEXT NOT NULL,
+      patient_id TEXT NOT NULL,
+      billing_account_id TEXT, -- nullable
+      department TEXT NOT NULL,
+      receipt_number TEXT NOT NULL,
+      amount REAL NOT NULL,
+      payment_method TEXT NOT NULL,
+      status TEXT DEFAULT 'paid',
+      description TEXT,
+      created_by TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE CASCADE,
+      FOREIGN KEY (billing_account_id) REFERENCES billing_accounts(id) ON DELETE SET NULL
+    );
+  `);
+
+  try {
+    db.exec(`ALTER TABLE patients ADD COLUMN billing_account_id TEXT;`);
+  } catch (e) {}
+
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS patient_profiles (
+        id INTEGER PRIMARY KEY,
+        organization_id TEXT NOT NULL,
+        first_name TEXT NOT NULL,
+        surname TEXT NOT NULL,
+        middle_name TEXT,
+        phone TEXT,
+        email TEXT,
+        address TEXT,
+        sex TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `);
+  } catch (e) {}
+
+  try {
+    db.exec(`ALTER TABLE patients ADD COLUMN patient_profile_id INTEGER;`);
+  } catch (e) {}
 }
+
 
 /**
  * Helper to queue write operations in the local outbox.

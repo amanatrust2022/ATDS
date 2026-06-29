@@ -10,7 +10,8 @@ import {
   updateCustomTemplate, deleteCustomTemplate 
 } from '@/lib/store';
 import { RADIOLOGY_TEMPLATES, convertTextToFormattedHtml, splitTemplateContent } from '@/lib/radiology-templates';
-import RichTextEditor from './RichTextEditor';
+import dynamic from 'next/dynamic';
+const RichTextEditor = dynamic(() => import('./RichTextEditor'), { ssr: false });
 
 interface TemplateManagerProps {
   isOpen: boolean;

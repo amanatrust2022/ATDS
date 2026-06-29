@@ -6,8 +6,10 @@ import {
 } from '@remixicon/react';
 import {
   Test, TEST_CATALOGUE, fetchCustomTests, addCustomTest,
-  updateCustomTest, deleteCustomTest, setCustomCatalogueCache
+  updateCustomTest, deleteCustomTest, setCustomCatalogueCache,
+  fetchTestPrices, upsertTestPrices, TestPrice
 } from '@/lib/store';
+import { useAuth } from '@/components/AuthProvider';
 
 interface Props {
   organizationId: string;
@@ -354,8 +356,11 @@ const CLINICAL_PRESETS = [
 ];
 
 export default function TestManager({ organizationId, restrictDepartment, onClose }: Props) {
+  const { profile } = useAuth();
   const [catalogue, setCatalogue] = useState<Test[]>([]);
+  const [pendingTests, setPendingTests] = useState<Test[]>([]);
   const [customTests, setCustomTests] = useState<Test[]>([]);
+  const [activeTab, setActiveTab] = useState<'catalogue' | 'pending'>('catalogue');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [editingTest, setEditingTest] = useState<Test | null>(null);
@@ -373,6 +378,12 @@ export default function TestManager({ organizationId, restrictDepartment, onClos
   const [formSpecimen, setFormSpecimen] = useState('');
   const [formParameters, setFormParameters] = useState<{ name: string; unit: string; range: string }[]>([]);
   const [formFormat, setFormFormat] = useState<'parameterized' | 'freetext'>('parameterized');
+
+  // Pricing & Commission State
+  const [formPrice, setFormPrice] = useState<number>(0);
+  const [formCommType, setFormCommType] = useState<'percentage' | 'flat' | 'none'>('percentage');
+  const [formCommValue, setFormCommValue] = useState<number>(0);
+  const [testPrices, setTestPrices] = useState<TestPrice[]>([]);
 
   const activeDeptCategories = formDept === 'radiology' ? RAD_CATEGORIES : LAB_CATEGORIES;
 
@@ -395,39 +406,68 @@ export default function TestManager({ organizationId, restrictDepartment, onClos
     setLoading(true);
     setError('');
     try {
-      const dbCustom = await fetchCustomTests(organizationId);
+      const [dbCustom, priceData] = await Promise.all([
+        fetchCustomTests(organizationId),
+        fetchTestPrices(organizationId)
+      ]);
       setCustomTests(dbCustom);
       setCustomCatalogueCache(dbCustom);
+      setTestPrices(priceData);
 
-      // Merge TEST_CATALOGUE with custom tests
-      const merged = [...TEST_CATALOGUE];
+      // Merge TEST_CATALOGUE with custom tests, separating active from pending pricing
+      const mergedActive: Test[] = [...TEST_CATALOGUE];
+      const pending: Test[] = [];
+
       dbCustom.forEach(ct => {
-        const idx = merged.findIndex(t => t.id === ct.id);
-        if (idx !== -1) {
-          if (ct.is_active === false) {
-            // Default test deactivated
-            merged.splice(idx, 1);
-          } else {
-            // Default test overridden
-            merged[idx] = ct;
+        const isDefault = TEST_CATALOGUE.some(t => t.id === ct.id);
+        if (isDefault) {
+          const idx = mergedActive.findIndex(t => t.id === ct.id);
+          if (idx !== -1) {
+            if (ct.is_active === false) {
+              // Default test deactivated
+              mergedActive.splice(idx, 1);
+              pending.push(ct);
+            } else {
+              // Default test overridden
+              mergedActive[idx] = ct;
+            }
           }
-        } else if (ct.is_active !== false) {
-          // New custom test
-          merged.push(ct);
+        } else {
+          // Custom test
+          if (ct.is_active === false) {
+            pending.push(ct);
+          } else {
+            mergedActive.push(ct);
+          }
         }
       });
 
       // Filter by restricted department if applicable
-      const filtered = restrictDepartment 
-        ? merged.filter(t => t.department === restrictDepartment)
-        : merged;
+      const filteredActive = restrictDepartment 
+        ? mergedActive.filter(t => t.department === restrictDepartment)
+        : mergedActive;
 
-      setCatalogue(filtered);
+      const filteredPending = restrictDepartment
+        ? pending.filter(t => t.department === restrictDepartment)
+        : pending;
+
+      setCatalogue(filteredActive);
+      setPendingTests(filteredPending);
     } catch (err: any) {
       setError('Failed to load catalogue: ' + err.message);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleTabChange = (tab: 'catalogue' | 'pending') => {
+    setActiveTab(tab);
+    setSearchQuery('');
+    setSelectedCategory('all');
+    setEditingTest(null);
+    setIsNew(false);
+    setError('');
+    setSuccessMsg('');
   };
 
   const handleSelectTest = (test: Test) => {
@@ -454,6 +494,11 @@ export default function TestManager({ organizationId, restrictDepartment, onClos
     } else {
       setFormFormat('parameterized');
     }
+
+    const matchedPrice = testPrices.find(p => p.test_id === test.id);
+    setFormPrice(matchedPrice?.price ?? 0);
+    setFormCommType((matchedPrice?.commission_type as any) || 'percentage');
+    setFormCommValue(matchedPrice?.commission_value ?? 0);
   };
 
   const handleStartNew = () => {
@@ -469,6 +514,10 @@ export default function TestManager({ organizationId, restrictDepartment, onClos
     setFormSpecimen(restrictDepartment === 'radiology' ? 'Scan' : 'Whole Blood');
     setFormFormat(restrictDepartment === 'radiology' ? 'freetext' : 'parameterized');
     setFormParameters(restrictDepartment === 'radiology' ? [] : [{ name: '', unit: '', range: '' }]);
+
+    setFormPrice(0);
+    setFormCommType('percentage');
+    setFormCommValue(0);
   };
 
   const handleAddParameter = () => {
@@ -521,12 +570,78 @@ export default function TestManager({ organizationId, restrictDepartment, onClos
         parameters: isFreeText ? [] : formParameters
       };
 
+      const isAdmin = profile?.role === 'admin';
+
       if (isNew) {
-        await addCustomTest(testPayload, organizationId);
-        setSuccessMsg('New test added successfully!');
+        await addCustomTest({
+          ...testPayload,
+          is_active: isAdmin ? true : false
+        }, organizationId);
+        
+        if (isAdmin) {
+          // Admin sets pricing & commission directly
+          await upsertTestPrices([{
+            organization_id: organizationId,
+            test_id: testId,
+            test_name: formName.trim(),
+            price: formPrice,
+            commission_type: formCommType,
+            commission_value: formCommValue
+          }], organizationId);
+          setSuccessMsg('New test and pricing settings saved successfully!');
+        } else {
+          // Scientist creates test, defaults financial details to 0/none
+          await upsertTestPrices([{
+            organization_id: organizationId,
+            test_id: testId,
+            test_name: formName.trim(),
+            price: 0,
+            commission_type: 'none',
+            commission_value: 0
+          }], organizationId);
+          
+          // Notify admin via API
+          try {
+            await fetch('/api/custom-tests', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                action: 'notifyAdmin',
+                test: testPayload,
+                organizationId,
+                addedBy: { name: profile?.full_name, role: profile?.role }
+              })
+            });
+          } catch (emailErr) {
+            console.warn('Failed to send admin email alert:', emailErr);
+          }
+
+          setSuccessMsg('New test added successfully! The administrator has been notified by email to configure its price.');
+        }
       } else {
-        await updateCustomTest(testId, testPayload, organizationId);
-        setSuccessMsg('Test modified successfully!');
+        await updateCustomTest(testId, {
+          ...testPayload,
+          is_active: isAdmin ? true : editingTest!.is_active
+        }, organizationId);
+        
+        if (isAdmin) {
+          await upsertTestPrices([{
+            organization_id: organizationId,
+            test_id: testId,
+            test_name: formName.trim(),
+            price: formPrice,
+            commission_type: formCommType,
+            commission_value: formCommValue
+          }], organizationId);
+
+          // If this test was pending, switch to active catalogue tab on save
+          if (activeTab === 'pending') {
+            setActiveTab('catalogue');
+          }
+          setSuccessMsg('Test details and pricing updated successfully!');
+        } else {
+          setSuccessMsg('Test modified successfully!');
+        }
       }
 
       await loadCatalogue();
@@ -565,11 +680,14 @@ export default function TestManager({ organizationId, restrictDepartment, onClos
     }
   };
 
-  // Get active unique categories present in the rendered list
-  const activeCategories = Array.from(new Set(catalogue.map(t => t.category)));
+  // Render list depending on tab selection
+  const currentList = activeTab === 'pending' ? pendingTests : catalogue;
 
-  // Filter catalogue for list display
-  const filteredCatalogue = catalogue.filter(t => {
+  // Get active unique categories present in the rendered list
+  const activeCategories = Array.from(new Set(currentList.map(t => t.category)));
+
+  // Filter list for display
+  const filteredCatalogue = currentList.filter(t => {
     const matchesSearch = t.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
                           t.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           t.specimen.toLowerCase().includes(searchQuery.toLowerCase());
@@ -609,6 +727,31 @@ export default function TestManager({ organizationId, restrictDepartment, onClos
       <div style={splitStyle}>
         {/* Left Side: Test Selector */}
         <div style={leftPanelStyle}>
+          {/* Main Tab bar (Admin only) */}
+          {profile?.role === 'admin' && (
+            <div style={mainTabContainerStyle}>
+              <button
+                type="button"
+                onClick={() => handleTabChange('catalogue')}
+                style={mainTabStyle(activeTab === 'catalogue')}
+              >
+                Active Catalogue
+              </button>
+              <button
+                type="button"
+                onClick={() => handleTabChange('pending')}
+                style={mainTabStyle(activeTab === 'pending')}
+              >
+                Pending Pricing
+                {pendingTests.length > 0 && (
+                  <span style={pendingBadgeStyle}>
+                    {pendingTests.length}
+                  </span>
+                )}
+              </button>
+            </div>
+          )}
+
           {/* Search bar */}
           <div style={{ position: 'relative', marginBottom: '0.75rem' }}>
             <RiSearchLine size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--gray-400)' }} />
@@ -781,6 +924,55 @@ export default function TestManager({ organizationId, restrictDepartment, onClos
                       onChange={e => setFormCustomCategory(e.target.value)}
                       placeholder={formDept === 'radiology' ? "e.g. MRI, CT Scan" : "e.g. Immunology, PCR"}
                     />
+                  </div>
+                )}
+
+                {profile?.role === 'admin' && (
+                  <div style={{ background: 'var(--gray-50)', padding: '0.75rem', border: '1px solid var(--gray-200)', borderRadius: 4, marginBottom: '0.75rem' }}>
+                    <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '0.75rem', color: 'var(--gray-800)', fontWeight: 700, textTransform: 'uppercase' }}>
+                      Financial &amp; Commission Settings
+                    </h4>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: '0.50rem' }}>
+                      <div>
+                        <label style={labelStyle}>Base Price (₦)</label>
+                        <input
+                          type="number"
+                          min={0}
+                          style={inputStyle}
+                          value={formPrice || ''}
+                          onChange={e => setFormPrice(Math.max(0, parseFloat(e.target.value) || 0))}
+                          placeholder="0"
+                        />
+                      </div>
+                      <div>
+                        <label style={labelStyle}>Comm. Type</label>
+                        <select
+                          style={inputStyle}
+                          value={formCommType}
+                          onChange={e => {
+                            const val = e.target.value as 'percentage' | 'flat' | 'none';
+                            setFormCommType(val);
+                            if (val === 'none') setFormCommValue(0);
+                          }}
+                        >
+                          <option value="percentage">Percentage (%)</option>
+                          <option value="flat">Flat Rate (₦)</option>
+                          <option value="none">None</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label style={labelStyle}>Comm. Value</label>
+                        <input
+                          type="number"
+                          min={0}
+                          disabled={formCommType === 'none'}
+                          style={{ ...inputStyle, background: formCommType === 'none' ? 'var(--gray-100)' : 'white' }}
+                          value={formCommType === 'none' ? 0 : (formCommValue || '')}
+                          onChange={e => setFormCommValue(Math.max(0, parseFloat(e.target.value) || 0))}
+                          placeholder="0"
+                        />
+                      </div>
+                    </div>
                   </div>
                 )}
 
@@ -1206,4 +1398,42 @@ const iconBtnStyle: React.CSSProperties = {
   alignItems: 'center',
   justifyContent: 'center',
   transition: 'all 0.1s'
+};
+
+const mainTabContainerStyle: React.CSSProperties = {
+  display: 'flex',
+  background: 'var(--gray-100)',
+  padding: '3px',
+  borderRadius: '6px',
+  marginBottom: '0.75rem',
+  border: '1px solid var(--gray-200)',
+  flexShrink: 0
+};
+
+const mainTabStyle = (active: boolean): React.CSSProperties => ({
+  flex: 1,
+  padding: '0.45rem 0.5rem',
+  borderRadius: '4px',
+  border: 'none',
+  background: active ? 'white' : 'transparent',
+  color: active ? 'var(--gray-900)' : 'var(--gray-500)',
+  fontSize: '0.72rem',
+  fontWeight: active ? 700 : 500,
+  cursor: 'pointer',
+  transition: 'all 0.15s',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: '0.35rem',
+  boxShadow: active ? '0 1px 2px rgba(0,0,0,0.05)' : 'none'
+});
+
+const pendingBadgeStyle: React.CSSProperties = {
+  background: 'var(--red, #ef4444)',
+  color: 'white',
+  fontSize: '0.62rem',
+  fontWeight: 700,
+  padding: '1px 5px',
+  borderRadius: '10px',
+  lineHeight: 1
 };

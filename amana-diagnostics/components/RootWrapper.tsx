@@ -50,7 +50,7 @@ export default function RootWrapper({ children }: { children: React.ReactNode })
     checkConfig();
   }, []);
 
-  const isPublic = PUBLIC_PATHS.includes(pathname) || pathname.startsWith('/invite/');
+  const isPublic = PUBLIC_PATHS.includes(pathname) || pathname.startsWith('/invite/') || pathname.startsWith('/portal');
   const isOrgRoute = !isPublic && !pathname.startsWith('/login') && !pathname.startsWith('/signup');
 
   useEffect(() => {

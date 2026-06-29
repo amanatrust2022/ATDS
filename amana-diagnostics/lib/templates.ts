@@ -252,7 +252,7 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
         : '';
 
       return `
-        <div class="test-block radiology-block" style="page-break-inside: avoid; border: none; margin-bottom: 24px;">
+        <div class="test-block radiology-block" style="border: none; margin-bottom: 24px;">
           <div style="font-weight: bold; border-bottom: 2px solid #0563c1; margin-bottom: 12px; font-size: 12pt; color: #0563c1; text-transform: uppercase; padding-bottom: 4px;">
             ${t.testName}
           </div>
@@ -438,7 +438,15 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
       @media screen and (min-width: 768px) {
         body { min-width: 750px; }
       }
-      @page { margin: 0; }
+      @page {
+        margin-top: 20mm;
+        margin-bottom: 15mm;
+        margin-left: 20px;
+        margin-right: 20px;
+      }
+      @page :first {
+        margin-top: 0;
+      }
       @media screen {
         body { max-width: 860px; margin: 0 auto; padding: 32px 40px; background: #f0f2f5; }
         html { background: #f0f2f5; }
@@ -447,7 +455,7 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
         }
       }
       @media print {
-        body { margin: 0; padding: 10px 20px 20px; background: white; max-width: none; min-width: 750px; }
+        body { margin: 0; padding: 10px 0 20px; background: white; max-width: none; min-width: 750px; }
         * {
           -webkit-print-color-adjust: exact !important;
           print-color-adjust: exact !important;
@@ -696,3 +704,114 @@ export const getInvoiceTemplate = (patient: Patient, org?: OrgForTemplate) => {
     </div>
     </body></html>`;
 };
+
+/**
+ * Generates the HTML for the Patient Ledger / Account Statement.
+ */
+export const getLedgerStatementTemplate = (
+  account: { name: string; type: string; balance: number; credit_limit: number; created_at: string },
+  transactions: any[],
+  members: any[],
+  org?: OrgForTemplate
+) => {
+  const orgName = org?.name || 'AMANA TRUST DIAGNOSTICS';
+  const orgLine2 = org?.letterhead_line2 || 'AND CLINICAL SERVICES LTD';
+  const orgAddress = org?.address || 'No 15, C Tudun Wada Bus Stop,\nNasarawa LGA, Kano State.';
+  const orgPhone = org?.phone || 'Tel: 08033390574, 07032663898';
+  const orgEmail = org?.email || 'amanatrust2022@gmail.com';
+
+  const memberNames = members.map(m => `${m.firstName || m.first_name || ''} ${m.surname || ''}`).join(', ');
+  
+  // Re-calculate running balances chronologically (oldest to newest)
+  let balanceAccumulator = 0;
+  const chronologicalRows = [...transactions].reverse().map((t) => {
+    balanceAccumulator += t.amount;
+    const dateStr = new Date(t.created_at || t.createdAt).toLocaleDateString('en-NG', {
+      year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+    });
+    return `
+      <tr>
+        <td style="padding: 8px; border-bottom: 1px solid #eee; font-size: 8.5pt;">${dateStr}</td>
+        <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: left; font-size: 8.5pt;">${t.description}</td>
+        <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: center; text-transform: uppercase; font-size: 8pt;">${t.payment_method || t.paymentMethod || 'wallet'}</td>
+        <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: center; font-size: 8pt;">${t.reference_id || t.referenceId || '—'}</td>
+        <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: right; font-weight: bold; font-size: 8.5pt; color: ${t.amount >= 0 ? '#27ae60' : '#c0392b'}">
+          ${t.amount >= 0 ? '+' : ''}₦${t.amount.toLocaleString('en-NG', { minimumFractionDigits: 2 })}
+        </td>
+        <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: right; font-weight: bold; font-size: 8.5pt;">
+          ₦${balanceAccumulator.toLocaleString('en-NG', { minimumFractionDigits: 2 })}
+        </td>
+      </tr>
+    `;
+  }).reverse().join(''); // Present newest first in printed statement
+
+  return `
+    <!DOCTYPE html><html><head><title>Account Statement - ${account.name}</title>
+    <style>
+      body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; margin: 20px; font-size: 10pt; color: #333; line-height: 1.4; }
+      .header-container { display: flex; align-items: center; border-bottom: 3px double #0563c1; padding-bottom: 10px; margin-bottom: 20px; }
+      .logo-section { width: 70px; height: 70px; display: flex; align-items: center; justify-content: center; background: #0563c1; color: white; font-size: 28px; font-weight: bold; border-radius: 8px; margin-right: 15px; }
+      .title-section { flex-grow: 1; }
+      .org-name-1 { font-size: 18pt; font-weight: bold; color: #0563c1; margin: 0; line-height: 1.2; }
+      .org-name-2 { font-size: 11pt; font-weight: bold; color: #555; margin: 0; margin-top: 2px; text-transform: uppercase; }
+      .org-details { font-size: 8pt; color: #666; margin-top: 5px; line-height: 1.3; }
+      .statement-title { font-size: 14pt; font-weight: bold; text-align: center; text-transform: uppercase; color: #0563c1; margin: 15px 0; border-bottom: 1px solid #ddd; padding-bottom: 5px; }
+      .account-summary { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; background: #f8fafc; border: 1px solid #e2e8f0; padding: 15px; border-radius: 6px; margin-bottom: 20px; }
+      .summary-item { font-size: 9.5pt; margin-bottom: 4px; }
+      .summary-label { font-weight: bold; color: #475569; }
+      table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 9pt; }
+      th { background: #0563c1; color: white; font-weight: bold; text-align: left; padding: 10px 8px; text-transform: uppercase; font-size: 8.5pt; }
+      .footer { margin-top: 40px; border-top: 1px dashed #ccc; padding-top: 15px; font-size: 8pt; text-align: center; color: #777; line-height: 1.4; }
+    </style></head><body>
+    <div class="header-container">
+      <div class="logo-section">AT</div>
+      <div class="title-section">
+        <div class="org-name-1">${orgName.toUpperCase()}</div>
+        ${orgLine2 ? `<div class="org-name-2">${orgLine2.toUpperCase()}</div>` : ''}
+        <div class="org-details">
+          ${orgAddress.replace(/\n/g, ' | ')}<br>
+          ${orgPhone} | Email: ${orgEmail}
+        </div>
+      </div>
+    </div>
+    
+    <div class="statement-title">Account Statement / Financial Ledger</div>
+    
+    <div class="account-summary">
+      <div>
+        <div class="summary-item"><span class="summary-label">Account Name:</span> ${account.name}</div>
+        <div class="summary-item"><span class="summary-label">Account Type:</span> <span style="text-transform: capitalize;">${account.type}</span></div>
+        <div class="summary-item"><span class="summary-label">Linked Members:</span> ${memberNames || 'None'}</div>
+      </div>
+      <div style="text-align: right;">
+        <div class="summary-item"><span class="summary-label">Current Balance:</span> <span style="font-size: 12pt; font-weight: bold; color: ${account.balance >= 0 ? '#27ae60' : '#c0392b'}">₦${account.balance.toLocaleString('en-NG', { minimumFractionDigits: 2 })}</span></div>
+        <div class="summary-item"><span class="summary-label">Credit Limit:</span> ₦${(account.credit_limit || 0).toLocaleString('en-NG', { minimumFractionDigits: 2 })}</div>
+        <div class="summary-item"><span class="summary-label">Statement Date:</span> ${new Date().toLocaleDateString('en-NG')}</div>
+      </div>
+    </div>
+    
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 18%; text-align: left; padding-left: 8px;">Date</th>
+          <th style="width: 32%; text-align: left;">Description</th>
+          <th style="width: 12%; text-align: center;">Method</th>
+          <th style="width: 13%; text-align: center;">Reference</th>
+          <th style="width: 12%; text-align: right;">Change</th>
+          <th style="width: 13%; text-align: right; padding-right: 8px;">Balance</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${chronologicalRows || '<tr><td colspan="6" style="text-align: center; padding: 15px; color: #777;">No transactions recorded.</td></tr>'}
+      </tbody>
+    </table>
+    
+    <div class="footer">
+      This is a system-generated statement of account.<br>
+      Thank you for choosing Amana Trust Diagnostics.<br>
+      &copy; ${new Date().getFullYear()} ${orgName}. All rights reserved.
+    </div>
+    </body></html>
+  `;
+};
+

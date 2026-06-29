@@ -25,7 +25,7 @@ export interface Test {
 
 export interface PatientTest {
   id?: string;
-  patient_id?: string;
+  patient_id?: number;
   testId: string;
   testName: string;
   department: Department;
@@ -43,8 +43,23 @@ export interface PatientTest {
   commissionAmount?: number;
 }
 
+export interface PatientProfile {
+  id: number;
+  organizationId: string;
+  firstName: string;
+  surname: string;
+  middleName?: string;
+  phone: string;
+  email?: string;
+  address: string;
+  sex: 'Male' | 'Female';
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Patient {
-  id: string;
+  id: number;
+  patientProfileId?: number | null;
   slipNumber: string;
   registeredAt: string;
   name: string;
@@ -77,6 +92,7 @@ export interface Patient {
   paidAmount?: number;
   paymentStatus?: 'paid' | 'partial' | 'unpaid';
   paymentMethod?: string;
+  billingAccountId?: string;
   tests: PatientTest[];
 }
 
@@ -524,7 +540,7 @@ export const fetchPatients = async (organizationId: string): Promise<Patient[]> 
     registeredAt: p.registered_at,
     firstName: p.first_name,
     surname: p.surname,
-    middleName: p.middle_name,
+    middle_name: p.middle_name,
     referredBy: p.referred_by,
     referringFacility: p.referring_facility,
     referringDoctorId: p.referring_doctor_id,
@@ -544,6 +560,8 @@ export const fetchPatients = async (organizationId: string): Promise<Patient[]> 
     paidAmount: p.paid_amount,
     paymentStatus: p.payment_status,
     paymentMethod: p.payment_method,
+    billingAccountId: p.billing_account_id,
+    patientProfileId: p.patient_profile_id,
     tests: (p.tests || []).map((t: any) => ({
       ...t,
       testId: t.test_id,
@@ -560,8 +578,38 @@ export const fetchPatients = async (organizationId: string): Promise<Patient[]> 
   }));
 };
 
+export const fetchPatientProfiles = async (organizationId: string): Promise<PatientProfile[]> => {
+  if (IS_LOCAL_MODE) {
+    const res = await fetch(`/api/patients?action=getPatientProfiles&organizationId=${organizationId}`);
+    if (!res.ok) return [];
+    return res.json();
+  }
+
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from('patient_profiles')
+    .select('*')
+    .eq('organization_id', organizationId)
+    .order('created_at', { ascending: false });
+
+  if (error) { console.error('Error fetching patient profiles:', error); return []; }
+  return (data || []).map((p: any) => ({
+    id: p.id,
+    organizationId: p.organization_id,
+    firstName: p.first_name,
+    surname: p.surname,
+    middleName: p.middle_name,
+    phone: p.phone,
+    email: p.email,
+    address: p.address,
+    sex: p.sex,
+    createdAt: p.created_at,
+    updatedAt: p.updated_at,
+  }));
+};
+
 export const addPatient = async (
-  patient: Omit<Patient, 'id' | 'tests'>,
+  patient: Omit<Patient, 'id' | 'tests'> & { id?: number },
   tests: Omit<PatientTest, 'id' | 'patient_id'>[],
   organizationId: string
 ): Promise<void> => {
@@ -578,10 +626,35 @@ export const addPatient = async (
     return;
   }
 
+  const generatedPatientId = patient.id || Math.floor(10000000 + Math.random() * 90000000);
+  let generatedProfileId = patient.patientProfileId;
+
   const supabase = createClient();
-  const { data: pData, error: pError } = await supabase
+
+  // If new patient profile (not returning), we must insert a new profile in Supabase first
+  if (!generatedProfileId) {
+    generatedProfileId = Math.floor(10000000 + Math.random() * 90000000);
+    const { error: profError } = await supabase
+      .from('patient_profiles')
+      .insert([{
+        id: generatedProfileId,
+        organization_id: organizationId,
+        first_name: patient.firstName,
+        surname: patient.surname,
+        middle_name: patient.middleName || null,
+        phone: patient.phone,
+        email: patient.email || null,
+        address: patient.address,
+        sex: patient.sex,
+      }]);
+    if (profError) throw profError;
+  }
+
+  const { error: pError } = await supabase
     .from('patients')
     .insert([{
+      id: generatedPatientId,
+      patient_profile_id: generatedProfileId,
       slip_number: patient.slipNumber,
       first_name: patient.firstName,
       surname: patient.surname,
@@ -596,13 +669,12 @@ export const addPatient = async (
       referring_doctor_id: patient.referringDoctorId || null,
       referring_facility_id: patient.referringFacilityId || null,
       organization_id: organizationId,
-    }])
-    .select()
-    .single();
+      billing_account_id: patient.billingAccountId || null,
+    }]);
   if (pError) throw pError;
 
   const testsToInsert = tests.map(t => ({
-    patient_id: pData.id,
+    patient_id: generatedPatientId,
     test_id: t.testId,
     test_name: t.testName,
     department: t.department,
@@ -1007,7 +1079,7 @@ export const fetchCommissionReport = async (organizationId: string, from?: strin
 // ─── PATIENT (updated) with referring_doctor_id support ───────────────────────
 
 export const addPatientWithReferral = async (
-  patient: Omit<Patient, 'id' | 'tests'>,
+  patient: Omit<Patient, 'id' | 'tests'> & { id?: number },
   tests: Omit<PatientTest, 'id' | 'patient_id'>[],
   organizationId: string
 ): Promise<void> => {
@@ -1024,10 +1096,34 @@ export const addPatientWithReferral = async (
     return;
   }
 
+  const generatedPatientId = patient.id || Math.floor(10000000 + Math.random() * 90000000);
+  let generatedProfileId = patient.patientProfileId;
+
   const supabase = createClient();
-  const { data: pData, error: pError } = await supabase
+
+  if (!generatedProfileId) {
+    generatedProfileId = Math.floor(10000000 + Math.random() * 90000000);
+    const { error: profError } = await supabase
+      .from('patient_profiles')
+      .insert([{
+        id: generatedProfileId,
+        organization_id: organizationId,
+        first_name: patient.firstName,
+        surname: patient.surname,
+        middle_name: patient.middleName || null,
+        phone: patient.phone,
+        email: patient.email || null,
+        address: patient.address,
+        sex: patient.sex,
+      }]);
+    if (profError) throw profError;
+  }
+
+  const { error: pError } = await supabase
     .from('patients')
     .insert([{
+      id: generatedPatientId,
+      patient_profile_id: generatedProfileId,
       slip_number: patient.slipNumber,
       first_name: patient.firstName,
       surname: patient.surname,
@@ -1055,13 +1151,12 @@ export const addPatientWithReferral = async (
       payment_status: patient.paymentStatus || 'paid',
       payment_method: patient.paymentMethod || 'cash',
       organization_id: organizationId,
-    }])
-    .select()
-    .single();
+      billing_account_id: patient.billingAccountId || null,
+    }]);
   if (pError) throw pError;
 
   const testsToInsert = tests.map(t => ({
-    patient_id: pData.id,
+    patient_id: generatedPatientId,
     test_id: t.testId,
     test_name: t.testName,
     department: t.department,
@@ -1077,7 +1172,7 @@ export const addPatientWithReferral = async (
   if (tError) throw tError;
 };
 
-export const updatePatient = async (id: string, updates: Partial<Patient>): Promise<void> => {
+export const updatePatient = async (id: number | string, updates: Partial<Patient>): Promise<void> => {
   if (IS_LOCAL_MODE) {
     const res = await fetch('/api/patients', {
       method: 'POST',
@@ -1108,7 +1203,7 @@ export const updatePatient = async (id: string, updates: Partial<Patient>): Prom
   if (error) throw error;
 };
 
-export const markCommissionPaid = async (patientId: string, notes?: string): Promise<void> => {
+export const markCommissionPaid = async (patientId: number | string, notes?: string): Promise<void> => {
   if (IS_LOCAL_MODE) {
     const res = await fetch('/api/patients', {
       method: 'POST',
@@ -1131,7 +1226,7 @@ export const markCommissionPaid = async (patientId: string, notes?: string): Pro
   if (error) throw error;
 };
 
-export const markCommissionsUnpaid = async (patientIds: string[]): Promise<void> => {
+export const markCommissionsUnpaid = async (patientIds: (number | string)[]): Promise<void> => {
   if (IS_LOCAL_MODE) {
     const res = await fetch('/api/patients', {
       method: 'POST',
@@ -1289,7 +1384,7 @@ export const fetchCustomTests = async (organizationId: string): Promise<Test[]> 
   }));
 };
 
-export const addCustomTest = async (test: Omit<Test, 'is_active'>, organizationId: string): Promise<void> => {
+export const addCustomTest = async (test: Omit<Test, 'is_active'> & { is_active?: boolean }, organizationId: string): Promise<void> => {
   const payload = {
     id: test.id,
     organization_id: organizationId,
@@ -1298,7 +1393,7 @@ export const addCustomTest = async (test: Omit<Test, 'is_active'>, organizationI
     category: test.category,
     specimen: test.specimen,
     parameters: JSON.stringify(test.parameters),
-    is_active: 1,
+    is_active: test.is_active === false ? 0 : 1,
     updated_at: new Date().toISOString()
   };
 
@@ -1321,7 +1416,7 @@ export const addCustomTest = async (test: Omit<Test, 'is_active'>, organizationI
     .insert([{
       ...payload,
       parameters: test.parameters,
-      is_active: true
+      is_active: test.is_active !== false
     }]);
   if (error) throw error;
 };
@@ -1395,4 +1490,420 @@ export const deleteCustomTest = async (id: string, organizationId: string): Prom
     .eq('id', id);
   if (error) throw error;
 };
+
+// ─── BILLING AND WALLET SYSTEM ────────────────────────────────────────────────
+
+export interface BillingAccount {
+  id: string;
+  organization_id: string;
+  name: string;
+  owner_patient_id: string | number;
+  balance: number;
+  credit_limit: number;
+  type: 'individual' | 'family' | 'corporate';
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BillingLedgerTransaction {
+  id: string;
+  organization_id: string;
+  billing_account_id: string;
+  patient_id?: string | number;
+  type: 'deposit' | 'charge' | 'refund' | 'adjustment';
+  amount: number; // positive for credit/deposit, negative for debit/charge
+  description: string;
+  reference_id?: string;
+  payment_method?: string;
+  created_by?: string;
+  created_at: string;
+}
+
+export interface ExternalDepartmentCharge {
+  id: string;
+  organizationId: string;
+  patientId: string;
+  billingAccountId?: string;
+  department: string;
+  receiptNumber: string;
+  amount: number;
+  paymentMethod: string;
+  status: 'paid' | 'pending';
+  description?: string;
+  createdBy?: string;
+  createdAt: string;
+  patientName?: string;
+  patientSlip?: string;
+}
+
+export const fetchBillingAccounts = async (organizationId: string): Promise<BillingAccount[]> => {
+  if (IS_LOCAL_MODE) {
+    const res = await fetch(`/api/billing?type=accounts&organizationId=${organizationId}`);
+    if (!res.ok) throw new Error('Failed to fetch billing accounts');
+    return res.json();
+  }
+
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from('billing_accounts')
+    .select('*')
+    .eq('organization_id', organizationId)
+    .order('name', { ascending: true });
+  if (error) { console.error('fetchBillingAccounts error:', error); return []; }
+  return data || [];
+};
+
+export const fetchPatientWallet = async (patientId: number | string): Promise<BillingAccount | null> => {
+  if (IS_LOCAL_MODE) {
+    const res = await fetch(`/api/billing?type=patient_wallet&patientId=${patientId}`);
+    if (!res.ok) return null;
+    return res.json();
+  }
+
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from('patients')
+    .select('billing_account_id, billing_accounts(*)')
+    .eq('id', patientId)
+    .maybeSingle();
+  if (error || !data || !data.billing_accounts) return null;
+  return data.billing_accounts as any;
+};
+
+export const createBillingAccount = async (
+  account: Omit<BillingAccount, 'id' | 'balance' | 'created_at' | 'updated_at'>,
+  initialDeposit: number,
+  paymentMethod: string,
+  linkedPatientIds: (string | number)[],
+  createdBy: string
+): Promise<void> => {
+  if (IS_LOCAL_MODE) {
+    const res = await fetch('/api/billing', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'createAccount',
+        account,
+        initialDeposit,
+        paymentMethod,
+        linkedPatientIds,
+        createdBy,
+        organizationId: account.organization_id
+      })
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Failed to create billing account');
+    }
+    return;
+  }
+
+  const supabase = createClient();
+  const accountId = crypto.randomUUID();
+  const now = new Date().toISOString();
+
+  const { error: accError } = await supabase.from('billing_accounts').insert([{
+    id: accountId,
+    organization_id: account.organization_id,
+    name: account.name,
+    owner_patient_id: account.owner_patient_id,
+    balance: initialDeposit,
+    credit_limit: account.credit_limit || 0,
+    type: account.type,
+    created_at: now,
+    updated_at: now
+  }]);
+  if (accError) throw accError;
+
+  const allPatientIds = Array.from(new Set([account.owner_patient_id, ...linkedPatientIds]));
+  const { error: linkError } = await supabase
+    .from('patients')
+    .update({ billing_account_id: accountId })
+    .in('id', allPatientIds);
+  if (linkError) throw linkError;
+
+  if (initialDeposit > 0) {
+    const { error: ledError } = await supabase.from('billing_ledger_transactions').insert([{
+      id: crypto.randomUUID(),
+      organization_id: account.organization_id,
+      billing_account_id: accountId,
+      patient_id: account.owner_patient_id,
+      type: 'deposit',
+      amount: initialDeposit,
+      description: 'Initial deposit upon account opening',
+      payment_method: paymentMethod,
+      created_by: createdBy,
+      created_at: now
+    }]);
+    if (ledError) throw ledError;
+  }
+};
+
+export const depositToBillingAccount = async (
+  accountId: string,
+  amount: number,
+  description: string,
+  paymentMethod: string,
+  createdBy: string,
+  organizationId: string,
+  patientId?: number | string
+): Promise<void> => {
+  if (IS_LOCAL_MODE) {
+    const res = await fetch('/api/billing', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'deposit',
+        accountId,
+        amount,
+        description,
+        paymentMethod,
+        createdBy,
+        organizationId,
+        patientId
+      })
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Failed to process deposit');
+    }
+    return;
+  }
+
+  const supabase = createClient();
+  const now = new Date().toISOString();
+
+  const { data: acc, error: accErr } = await supabase
+    .from('billing_accounts')
+    .select('balance')
+    .eq('id', accountId)
+    .single();
+  if (accErr) throw accErr;
+
+  const newBalance = (acc.balance || 0) + amount;
+
+  const { error: upErr } = await supabase
+    .from('billing_accounts')
+    .update({ balance: newBalance, updated_at: now })
+    .eq('id', accountId);
+  if (upErr) throw upErr;
+
+  const { error: ledErr } = await supabase.from('billing_ledger_transactions').insert([{
+    id: crypto.randomUUID(),
+    organization_id: organizationId,
+    billing_account_id: accountId,
+    patient_id: patientId || null,
+    type: 'deposit',
+    amount,
+    description,
+    payment_method: paymentMethod,
+    created_by: createdBy,
+    created_at: now
+  }]);
+  if (ledErr) throw ledErr;
+};
+
+export const logExternalCharge = async (
+  charge: Omit<ExternalDepartmentCharge, 'id' | 'createdAt'>
+): Promise<void> => {
+  if (IS_LOCAL_MODE) {
+    const res = await fetch('/api/billing', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'logExternalCharge',
+        charge
+      })
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Failed to log external charge');
+    }
+    return;
+  }
+
+  const supabase = createClient();
+  const chargeId = crypto.randomUUID();
+  const now = new Date().toISOString();
+
+  if (charge.paymentMethod === 'wallet' && charge.billingAccountId) {
+    const { data: acc, error: accErr } = await supabase
+      .from('billing_accounts')
+      .select('balance, credit_limit')
+      .eq('id', charge.billingAccountId)
+      .single();
+    if (accErr) throw accErr;
+
+    const currentBalance = acc.balance || 0;
+    const creditLimit = acc.credit_limit || 0;
+    const chargeAmount = charge.amount;
+
+    if (currentBalance + creditLimit < chargeAmount) {
+      throw new Error(`Insufficient wallet balance. Available credit: ₦${(currentBalance + creditLimit).toLocaleString('en-NG')}`);
+    }
+
+    const newBalance = currentBalance - chargeAmount;
+
+    const { error: upErr } = await supabase
+      .from('billing_accounts')
+      .update({ balance: newBalance, updated_at: now })
+      .eq('id', charge.billingAccountId);
+    if (upErr) throw upErr;
+
+    const { error: ledErr } = await supabase.from('billing_ledger_transactions').insert([{
+      id: crypto.randomUUID(),
+      organization_id: charge.organizationId,
+      billing_account_id: charge.billingAccountId,
+      patient_id: charge.patientId,
+      type: 'charge',
+      amount: -chargeAmount,
+      description: `${charge.department.toUpperCase()} Bill - Ref: ${charge.receiptNumber}`,
+      reference_id: charge.receiptNumber,
+      payment_method: 'wallet',
+      created_by: charge.createdBy,
+      created_at: now
+    }]);
+    if (ledErr) throw ledErr;
+  }
+
+  const { error: chErr } = await supabase.from('external_department_charges').insert([{
+    id: chargeId,
+    organization_id: charge.organizationId,
+    patient_id: charge.patientId,
+    billing_account_id: charge.paymentMethod === 'wallet' ? charge.billingAccountId : null,
+    department: charge.department,
+    receipt_number: charge.receiptNumber,
+    amount: charge.amount,
+    payment_method: charge.paymentMethod,
+    status: charge.status || 'paid',
+    description: charge.description || null,
+    created_by: charge.createdBy,
+    created_at: now
+  }]);
+  if (chErr) throw chErr;
+};
+
+export const fetchAccountLedger = async (accountId: string): Promise<BillingLedgerTransaction[]> => {
+  if (IS_LOCAL_MODE) {
+    const res = await fetch(`/api/billing?type=ledger&accountId=${accountId}`);
+    if (!res.ok) throw new Error('Failed to fetch account ledger');
+    return res.json();
+  }
+
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from('billing_ledger_transactions')
+    .select('*')
+    .eq('billing_account_id', accountId)
+    .order('created_at', { ascending: false });
+  if (error) { console.error('fetchAccountLedger error:', error); return []; }
+  return data || [];
+};
+
+export const fetchExternalCharges = async (organizationId: string): Promise<ExternalDepartmentCharge[]> => {
+  if (IS_LOCAL_MODE) {
+    const res = await fetch(`/api/billing?type=external_charges&organizationId=${organizationId}`);
+    if (!res.ok) throw new Error('Failed to fetch external charges');
+    return res.json();
+  }
+
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from('external_department_charges')
+    .select('*, patient:patients(first_name, surname, middle_name, slip_number)')
+    .eq('organization_id', organizationId)
+    .order('created_at', { ascending: false });
+  if (error) { console.error('fetchExternalCharges error:', error); return []; }
+  
+  return (data || []).map((c: any) => ({
+    id: c.id,
+    organizationId: c.organization_id,
+    patientId: c.patient_id,
+    billingAccountId: c.billing_account_id,
+    department: c.department,
+    receiptNumber: c.receipt_number,
+    amount: c.amount,
+    paymentMethod: c.payment_method,
+    status: c.status,
+    description: c.description,
+    createdBy: c.created_by,
+    createdAt: c.created_at,
+    patientName: c.patient ? [c.patient.first_name, c.patient.middle_name, c.patient.surname].filter(Boolean).join(' ') : 'Unknown',
+    patientSlip: c.patient ? c.patient.slip_number : ''
+  }));
+};
+
+export const updatePatientBillingAccount = async (
+  patientId: number | string,
+  billingAccountId: string | null
+): Promise<void> => {
+  if (IS_LOCAL_MODE) {
+    const res = await fetch('/api/billing', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'linkPatient',
+        patientId,
+        billingAccountId
+      })
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Failed to update patient billing account');
+    }
+    return;
+  }
+
+  const supabase = createClient();
+  const { error } = await supabase
+    .from('patients')
+    .update({ billing_account_id: billingAccountId, updated_at: new Date().toISOString() })
+    .eq('id', patientId);
+  if (error) throw error;
+};
+
+export const registerPatientAndGetId = async (
+  patient: Omit<Patient, 'id' | 'tests'>,
+  organizationId: string
+): Promise<number | string> => {
+  if (IS_LOCAL_MODE) {
+    const res = await fetch('/api/patients', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'addPatient', patient, tests: [], organizationId })
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Failed to register patient locally');
+    }
+    const data = await res.json();
+    return data.id;
+  }
+
+  const supabase = createClient();
+  const { data: pData, error: pError } = await supabase
+    .from('patients')
+    .insert([{
+      slip_number: patient.slipNumber,
+      first_name: patient.firstName,
+      surname: patient.surname,
+      middle_name: patient.middleName || null,
+      age: patient.age,
+      sex: patient.sex,
+      phone: patient.phone,
+      email: patient.email || null,
+      address: patient.address,
+      referred_by: patient.referredBy || null,
+      referring_facility: patient.referringFacility || null,
+      referring_doctor_id: patient.referringDoctorId || null,
+      referring_facility_id: patient.referringFacilityId || null,
+      organization_id: organizationId,
+      billing_account_id: patient.billingAccountId || null,
+    }])
+    .select()
+    .single();
+  if (pError) throw pError;
+  return pData.id;
+};
+
 

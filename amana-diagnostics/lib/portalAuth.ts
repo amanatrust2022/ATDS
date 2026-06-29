@@ -16,7 +16,10 @@ export function getJwtSecret(): string {
     process.env.IS_LOCAL_HUB === 'true';
 
   if (!isLocalMode) {
-    cachedSecret = process.env.JWT_SECRET || 'amana-cloud-portal-default-secret-key-32chars';
+    if (!process.env.JWT_SECRET) {
+      throw new Error('CRITICAL SECURITY ERROR: JWT_SECRET environment variable is not defined in production mode.');
+    }
+    cachedSecret = process.env.JWT_SECRET;
     return cachedSecret;
   }
 

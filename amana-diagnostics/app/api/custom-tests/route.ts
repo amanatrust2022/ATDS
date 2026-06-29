@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb, queueSync } from '@/lib/localDb';
+import { sendEmail } from '@/lib/brevo';
 
 export async function GET(request: Request) {
   try {
@@ -27,7 +28,7 @@ export async function GET(request: Request) {
       category: r.category,
       specimen: r.specimen,
       parameters: typeof r.parameters === 'string' ? JSON.parse(r.parameters) : r.parameters,
-      is_active: r.is_active === 1,
+      is_active: r.is_active !== 0,
       updated_at: r.updated_at
     }));
 
@@ -56,6 +57,8 @@ export async function POST(request: Request) {
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
+      const isActiveValue = (test.is_active === 0 || test.is_active === false) ? 0 : 1;
+
       stmt.run(
         test.id,
         organizationId,
@@ -64,7 +67,7 @@ export async function POST(request: Request) {
         test.category,
         test.specimen,
         test.parameters || '[]',
-        1,
+        isActiveValue,
         nowStr
       );
 
@@ -77,7 +80,7 @@ export async function POST(request: Request) {
         category: test.category,
         specimen: test.specimen,
         parameters: typeof test.parameters === 'string' ? JSON.parse(test.parameters) : test.parameters,
-        is_active: true,
+        is_active: isActiveValue === 1,
         updated_at: nowStr
       });
 
@@ -139,6 +142,106 @@ export async function POST(request: Request) {
 
       // Log in outbox
       queueSync(db, 'custom_tests', 'DELETE', `${organizationId}:${id}`, {});
+
+      return NextResponse.json({ success: true });
+    }
+
+    if (action === 'notifyAdmin') {
+      const { test, organizationId, addedBy } = body;
+
+      // 1. Get organization name and email
+      const org = db.prepare('SELECT * FROM organizations WHERE id = ?').get(organizationId) as any;
+      const orgName = org?.name || 'Amana Trust Diagnostics';
+      
+      // 2. Fetch admin emails from local_auth/profiles
+      let recipients: string[] = [];
+      try {
+        const admins = db.prepare(`
+          SELECT local_auth.email FROM local_auth 
+          JOIN profiles ON local_auth.user_id = profiles.id 
+          WHERE profiles.role = 'admin' AND profiles.organization_id = ?
+        `).all(organizationId) as { email: string }[];
+        
+        recipients = admins.map(a => a.email).filter(Boolean);
+      } catch (err) {
+        console.warn('Failed to query admin emails from database:', err);
+      }
+      
+      // Add organization email to recipients as fallback
+      if (org?.email) {
+        recipients.push(org.email);
+      }
+      // Deduplicate
+      recipients = Array.from(new Set(recipients));
+
+      // If no admin emails found, use fallback
+      if (recipients.length === 0) {
+        recipients.push('amanatrust2022@gmail.com');
+      }
+
+      const staffName = addedBy?.name || 'Staff member';
+      const staffRole = addedBy?.role === 'lab' ? 'Lab Scientist' : addedBy?.role === 'radiology' ? 'Radiologist' : addedBy?.role || 'Staff';
+      
+      const host = request.headers.get('host') || 'localhost:3000';
+      const protocol = host.startsWith('localhost') || host.startsWith('127.0.0.1') ? 'http' : 'https';
+      const pricingLink = `${protocol}://${host}/${org?.slug || 'workspace'}/admin/referrals/pricing`;
+
+      const emailSubject = `Action Required: New Investigation Added — ${test.name}`;
+      const emailHtml = `
+        <div style="font-family: 'Times New Roman', Times, serif; max-width: 520px; margin: 0 auto; color: #000000; line-height: 1.6;">
+          <div style="background: #0563c1; padding: 28px 24px; text-align: center; border: 1px solid #0563c1;">
+            <h1 style="font-family: 'Times New Roman', Times, serif; color: #ffffff; margin: 0; font-size: 20px; font-weight: bold; letter-spacing: 0.5px;">NEW INVESTIGATION ADDED</h1>
+            <p style="font-family: 'Times New Roman', Times, serif; color: #ffffff; margin: 6px 0 0; font-size: 14px; text-transform: uppercase; letter-spacing: 1px;">${orgName}</p>
+          </div>
+          <div style="padding: 32px 24px; border: 1px solid #0563c1; border-top: none; background: #ffffff;">
+            <p style="margin: 0 0 16px; font-size: 15px; color: #000000;">Dear Administrator,</p>
+            <p style="margin: 0 0 16px; font-size: 15px; color: #000000;">A new investigation has been added to the test catalogue by a staff member:</p>
+            <table style="width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 14px;">
+              <tr>
+                <td style="padding: 6px 0; font-weight: bold; width: 35%; border-bottom: 1px solid #eee;">Test Name:</td>
+                <td style="padding: 6px 0; border-bottom: 1px solid #eee; font-weight: bold;">${test.name}</td>
+              </tr>
+              <tr>
+                <td style="padding: 6px 0; font-weight: bold; border-bottom: 1px solid #eee;">Department:</td>
+                <td style="padding: 6px 0; border-bottom: 1px solid #eee; text-transform: uppercase;">${test.department}</td>
+              </tr>
+              <tr>
+                <td style="padding: 6px 0; font-weight: bold; border-bottom: 1px solid #eee;">Category:</td>
+                <td style="padding: 6px 0; border-bottom: 1px solid #eee;">${test.category}</td>
+              </tr>
+              <tr>
+                <td style="padding: 6px 0; font-weight: bold; border-bottom: 1px solid #eee;">Specimen:</td>
+                <td style="padding: 6px 0; border-bottom: 1px solid #eee;">${test.specimen}</td>
+              </tr>
+              <tr>
+                <td style="padding: 6px 0; font-weight: bold; border-bottom: 1px solid #eee;">Added By:</td>
+                <td style="padding: 6px 0; border-bottom: 1px solid #eee;">${staffName} (${staffRole})</td>
+              </tr>
+            </table>
+            <p style="margin: 0 0 24px; font-size: 15px; color: #000000;">Please log into the admin dashboard to configure the **base price** and **referral commission** for this investigation so it can be billed correctly at reception.</p>
+            <div style="text-align: center; margin-bottom: 24px;">
+              <a href="${pricingLink}" style="display: inline-block; padding: 12px 24px; background-color: #0563c1; color: #ffffff !important; text-decoration: none; font-weight: bold; font-size: 14px;">Configure Price & Commission →</a>
+            </div>
+            <p style="margin: 0; font-size: 15px; color: #000000; margin-top: 20px;">Thank you,</p>
+            <p style="margin: 0; font-size: 15px; color: #000000;"><strong>DiagnosticOS Mailer</strong></p>
+          </div>
+          <div style="padding: 16px; text-align: center; font-size: 12px; color: #666; border: 1px solid #ddd; border-top: none;">
+            &copy; ${new Date().getFullYear()} ${orgName}. All rights reserved.
+          </div>
+        </div>
+      `;
+
+      for (const email of recipients) {
+        try {
+          await sendEmail({
+            to: email,
+            subject: emailSubject,
+            htmlContent: emailHtml
+          });
+        } catch (mailErr: any) {
+          console.warn(`Failed to send admin notification email to ${email}:`, mailErr.message);
+        }
+      }
 
       return NextResponse.json({ success: true });
     }

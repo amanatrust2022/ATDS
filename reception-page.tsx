@@ -6,10 +6,7 @@ import {
   RiFileTextLine, RiMoreLine, RiCloseLine, RiArrowUpSLine, RiArrowDownSLine
 } from '@remixicon/react';
 import Header from '@/components/Header';
-import {
-  Patient, PatientTest, TEST_CATALOGUE, getPatients, addPatient,
-  generateSlipNumber, getTestById
-} from '@/lib/store';
+import { Patient, PatientTest, TEST_CATALOGUE, getPatients, addPatient, generateSlipNumber, getTestById } from '@/amana-diagnostics/lib/store';
 
 type Tab = 'register' | 'queue' | 'results';
 

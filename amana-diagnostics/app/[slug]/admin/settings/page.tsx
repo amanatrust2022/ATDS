@@ -3,7 +3,8 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/components/AuthProvider';
 import { createClient } from '@/lib/supabase';
 import { RiSettings3Line, RiCheckLine, RiSave3Line, RiHospitalLine } from '@remixicon/react';
-import RichTextEditor from '@/components/RichTextEditor';
+import dynamic from 'next/dynamic';
+const RichTextEditor = dynamic(() => import('@/components/RichTextEditor'), { ssr: false });
 
 const IS_LOCAL_MODE = typeof window !== 'undefined'
   ? (localStorage.getItem('amana_local_mode') === null

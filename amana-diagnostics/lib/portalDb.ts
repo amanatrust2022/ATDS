@@ -17,6 +17,12 @@ function getPortalSupabaseClient() {
   if (!url) {
     throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL environment variable.');
   }
+
+  // Warning for missing service role key in cloud production mode
+  if (!isLocalMode() && !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    console.warn('WARNING: SUPABASE_SERVICE_ROLE_KEY is not defined in production mode. Portal auth will fall back to anon key, which will fail to bypass RLS for patient lookup queries.');
+  }
+
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!key) {
     throw new Error('Missing Supabase credentials (SUPABASE_SERVICE_ROLE_KEY or NEXT_PUBLIC_SUPABASE_ANON_KEY).');

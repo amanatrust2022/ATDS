@@ -4,7 +4,7 @@ import {
   RiHospitalLine, RiAddLine, RiClipboardLine, RiCheckLine, RiErrorWarningLine,
   RiTestTubeLine, RiRadarLine, RiMailOpenLine, RiFolderOpenLine, RiPrinterLine,
   RiFileTextLine, RiMoreLine, RiCloseLine, RiArrowUpSLine, RiArrowDownSLine, RiMailLine,
-  RiUserHeartLine, RiSearchLine, RiMoneyDollarCircleLine,
+  RiUserHeartLine, RiSearchLine, RiMoneyDollarCircleLine, RiWalletLine, RiFolderUserLine,
 } from '@remixicon/react';
 import Header from '@/components/Header';
 import {
@@ -12,17 +12,34 @@ import {
   ReferringDoctor, ReferringFacility, TestPrice,
   fetchReferringDoctors, fetchReferringFacilities, fetchTestPrices,
   addPatientWithReferral, addReferringDoctor, addReferringFacility,
-  fetchCustomTests, setCustomCatalogueCache, Test
+  fetchCustomTests, setCustomCatalogueCache, Test,
+  BillingAccount, BillingLedgerTransaction, ExternalDepartmentCharge,
+  fetchBillingAccounts, fetchPatientWallet, createBillingAccount, depositToBillingAccount, logExternalCharge, fetchAccountLedger, fetchExternalCharges,
+  updatePatientBillingAccount, registerPatientAndGetId,
+  PatientProfile, fetchPatientProfiles
 } from '@/lib/store';
-import { getResultTemplate, getSlipTemplate, getInvoiceTemplate } from '@/lib/templates';
+import { getResultTemplate, getSlipTemplate, getInvoiceTemplate, getLedgerStatementTemplate } from '@/lib/templates';
 import { useAuth } from '@/components/AuthProvider';
 import { RiLogoutCircleLine } from '@remixicon/react';
 
-type Tab = 'register' | 'queue' | 'results';
+type Tab = 'register' | 'queue' | 'results' | 'wallet';
 
 export default function ReceptionPage() {
   const [tab, setTab] = useState<Tab>('register');
   const [patients, setPatients] = useState<Patient[]>([]);
+  const [patientProfiles, setPatientProfiles] = useState<PatientProfile[]>([]);
+  const [selectedPatientProfileId, setSelectedPatientProfileId] = useState<number | null>(null);
+
+  // Searchable dropdown states for open billing account modal
+  const [ownerSearchQuery, setOwnerSearchQuery] = useState('');
+  const [ownerSearchPage, setOwnerSearchPage] = useState(0);
+  const [showOwnerSearchDrop, setShowOwnerSearchDrop] = useState(false);
+  const ownerSearchRef = useRef<HTMLDivElement>(null);
+
+  const [depSearchQuery, setDepSearchQuery] = useState('');
+  const [depSearchPage, setDepSearchPage] = useState(0);
+  const [showDepSearchDrop, setShowDepSearchDrop] = useState(false);
+  const depSearchRef = useRef<HTMLDivElement>(null);
   const [dateFilter, setDateFilter] = useState<'today' | 'seven_days' | 'thirty_days'>('today');
   const [selectedTests, setSelectedTests] = useState<string[]>([]);
   const [showSlipModal, setShowSlipModal] = useState<Patient | null>(null);
@@ -71,12 +88,438 @@ export default function ReceptionPage() {
   const [quickError, setQuickError] = useState('');
   const [quickSaving, setQuickSaving] = useState(false);
 
+  // Billing and wallet states
+  const [billingAccounts, setBillingAccounts] = useState<BillingAccount[]>([]);
+  const [externalCharges, setExternalCharges] = useState<ExternalDepartmentCharge[]>([]);
+  const [selectedPatientBillingAccountId, setSelectedPatientBillingAccountId] = useState<string | null>(null);
+  const [linkedAccount, setLinkedAccount] = useState<BillingAccount | null>(null);
+  const [checkoutBillingAccountId, setCheckoutBillingAccountId] = useState<string>('');
+
+  // Modals & search
+  const [showBillingAccountModal, setShowBillingAccountModal] = useState(false);
+  const [showLedgerModal, setShowLedgerModal] = useState<BillingAccount | null>(null);
+  const [showLogExpenseModal, setShowLogExpenseModal] = useState(false);
+  const [billingSearchQuery, setBillingSearchQuery] = useState('');
+  const [billingTransactions, setBillingTransactions] = useState<BillingLedgerTransaction[]>([]);
+  const [loadingLedger, setLoadingLedger] = useState(false);
+
+  // Forms
+  const [accountForm, setAccountForm] = useState({
+    name: '',
+    type: 'individual' as 'individual' | 'family' | 'corporate',
+    creditLimit: '0',
+    initialDeposit: '0',
+    paymentMethod: 'cash',
+    ownerId: '',
+    linkedIds: [] as (number | string)[]
+  });
+
+  const [expenseForm, setExpenseForm] = useState({
+    patientId: '',
+    department: 'pharmacy',
+    receiptNumber: '',
+    amount: '',
+    paymentMethod: 'cash',
+    description: '',
+    billingAccountId: ''
+  });
+
+  const [isOwnerNew, setIsOwnerNew] = useState(false);
+  const [newOwnerForm, setNewOwnerForm] = useState({
+    firstName: '',
+    surname: '',
+    middleName: '',
+    age: '',
+    sex: 'Male' as 'Male' | 'Female',
+    phone: '',
+    address: ''
+  });
+
+  const [newDependentsToRegister, setNewDependentsToRegister] = useState<Array<{
+    firstName: string;
+    surname: string;
+    middleName: string;
+    age: string;
+    sex: 'Male' | 'Female';
+    phone: string;
+    address: string;
+  }>>([]);
+
+  // Workspace specific states
+  const [workspaceTab, setWorkspaceTab] = useState<'members' | 'ledger' | 'charges'>('members');
+  const [showAddExisting, setShowAddExisting] = useState(false);
+  const [showQuickRegisterDep, setShowQuickRegisterDep] = useState(false);
+  const [existingPatientToLink, setExistingPatientToLink] = useState('');
+
+  const [workspaceDepForm, setWorkspaceDepForm] = useState({
+    firstName: '',
+    surname: '',
+    middleName: '',
+    age: '',
+    sex: 'Male' as 'Male' | 'Female',
+    phone: '',
+    address: ''
+  });
+
+  // Log expense form in workspace
+  const [showWorkspaceLogExpense, setShowWorkspaceLogExpense] = useState(false);
+  const [workspaceExpenseForm, setWorkspaceExpenseForm] = useState({
+    patientId: '',
+    department: 'pharmacy',
+    receiptNumber: '',
+    amount: '',
+    paymentMethod: 'wallet',
+    description: ''
+  });
+
   const { profile, organization, signOut } = useAuth();
   const refresh = useCallback(async () => {
     if (!organization?.id) return;
-    const data = await fetchPatients(organization.id);
-    setPatients(data);
+    try {
+      const [data, profiles, accs, charges] = await Promise.all([
+        fetchPatients(organization.id),
+        fetchPatientProfiles(organization.id),
+        fetchBillingAccounts(organization.id),
+        fetchExternalCharges(organization.id)
+      ]);
+      setPatients(data);
+      setPatientProfiles(profiles);
+      setBillingAccounts(accs);
+      setExternalCharges(charges as any[]);
+    } catch (e) {
+      console.warn('Failed to load data:', e);
+    }
   }, [organization?.id]);
+
+  // ─── BILLING WORKFLOWS ───────────────────────────────────────────────────────
+
+  const handleCreateBillingAccountSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!accountForm.name.trim() && !isOwnerNew) return alert('Please enter account name');
+
+    setSaving(true);
+    try {
+      let finalOwnerId: number | string = accountForm.ownerId;
+      let finalAccountName = accountForm.name.trim();
+
+      // 1. If owner is brand new, register them first!
+      if (isOwnerNew) {
+        if (!newOwnerForm.firstName.trim() || !newOwnerForm.surname.trim()) {
+          throw new Error('Please fill in new owner first name and surname');
+        }
+        const slipNumber = await generateSlipNumber(organization?.id || '');
+        const patientData = {
+          slipNumber,
+          registeredAt: new Date().toISOString(),
+          name: [newOwnerForm.firstName, newOwnerForm.middleName, newOwnerForm.surname].filter(Boolean).join(' '),
+          firstName: newOwnerForm.firstName.trim(),
+          surname: newOwnerForm.surname.trim(),
+          middleName: newOwnerForm.middleName.trim(),
+          age: newOwnerForm.age.trim(),
+          sex: newOwnerForm.sex,
+          phone: newOwnerForm.phone.trim(),
+          address: newOwnerForm.address.trim()
+        };
+        finalOwnerId = await registerPatientAndGetId(patientData as any, organization?.id || '');
+        finalAccountName = finalAccountName || `${newOwnerForm.firstName} ${newOwnerForm.surname} Wallet`;
+      }
+
+      if (!finalOwnerId) {
+        throw new Error('Owner is required');
+      }
+
+      // 2. Register any brand new dependents!
+      const newlyRegisteredDependentIds: (number | string)[] = [];
+      for (const nd of newDependentsToRegister) {
+        if (!nd.firstName.trim() || !nd.surname.trim()) {
+          throw new Error('Please fill in all dependents first name and surname');
+        }
+        const slipNumber = await generateSlipNumber(organization?.id || '');
+        const dependentData = {
+          slipNumber,
+          registeredAt: new Date().toISOString(),
+          name: [nd.firstName, nd.middleName, nd.surname].filter(Boolean).join(' '),
+          firstName: nd.firstName.trim(),
+          surname: nd.surname.trim(),
+          middleName: nd.middleName.trim(),
+          age: nd.age.trim(),
+          sex: nd.sex,
+          phone: nd.phone.trim(),
+          address: nd.address.trim()
+        };
+        const newDepId = await registerPatientAndGetId(dependentData as any, organization?.id || '');
+        newlyRegisteredDependentIds.push(newDepId);
+      }
+
+      // 3. Combine linked dependents (existing + new)
+      const combinedLinkedIds = Array.from(new Set([
+        ...accountForm.linkedIds,
+        ...newlyRegisteredDependentIds
+      ]));
+
+      const payload = {
+        organization_id: organization?.id || '',
+        name: finalAccountName,
+        owner_patient_id: finalOwnerId,
+        credit_limit: parseFloat(accountForm.creditLimit) || 0.0,
+        type: accountForm.type
+      };
+
+      const depositVal = parseFloat(accountForm.initialDeposit) || 0.0;
+
+      await createBillingAccount(
+        payload,
+        depositVal,
+        accountForm.paymentMethod,
+        combinedLinkedIds,
+        profile?.full_name || 'Staff'
+      );
+
+      alert('Billing account created successfully');
+      setShowBillingAccountModal(false);
+      setIsOwnerNew(false);
+      setNewDependentsToRegister([]);
+      setNewOwnerForm({ firstName: '', surname: '', middleName: '', age: '', sex: 'Male', phone: '', address: '' });
+      refresh();
+    } catch (err: any) {
+      alert('Failed to create account: ' + err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const [depositAmount, setDepositAmount] = useState('');
+  const [depositMethod, setDepositMethod] = useState('cash');
+  const [depositNotes, setDepositNotes] = useState('');
+  const [depositing, setDepositing] = useState(false);
+
+  const handleDepositSubmit = async (accountId: string) => {
+    const amt = parseFloat(depositAmount);
+    if (isNaN(amt) || amt <= 0) return alert('Please enter a valid deposit amount');
+
+    setDepositing(true);
+    try {
+      await depositToBillingAccount(
+        accountId,
+        amt,
+        depositNotes.trim() || 'Top-up deposit',
+        depositMethod,
+        profile?.full_name || 'Staff',
+        organization?.id || '',
+        undefined
+      );
+
+      alert('Deposit processed successfully');
+      setDepositAmount('');
+      setDepositNotes('');
+
+      // Reload ledger and refresh accounts
+      const txs = await fetchAccountLedger(accountId);
+      setBillingTransactions(txs);
+
+      const accs = await fetchBillingAccounts(organization?.id || '');
+      setBillingAccounts(accs);
+      // update selected ledger account if open
+      const updatedAcc = accs.find(a => a.id === accountId);
+      if (updatedAcc) {
+        setShowLedgerModal(updatedAcc);
+      }
+    } catch (err: any) {
+      alert('Deposit failed: ' + err.message);
+    } finally {
+      setDepositing(false);
+    }
+  };
+
+  const handleLogExpenseSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!expenseForm.patientId) return alert('Please select a patient');
+    if (!expenseForm.receiptNumber.trim()) return alert('Please enter a receipt number');
+    const amt = parseFloat(expenseForm.amount);
+    if (isNaN(amt) || amt <= 0) return alert('Please enter a valid amount');
+
+    setSaving(true);
+    try {
+      const selectedPatient = patients.find(p => p.id === Number(expenseForm.patientId));
+      const bAccountId = selectedPatient?.billingAccountId || null;
+
+      const chargePayload = {
+        organizationId: organization?.id || '',
+        patientId: expenseForm.patientId,
+        billingAccountId: expenseForm.paymentMethod === 'wallet' ? bAccountId || undefined : undefined,
+        department: expenseForm.department,
+        receiptNumber: expenseForm.receiptNumber.trim(),
+        amount: amt,
+        paymentMethod: expenseForm.paymentMethod,
+        status: 'paid' as const,
+        description: expenseForm.description.trim() || undefined,
+        createdBy: profile?.full_name || 'Staff'
+      };
+
+      await logExternalCharge(chargePayload);
+      alert('Department charge logged successfully');
+      setShowLogExpenseModal(false);
+      refresh();
+    } catch (err: any) {
+      alert('Logging failed: ' + err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Load ledger transactions and reset workspace states when modal opens
+  useEffect(() => {
+    if (showLedgerModal) {
+      setLoadingLedger(true);
+      fetchAccountLedger(showLedgerModal.id)
+        .then(txs => setBillingTransactions(txs))
+        .catch(err => console.error(err))
+        .finally(() => setLoadingLedger(false));
+
+      setWorkspaceTab('members');
+      setShowAddExisting(false);
+      setShowQuickRegisterDep(false);
+      setShowWorkspaceLogExpense(false);
+      setExistingPatientToLink('');
+    } else {
+      setBillingTransactions([]);
+    }
+  }, [showLedgerModal]);
+
+  // Sync wallet details for current checkout patient & set default payment method
+  useEffect(() => {
+    if (!selectedPatientBillingAccountId) {
+      setLinkedAccount(null);
+      setCheckoutBillingAccountId('');
+      if (paymentMethod === 'wallet') {
+        setPaymentMethod('cash');
+      }
+      return;
+    }
+    const acc = billingAccounts.find(a => a.id === selectedPatientBillingAccountId);
+    setLinkedAccount(acc || null);
+    if (acc) {
+      setCheckoutBillingAccountId(acc.id);
+      setPaymentMethod('wallet'); // Set wallet as default payment method!
+    }
+  }, [selectedPatientBillingAccountId, billingAccounts]);
+
+  const handleLinkExistingDependent = async (accountId: string) => {
+    if (!existingPatientToLink) return;
+    try {
+      await updatePatientBillingAccount(existingPatientToLink, accountId);
+      alert('Patient linked successfully');
+      setExistingPatientToLink('');
+      setShowAddExisting(false);
+      refresh();
+    } catch (err: any) {
+      alert('Failed to link patient: ' + err.message);
+    }
+  };
+
+  const handleUnlinkDependent = async (patientId: number | string) => {
+    if (!confirm('Are you sure you want to unlink this dependent from this wallet account?')) return;
+    try {
+      await updatePatientBillingAccount(patientId, null);
+      alert('Patient unlinked successfully');
+      refresh();
+    } catch (err: any) {
+      alert('Failed to unlink patient: ' + err.message);
+    }
+  };
+
+  const handleQuickRegisterDependentSubmit = async (e: React.FormEvent, accountId: string) => {
+    e.preventDefault();
+    if (!workspaceDepForm.firstName.trim() || !workspaceDepForm.surname.trim()) {
+      return alert('First Name and Surname are required');
+    }
+
+    setSaving(true);
+    try {
+      const slipNumber = await generateSlipNumber(organization?.id || '');
+      const patientData = {
+        slipNumber,
+        registeredAt: new Date().toISOString(),
+        name: [workspaceDepForm.firstName, workspaceDepForm.middleName, workspaceDepForm.surname].filter(Boolean).join(' '),
+        firstName: workspaceDepForm.firstName.trim(),
+        surname: workspaceDepForm.surname.trim(),
+        middleName: workspaceDepForm.middleName.trim(),
+        age: workspaceDepForm.age.trim(),
+        sex: workspaceDepForm.sex,
+        phone: workspaceDepForm.phone.trim(),
+        address: workspaceDepForm.address.trim(),
+        billingAccountId: accountId
+      };
+
+      await registerPatientAndGetId(patientData as any, organization?.id || '');
+      alert('Dependent registered and linked successfully');
+
+      setWorkspaceDepForm({
+        firstName: '', surname: '', middleName: '', age: '', sex: 'Male', phone: '', address: ''
+      });
+      setShowQuickRegisterDep(false);
+      refresh();
+    } catch (err: any) {
+      alert('Failed to register dependent: ' + err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleWorkspaceExpenseSubmit = async (e: React.FormEvent, accountId: string) => {
+    e.preventDefault();
+    if (!workspaceExpenseForm.patientId) return alert('Please select a member');
+    if (!workspaceExpenseForm.receiptNumber.trim()) return alert('Please enter a receipt number');
+    const amt = parseFloat(workspaceExpenseForm.amount);
+    if (isNaN(amt) || amt <= 0) return alert('Please enter a valid amount');
+
+    setSaving(true);
+    try {
+      const chargePayload = {
+        organizationId: organization?.id || '',
+        patientId: workspaceExpenseForm.patientId,
+        billingAccountId: workspaceExpenseForm.paymentMethod === 'wallet' ? accountId : undefined,
+        department: workspaceExpenseForm.department,
+        receiptNumber: workspaceExpenseForm.receiptNumber.trim(),
+        amount: amt,
+        paymentMethod: workspaceExpenseForm.paymentMethod,
+        status: 'paid' as const,
+        description: workspaceExpenseForm.description.trim() || undefined,
+        createdBy: profile?.full_name || 'Staff'
+      };
+
+      await logExternalCharge(chargePayload);
+      alert('Department charge logged successfully');
+
+      setWorkspaceExpenseForm({
+        patientId: '', department: 'pharmacy', receiptNumber: '', amount: '', paymentMethod: 'wallet', description: ''
+      });
+      setShowWorkspaceLogExpense(false);
+
+      // Refresh charges & ledger list
+      const txs = await fetchAccountLedger(accountId);
+      setBillingTransactions(txs);
+      refresh();
+    } catch (err: any) {
+      alert('Logging failed: ' + err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+
+  const handlePrintStatement = (account: BillingAccount) => {
+    const members = patients.filter(p => p.billingAccountId === account.id);
+    const html = getLedgerStatementTemplate(account, billingTransactions, members, organization as any);
+    const win = window.open('', '_blank');
+    if (win) {
+      win.document.write(html);
+      win.document.close();
+      win.onload = () => {
+        win.print();
+      };
+    }
+  };
 
   // Load referral databases
   // Load referral databases & custom tests
@@ -99,12 +542,12 @@ export default function ReceptionPage() {
       customTests.forEach(ct => {
         const idx = merged.findIndex(t => t.id === ct.id);
         if (idx !== -1) {
-          if (ct.is_active === false) {
-            merged.splice(idx, 1);
-          } else {
-            merged[idx] = ct;
+          // If a custom test with the same ID is inactive, we keep the existing default test
+          if (ct.is_active !== false) {
+            merged[idx] = ct; // Replace with active custom test
           }
         } else if (ct.is_active !== false) {
+          // Add new custom test only if it is active
           merged.push(ct);
         }
       });
@@ -118,6 +561,8 @@ export default function ReceptionPage() {
       if (doctorRef.current && !doctorRef.current.contains(e.target as Node)) setShowDoctorDrop(false);
       if (facilityRef.current && !facilityRef.current.contains(e.target as Node)) setShowFacilityDrop(false);
       if (patientSearchRef.current && !patientSearchRef.current.contains(e.target as Node)) setShowPatientSearchDrop(false);
+      if (ownerSearchRef.current && !ownerSearchRef.current.contains(e.target as Node)) setShowOwnerSearchDrop(false);
+      if (depSearchRef.current && !depSearchRef.current.contains(e.target as Node)) setShowDepSearchDrop(false);
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
@@ -208,6 +653,12 @@ export default function ReceptionPage() {
       ? discVal
       : 0;
   const netBill = Math.max(0, subtotal - discountAmount);
+  // Auto-set paid amount if wallet is used
+  useEffect(() => {
+    if (paymentMethod === 'wallet') {
+      setPaidAmount(netBill.toString());
+    }
+  }, [paymentMethod, netBill]);
   const amountPaidVal = paidAmount === '' ? netBill : (parseFloat(paidAmount) || 0);
   const balance = netBill - amountPaidVal;
   const paymentStatus = amountPaidVal >= netBill
@@ -311,6 +762,23 @@ export default function ReceptionPage() {
     const e = validate();
     setErrors(e);
     if (Object.keys(e).length > 0) return;
+
+    if (paymentMethod === 'wallet') {
+      if (!checkoutBillingAccountId) {
+        alert('Please select a wallet account for payment.');
+        return;
+      }
+      const acc = billingAccounts.find(a => a.id === checkoutBillingAccountId);
+      if (!acc) {
+        alert('Selected wallet account not found.');
+        return;
+      }
+      if ((acc.balance + acc.credit_limit) < netBill) {
+        alert(`Insufficient wallet balance on "${acc.name}". Available: ₦${(acc.balance + acc.credit_limit).toLocaleString('en-NG')}`);
+        return;
+      }
+    }
+
     setSaving(true);
 
     try {
@@ -345,7 +813,7 @@ export default function ReceptionPage() {
       const selDoctor = doctors.find(d => d.id === selectedDoctorId);
       const selFacility = facilities.find(f => f.id === selectedFacilityId);
 
-      const patientData: Omit<Patient, 'id' | 'tests'> = {
+      const patientData: Omit<Patient, 'id' | 'tests'> & { id?: number; patientProfileId?: number | null } = {
         slipNumber,
         registeredAt: new Date().toISOString(),
         name: [form.firstName, form.middleName, form.surname].filter(Boolean).join(' '),
@@ -366,12 +834,14 @@ export default function ReceptionPage() {
         paidAmount: amountPaidVal,
         paymentStatus: paymentStatus,
         paymentMethod: paymentMethod,
+        billingAccountId: paymentMethod === 'wallet' ? checkoutBillingAccountId : (selectedPatientBillingAccountId || undefined),
+        patientProfileId: selectedPatientProfileId || undefined,
       };
 
       await addPatientWithReferral(patientData, tests, organization?.id || '');
 
       const tempPatient: Patient = {
-        id: 'temp',
+        id: 0,
         tests: tests as any,
         ...patientData
       };
@@ -384,6 +854,8 @@ export default function ReceptionPage() {
       setDoctorSearch('');
       setFacilitySearch('');
       setLoadedPatientName('');
+      setSelectedPatientBillingAccountId(null);
+      setSelectedPatientProfileId(null);
       setPatientSearchQuery('');
       setDiscountType('none');
       setDiscountValue('');
@@ -421,6 +893,7 @@ export default function ReceptionPage() {
           { id: 'register', label: 'Register Patient', icon: <RiAddLine size={18} /> },
           { id: 'queue', label: `Patient Queue (${pendingPatients.length})`, icon: <RiClipboardLine size={18} /> },
           { id: 'results', label: `Results Ready (${newResultsCount})`, icon: <RiCheckLine size={18} />, badge: newResultsCount },
+          { id: 'wallet', label: 'Patient Wallet', icon: < RiWalletLine size={18} /> },
         ].map(t => (
           <button
             key={t.id}
@@ -510,14 +983,13 @@ export default function ReceptionPage() {
 
                   {showPatientSearchDrop && patientSearchQuery.trim().length > 0 && (
                     <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'white', border: '1px solid var(--gray-300)', zIndex: 60, maxHeight: 200, overflowY: 'auto', boxShadow: '0 4px 12px rgba(0,0,0,0.15)', borderRadius: 'var(--radius)', marginTop: '0.25rem' }}>
-                      {patients
+                      {patientProfiles
                         .filter(p => {
                           const q = patientSearchQuery.toLowerCase();
                           const fullName = `${p.firstName || ''} ${p.middleName || ''} ${p.surname || ''}`.toLowerCase();
-                          const nameMatches = fullName.includes(q) || (p.name || '').toLowerCase().includes(q);
+                          const nameMatches = fullName.includes(q);
                           const phoneMatches = (p.phone || '').includes(q);
-                          const slipMatches = (p.slipNumber || '').toLowerCase().includes(q);
-                          return nameMatches || phoneMatches || slipMatches;
+                          return nameMatches || phoneMatches;
                         })
                         .slice(0, 10)
                         .map(p => (
@@ -528,7 +1000,7 @@ export default function ReceptionPage() {
                                 firstName: p.firstName || '',
                                 surname: p.surname || '',
                                 middleName: p.middleName || '',
-                                age: p.age || '',
+                                age: '',
                                 sex: p.sex || 'Male',
                                 phone: p.phone || '',
                                 email: p.email || '',
@@ -541,6 +1013,13 @@ export default function ReceptionPage() {
                               setDoctorSearch('');
                               setFacilitySearch('');
                               setLoadedPatientName(`${p.firstName} ${p.surname}`);
+                              
+                              const latestVisitWithWallet = patients
+                                .filter(v => v.patientProfileId === p.id && v.billingAccountId)
+                                .sort((a, b) => new Date(b.registeredAt).getTime() - new Date(a.registeredAt).getTime())[0];
+                              setSelectedPatientBillingAccountId(latestVisitWithWallet?.billingAccountId || null);
+                              
+                              setSelectedPatientProfileId(p.id);
                               setPatientSearchQuery('');
                               setShowPatientSearchDrop(false);
                             }}
@@ -554,25 +1033,21 @@ export default function ReceptionPage() {
                                   {p.firstName} {p.middleName} {p.surname}
                                 </div>
                                 <div style={{ fontSize: '0.68rem', color: 'var(--gray-500)' }}>
-                                  {p.phone} • {p.age} • {p.sex}
+                                  {p.phone} • {p.sex} • Patient ID: {p.id}
                                 </div>
-                              </div>
-                              <div style={{ fontSize: '0.68rem', fontFamily: 'var(--font-mono)', background: 'var(--teal-100)', color: 'var(--teal-800)', padding: '2px 6px', borderRadius: 4 }}>
-                                {p.slipNumber}
                               </div>
                             </div>
                           </div>
                         ))}
-                      {patients.filter(p => {
+                      {patientProfiles.filter(p => {
                         const q = patientSearchQuery.toLowerCase();
                         const fullName = `${p.firstName || ''} ${p.middleName || ''} ${p.surname || ''}`.toLowerCase();
-                        const nameMatches = fullName.includes(q) || (p.name || '').toLowerCase().includes(q);
+                        const nameMatches = fullName.includes(q);
                         const phoneMatches = (p.phone || '').includes(q);
-                        const slipMatches = (p.slipNumber || '').toLowerCase().includes(q);
-                        return nameMatches || phoneMatches || slipMatches;
+                        return nameMatches || phoneMatches;
                       }).length === 0 && (
                           <div style={{ padding: '0.75rem', color: 'var(--gray-400)', fontSize: '0.75rem', textAlign: 'center' }}>
-                            No matching patients found.
+                            No matching patient profiles found.
                           </div>
                         )}
                     </div>
@@ -581,10 +1056,12 @@ export default function ReceptionPage() {
 
                 {loadedPatientName && (
                   <div style={{ background: 'var(--teal-50)', border: '1px solid var(--teal-200)', padding: '0.5rem 0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', color: 'var(--teal-800)', borderRadius: 'var(--radius)' }}>
-                    <span>Loaded returning patient: <b>{loadedPatientName}</b></span>
+                    <span>Loaded returning patient: <b>{loadedPatientName}</b> (Patient ID: {selectedPatientProfileId})</span>
                     <button
                       onClick={() => {
                         setLoadedPatientName('');
+                        setSelectedPatientBillingAccountId(null);
+                        setSelectedPatientProfileId(null);
                         setForm({
                           firstName: '', surname: '', middleName: '', age: '', sex: 'Male',
                           phone: '', email: '', address: '', referredBy: '', referringFacility: ''
@@ -922,6 +1399,44 @@ export default function ReceptionPage() {
                     Billing & Checkout
                   </h3>
 
+                  {/* Pay with Account Wallet Card */}
+                  {linkedAccount && (
+                    <div style={{
+                      background: 'linear-gradient(135deg, var(--teal-50) 0%, #f0fdfa 100%)',
+                      border: '1px solid var(--teal-200)',
+                      borderRadius: 6,
+                      padding: '0.85rem 1rem',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.4rem',
+                      boxShadow: '0 2px 8px rgba(13,148,136,0.04)',
+                      marginBottom: '0.25rem'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--teal-800)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                          <RiWalletLine size={15} color="var(--teal-600)" /> Pay with Account Wallet
+                        </span>
+                        <span style={{
+                          fontSize: '0.62rem',
+                          fontWeight: 700,
+                          padding: '1px 6px',
+                          borderRadius: 4,
+                          background: 'var(--teal-600)',
+                          color: 'white',
+                          textTransform: 'uppercase'
+                        }}>
+                          Linked
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: '0.2rem' }}>
+                        <span style={{ fontSize: '0.7rem', color: 'var(--gray-500)' }}>{linkedAccount.name}</span>
+                        <span style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--teal-700)' }}>
+                          ₦{linkedAccount.balance.toLocaleString('en-NG', { minimumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Subtotal */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontSize: '0.75rem', color: 'var(--gray-600)', fontWeight: 600 }}>Subtotal</span>
@@ -1000,13 +1515,62 @@ export default function ReceptionPage() {
                       <select
                         style={{ ...inputStyle(false), padding: '0.35rem 0.5rem', fontSize: '0.75rem' }}
                         value={paymentMethod}
-                        onChange={e => setPaymentMethod(e.target.value)}
+                        onChange={e => {
+                          setPaymentMethod(e.target.value);
+                          if (e.target.value === 'wallet' && !checkoutBillingAccountId && billingAccounts.length > 0) {
+                            // select first wallet by default if not set
+                            setCheckoutBillingAccountId(billingAccounts[0].id);
+                          }
+                        }}
                       >
                         <option value="cash">Cash</option>
                         <option value="pos">POS</option>
                         <option value="transfer">Bank Transfer</option>
                         <option value="split">Split Payment</option>
+                        <option value="wallet">Account Wallet</option>
                       </select>
+
+                      {paymentMethod === 'wallet' && (
+                        <div style={{ marginTop: '0.5rem' }}>
+                          <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 600, color: 'var(--gray-600)', marginBottom: '0.15rem' }}>Select Wallet Account</label>
+                          <select
+                            style={{ ...inputStyle(false), padding: '0.35rem 0.5rem', fontSize: '0.75rem' }}
+                            value={checkoutBillingAccountId}
+                            onChange={e => setCheckoutBillingAccountId(e.target.value)}
+                          >
+                            <option value="">-- Choose Wallet --</option>
+                            {billingAccounts.map(acc => (
+                              <option key={acc.id} value={acc.id}>
+                                {acc.name} (Bal: ₦{acc.balance.toLocaleString('en-NG')})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+
+                      {paymentMethod === 'wallet' && checkoutBillingAccountId && (() => {
+                        const acc = billingAccounts.find(a => a.id === checkoutBillingAccountId);
+                        if (!acc) return null;
+                        const isSufficient = (acc.balance + acc.credit_limit) >= netBill;
+                        return (
+                          <div style={{
+                            fontSize: '0.7rem',
+                            color: !isSufficient ? 'var(--red)' : '#27ae60',
+                            fontWeight: 600,
+                            marginTop: '0.25rem'
+                          }}>
+                            {!isSufficient ? (
+                              <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                                <RiErrorWarningLine size={14} color="var(--red)" /> Insufficient Wallet Balance! Max credit allowed: ₦{(acc.balance + acc.credit_limit).toLocaleString('en-NG')}
+                              </span>
+                            ) : (
+                              <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                                <RiCheckLine size={14} color="#27ae60" /> Wallet Balance covers invoice amount.
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
 
@@ -1125,6 +1689,117 @@ export default function ReceptionPage() {
             )}
           </div>
         )}
+
+        {tab === 'wallet' && (
+          <div>
+            {/* Main Action Hub Card */}
+            <div style={{ background: 'white', border: '1px solid var(--gray-200)', borderRadius: 'var(--radius-lg)', padding: '1.5rem', boxShadow: '0 4px 15px rgba(0,0,0,0.05)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+                <div>
+                  <h2 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--gray-900)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <RiFolderUserLine size={20} color="var(--teal-600)" /> Client Accounts
+                  </h2>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--gray-500)', marginTop: '0.15rem' }}>Manage individual and family group deposit wallets, link dependents, and log department bills.</p>
+                </div>
+                <div>
+                  <button
+                    onClick={() => {
+                      setAccountForm({
+                        name: '',
+                        type: 'individual',
+                        creditLimit: '0',
+                        initialDeposit: '0',
+                        paymentMethod: 'cash',
+                        ownerId: '',
+                        linkedIds: []
+                      });
+                      setIsOwnerNew(false);
+                      setNewDependentsToRegister([]);
+                      setNewOwnerForm({ firstName: '', surname: '', middleName: '', age: '', sex: 'Male', phone: '', address: '' });
+                      setOwnerSearchQuery('');
+                      setOwnerSearchPage(0);
+                      setShowOwnerSearchDrop(false);
+                      setDepSearchQuery('');
+                      setDepSearchPage(0);
+                      setShowDepSearchDrop(false);
+                      setShowBillingAccountModal(true);
+                    }}
+                    style={{ background: 'var(--teal-700)', color: 'white', border: 'none', padding: '0.5rem 1rem', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer', borderRadius: 'var(--radius)', display: 'flex', alignItems: 'center', gap: '0.25rem', transition: 'all 0.15s' }}
+                  >
+                    <RiAddLine size={16} /> Open Billing Account
+                  </button>
+                </div>
+              </div>
+
+              {/* Accounts Directory */}
+              <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem', maxWidth: 400 }}>
+                <input
+                  value={billingSearchQuery}
+                  onChange={e => setBillingSearchQuery(e.target.value)}
+                  placeholder="Search billing accounts..."
+                  style={inputStyle(false)}
+                />
+              </div>
+
+              <div style={{ overflowX: 'auto', border: '1px solid var(--gray-200)', borderRadius: 'var(--radius)', background: 'white' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem', textAlign: 'left' }}>
+                  <thead>
+                    <tr style={{ background: 'var(--gray-50)', borderBottom: '1px solid var(--gray-200)' }}>
+                      <th style={{ padding: '0.75rem 1rem', fontWeight: 700, color: 'var(--gray-600)', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Account Name</th>
+                      <th style={{ padding: '0.75rem 1rem', fontWeight: 700, color: 'var(--gray-600)', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Owner</th>
+                      <th style={{ padding: '0.75rem 1rem', fontWeight: 700, color: 'var(--gray-600)', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Type</th>
+                      <th style={{ padding: '0.75rem 1rem', fontWeight: 700, color: 'var(--gray-600)', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Wallet Balance</th>
+                      <th style={{ padding: '0.75rem 1rem', fontWeight: 700, color: 'var(--gray-600)', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Credit Limit</th>
+                      <th style={{ padding: '0.75rem 1rem', fontWeight: 700, color: 'var(--gray-600)', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'right' }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {billingAccounts
+                      .filter(acc => acc.name.toLowerCase().includes(billingSearchQuery.toLowerCase()))
+                      .map(acc => {
+                        const owner = patients.find(p => p.id === Number(acc.owner_patient_id));
+                        const ownerName = owner ? `${owner.firstName} ${owner.surname}` : 'Unknown';
+                        return (
+                          <tr key={acc.id} style={{ borderBottom: '1px solid var(--gray-100)' }}>
+                            <td style={{ padding: '0.85rem 1rem', fontWeight: 600, color: 'var(--gray-900)' }}>{acc.name}</td>
+                            <td style={{ padding: '0.85rem 1rem', color: 'var(--gray-600)' }}>{ownerName}</td>
+                            <td style={{ padding: '0.85rem 1rem' }}>
+                              <span style={{
+                                textTransform: 'capitalize', fontSize: '0.7rem', fontWeight: 700, padding: '2px 8px', borderRadius: 4,
+                                background: acc.type === 'family' ? '#eff6ff' : acc.type === 'corporate' ? '#faf5ff' : '#f0fdf4',
+                                color: acc.type === 'family' ? '#1d4ed8' : acc.type === 'corporate' ? '#6b21a8' : '#166534'
+                              }}>
+                                {acc.type}
+                              </span>
+                            </td>
+                            <td style={{ padding: '0.85rem 1rem', fontWeight: 700, color: acc.balance >= 0 ? '#166534' : '#991b1b' }}>
+                              ₦{acc.balance.toLocaleString('en-NG', { minimumFractionDigits: 2 })}
+                            </td>
+                            <td style={{ padding: '0.85rem 1rem', color: 'var(--gray-600)' }}>
+                              ₦{(acc.credit_limit || 0).toLocaleString('en-NG', { minimumFractionDigits: 2 })}
+                            </td>
+                            <td style={{ padding: '0.85rem 1rem', textAlign: 'right' }}>
+                              <button
+                                onClick={() => setShowLedgerModal(acc)}
+                                style={{ background: 'white', border: '1px solid var(--gray-300)', padding: '0.35rem 0.65rem', borderRadius: 'var(--radius)', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600, transition: 'all 0.15s' }}
+                              >
+                                Manage Account
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    {billingAccounts.length === 0 && (
+                      <tr>
+                        <td colSpan={6} style={{ padding: '3rem 1rem', textAlign: 'center', color: 'var(--gray-400)' }}>No billing wallets registered. Click "Open Billing Account" to register family/individual accounts.</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Slip Modal */}
@@ -1135,6 +1810,910 @@ export default function ReceptionPage() {
       {/* Result Modal */}
       {showResultModal && (
         <ResultModal patient={showResultModal} org={organization} onClose={() => setShowResultModal(null)} />
+      )}
+
+      {/* Billing Wallets & Accounts Modals */}
+      {showBillingAccountModal && (
+        <div style={modalOverlay}>
+          <form 
+            onSubmit={handleCreateBillingAccountSubmit} 
+            style={{ 
+              ...modalBox, 
+              maxWidth: 550, 
+              maxHeight: '90vh', 
+              display: 'flex', 
+              flexDirection: 'column',
+              margin: 'auto'
+            }}
+          >
+            <div style={{ background: 'var(--teal-800)', padding: '1rem 1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <h2 style={{ color: 'white', fontFamily: 'var(--font-display)', fontSize: '1rem', fontWeight: 700 }}>Open Billing Account</h2>
+                <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.7rem', marginTop: '0.15rem' }}>Create individual or family deposit wallet</p>
+              </div>
+              <button type="button" onClick={() => setShowBillingAccountModal(false)} style={closeBtn}>
+                <RiCloseLine size={16} />
+              </button>
+            </div>
+
+            <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.9rem', background: 'white', overflowY: 'auto', flex: 1 }}>
+              <Field label="Account Name *">
+                <input
+                  required
+                  style={inputStyle(false)}
+                  placeholder="e.g. Bello Family Wallet"
+                  value={accountForm.name}
+                  onChange={e => setAccountForm({ ...accountForm, name: e.target.value })}
+                />
+              </Field>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                <Field label="Account Type">
+                  <select
+                    style={inputStyle(false)}
+                    value={accountForm.type}
+                    onChange={e => setAccountForm({ ...accountForm, type: e.target.value as any })}
+                  >
+                    <option value="individual">Individual</option>
+                    <option value="family">Family Group</option>
+                    <option value="corporate">Corporate Retainer</option>
+                  </select>
+                </Field>
+                <Field label="Credit Limit (₦)">
+                  <input
+                    type="number"
+                    min="0"
+                    style={inputStyle(false)}
+                    value={accountForm.creditLimit}
+                    onChange={e => setAccountForm({ ...accountForm, creditLimit: e.target.value })}
+                  />
+                </Field>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                <Field label="Initial Deposit (₦)">
+                  <input
+                    type="number"
+                    min="0"
+                    style={inputStyle(false)}
+                    value={accountForm.initialDeposit}
+                    onChange={e => setAccountForm({ ...accountForm, initialDeposit: e.target.value })}
+                  />
+                </Field>
+                <Field label="Deposit Method">
+                  <select
+                    style={inputStyle(false)}
+                    value={accountForm.paymentMethod}
+                    disabled={parseFloat(accountForm.initialDeposit) <= 0}
+                    onChange={e => setAccountForm({ ...accountForm, paymentMethod: e.target.value })}
+                  >
+                    <option value="cash">Cash</option>
+                    <option value="pos">POS</option>
+                    <option value="transfer">Bank Transfer</option>
+                  </select>
+                </Field>
+              </div>
+
+              {/* Account Owner Selection Toggle */}
+              <div 
+                onClick={() => {
+                  setIsOwnerNew(!isOwnerNew);
+                  setAccountForm(prev => ({ ...prev, ownerId: '', name: '' }));
+                  setOwnerSearchQuery('');
+                }}
+                style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '0.75rem', 
+                  padding: '0.75rem 1rem', 
+                  background: isOwnerNew ? '#f0fdfa' : 'var(--gray-50)', 
+                  border: isOwnerNew ? '1px solid var(--teal-300)' : '1px solid var(--gray-200)', 
+                  borderRadius: '6px', 
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  userSelect: 'none',
+                  marginTop: '0.25rem'
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={isOwnerNew}
+                  readOnly
+                  style={{ width: '1.1rem', height: '1.1rem', accentColor: 'var(--teal-700)', cursor: 'pointer' }}
+                />
+                <div>
+                  <div style={{ fontSize: '0.8rem', fontWeight: 700, color: isOwnerNew ? 'var(--teal-900)' : 'var(--gray-800)' }}>
+                    Register a New Patient as Account Owner
+                  </div>
+                  <div style={{ fontSize: '0.68rem', color: isOwnerNew ? 'var(--teal-700)' : 'var(--gray-500)', marginTop: '0.1rem' }}>
+                    Toggle this on if the primary account owner is not registered yet.
+                  </div>
+                </div>
+              </div>
+
+              {!isOwnerNew ? (
+                <Field label="Account Owner (Primary Patient) *">
+                  <div ref={ownerSearchRef} style={{ position: 'relative' }}>
+                    <div style={{ position: 'relative' }}>
+                      <RiSearchLine size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--gray-400)' }} />
+                      <input
+                        style={{ ...inputStyle(false), paddingLeft: 30 }}
+                        placeholder="Search patient by name or phone..."
+                        value={ownerSearchQuery}
+                        onChange={e => {
+                          setOwnerSearchQuery(e.target.value);
+                          setOwnerSearchPage(0);
+                          setShowOwnerSearchDrop(true);
+                        }}
+                        onFocus={() => setShowOwnerSearchDrop(true)}
+                      />
+                    </div>
+                    {/* Selected Owner Tag */}
+                    {accountForm.ownerId && (() => {
+                      const owner = patients.find(x => x.id === Number(accountForm.ownerId));
+                      if (!owner) return null;
+                      return (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.4rem 0.6rem', marginTop: '0.35rem', background: '#f0fdfa', border: '1px solid var(--teal-200)', borderRadius: 4, fontSize: '0.75rem' }}>
+                          <span style={{ color: 'var(--teal-800)' }}>Selected Owner: <b>{owner.firstName} {owner.surname}</b> ({owner.phone})</span>
+                          <button
+                            type="button"
+                            onClick={() => setAccountForm({ ...accountForm, ownerId: '', name: '' })}
+                            style={{ background: 'none', border: 'none', color: 'var(--red)', cursor: 'pointer', fontWeight: 600, fontSize: '0.72rem' }}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      );
+                    })()}
+                    
+                    {showOwnerSearchDrop && ownerSearchQuery.trim().length > 0 && (
+                      <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'white', border: '1px solid var(--gray-300)', zIndex: 70, boxShadow: '0 4px 12px rgba(0,0,0,0.15)', borderRadius: 4, marginTop: '0.25rem', overflow: 'hidden' }}>
+                        <div style={{ maxHeight: 150, overflowY: 'auto' }}>
+                          {(() => {
+                            const filtered = patients.filter(p => {
+                              const q = ownerSearchQuery.toLowerCase();
+                              return `${p.firstName} ${p.middleName || ''} ${p.surname}`.toLowerCase().includes(q) || (p.phone || '').includes(q);
+                            });
+                            const PAGE_SIZE = 5;
+                            const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
+                            const paginated = filtered.slice(ownerSearchPage * PAGE_SIZE, (ownerSearchPage + 1) * PAGE_SIZE);
+                            
+                            return (
+                              <>
+                                {paginated.map(p => (
+                                  <div
+                                    key={p.id}
+                                    onClick={() => {
+                                      setAccountForm({
+                                        ...accountForm,
+                                        ownerId: String(p.id),
+                                        name: `${p.firstName} ${p.surname} Wallet`
+                                      });
+                                      setShowOwnerSearchDrop(false);
+                                      setOwnerSearchQuery('');
+                                    }}
+                                    style={dropItemStyle}
+                                    onMouseEnter={e => e.currentTarget.style.background = 'var(--teal-50)'}
+                                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                                  >
+                                    <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--gray-900)' }}>{p.firstName} {p.middleName} {p.surname}</div>
+                                    <div style={{ fontSize: '0.68rem', color: 'var(--gray-500)' }}>{p.phone} • Slip: {p.slipNumber}</div>
+                                  </div>
+                                ))}
+                                {filtered.length === 0 && (
+                                  <div style={{ padding: '0.75rem', color: 'var(--gray-400)', fontSize: '0.72rem', textAlign: 'center' }}>No patients found.</div>
+                                )}
+                                {totalPages > 1 && (
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.4rem 0.6rem', background: 'var(--gray-50)', borderTop: '1px solid var(--gray-200)', fontSize: '0.7rem' }}>
+                                    <button
+                                      type="button"
+                                      disabled={ownerSearchPage === 0}
+                                      onClick={() => setOwnerSearchPage(prev => Math.max(0, prev - 1))}
+                                      style={{ background: 'white', border: '1px solid var(--gray-300)', padding: '2px 8px', borderRadius: 4, cursor: 'pointer' }}
+                                    >
+                                      Prev
+                                    </button>
+                                    <span>Page {ownerSearchPage + 1} of {totalPages}</span>
+                                    <button
+                                      type="button"
+                                      disabled={ownerSearchPage >= totalPages - 1}
+                                      onClick={() => setOwnerSearchPage(prev => Math.min(totalPages - 1, prev + 1))}
+                                      style={{ background: 'white', border: '1px solid var(--gray-300)', padding: '2px 8px', borderRadius: 4, cursor: 'pointer' }}
+                                    >
+                                      Next
+                                    </button>
+                                  </div>
+                                )}
+                              </>
+                            );
+                          })()}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </Field>
+              ) : (
+                <div style={{ border: '1px solid var(--teal-100)', padding: '0.75rem', borderRadius: 6, background: '#f0fdfa', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--teal-800)' }}>New Owner Registration</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem' }}>
+                    <input required placeholder="First Name *" style={{ ...inputStyle(false), padding: '0.35rem 0.5rem', fontSize: '0.75rem' }} value={newOwnerForm.firstName} onChange={e => setNewOwnerForm({ ...newOwnerForm, firstName: e.target.value })} />
+                    <input required placeholder="Surname *" style={{ ...inputStyle(false), padding: '0.35rem 0.5rem', fontSize: '0.75rem' }} value={newOwnerForm.surname} onChange={e => setNewOwnerForm({ ...newOwnerForm, surname: e.target.value })} />
+                    <input placeholder="Middle Name" style={{ ...inputStyle(false), padding: '0.35rem 0.5rem', fontSize: '0.75rem' }} value={newOwnerForm.middleName} onChange={e => setNewOwnerForm({ ...newOwnerForm, middleName: e.target.value })} />
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem' }}>
+                    <input required placeholder="Age *" style={{ ...inputStyle(false), padding: '0.35rem 0.5rem', fontSize: '0.75rem' }} value={newOwnerForm.age} onChange={e => setNewOwnerForm({ ...newOwnerForm, age: e.target.value })} />
+                    <select style={{ ...inputStyle(false), padding: '0.35rem 0.5rem', fontSize: '0.75rem' }} value={newOwnerForm.sex} onChange={e => setNewOwnerForm({ ...newOwnerForm, sex: e.target.value as any })}>
+                      <option value="Male">Male</option>
+                      <option value="Female">Female</option>
+                    </select>
+                    <input placeholder="Phone" style={{ ...inputStyle(false), padding: '0.35rem 0.5rem', fontSize: '0.75rem' }} value={newOwnerForm.phone} onChange={e => setNewOwnerForm({ ...newOwnerForm, phone: e.target.value })} />
+                  </div>
+                  <input placeholder="Address" style={{ ...inputStyle(false), padding: '0.35rem 0.5rem', fontSize: '0.75rem' }} value={newOwnerForm.address} onChange={e => setNewOwnerForm({ ...newOwnerForm, address: e.target.value })} />
+                </div>
+              )}
+
+              {accountForm.type !== 'individual' && (
+                <div>
+                  <Field label="Link Dependents (Select Existing Members)">
+                    <div ref={depSearchRef} style={{ position: 'relative' }}>
+                      <div style={{ position: 'relative' }}>
+                        <RiSearchLine size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--gray-400)' }} />
+                        <input
+                          style={{ ...inputStyle(false), paddingLeft: 30 }}
+                          placeholder="Search existing members to link as dependents..."
+                          value={depSearchQuery}
+                          onChange={e => {
+                            setDepSearchQuery(e.target.value);
+                            setDepSearchPage(0);
+                            setShowDepSearchDrop(true);
+                          }}
+                          onFocus={() => setShowDepSearchDrop(true)}
+                        />
+                      </div>
+                      
+                      {showDepSearchDrop && depSearchQuery.trim().length > 0 && (
+                        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'white', border: '1px solid var(--gray-300)', zIndex: 70, boxShadow: '0 4px 12px rgba(0,0,0,0.15)', borderRadius: 4, marginTop: '0.25rem', overflow: 'hidden' }}>
+                          <div style={{ maxHeight: 150, overflowY: 'auto' }}>
+                            {(() => {
+                              const filtered = patients.filter(p => {
+                                if (p.id === Number(accountForm.ownerId)) return false;
+                                if (accountForm.linkedIds.includes(p.id)) return false;
+                                const q = depSearchQuery.toLowerCase();
+                                return `${p.firstName} ${p.middleName || ''} ${p.surname}`.toLowerCase().includes(q) || (p.phone || '').includes(q);
+                              });
+                              const PAGE_SIZE = 5;
+                              const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
+                              const paginated = filtered.slice(depSearchPage * PAGE_SIZE, (depSearchPage + 1) * PAGE_SIZE);
+                              
+                              return (
+                                <>
+                                  {paginated.map(p => (
+                                    <div
+                                      key={p.id}
+                                      onClick={() => {
+                                        setAccountForm({
+                                          ...accountForm,
+                                          linkedIds: [...accountForm.linkedIds, p.id]
+                                        });
+                                        setShowDepSearchDrop(false);
+                                        setDepSearchQuery('');
+                                      }}
+                                      style={dropItemStyle}
+                                      onMouseEnter={e => e.currentTarget.style.background = 'var(--teal-50)'}
+                                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                                    >
+                                      <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--gray-900)' }}>{p.firstName} {p.middleName} {p.surname}</div>
+                                      <div style={{ fontSize: '0.68rem', color: 'var(--gray-500)' }}>{p.phone} • Slip: {p.slipNumber}</div>
+                                    </div>
+                                  ))}
+                                  {filtered.length === 0 && (
+                                    <div style={{ padding: '0.75rem', color: 'var(--gray-400)', fontSize: '0.72rem', textAlign: 'center' }}>No patients found.</div>
+                                  )}
+                                  {totalPages > 1 && (
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.4rem 0.6rem', background: 'var(--gray-50)', borderTop: '1px solid var(--gray-200)', fontSize: '0.7rem' }}>
+                                      <button
+                                        type="button"
+                                        disabled={depSearchPage === 0}
+                                        onClick={() => setDepSearchPage(prev => Math.max(0, prev - 1))}
+                                        style={{ background: 'white', border: '1px solid var(--gray-300)', padding: '2px 8px', borderRadius: 4, cursor: 'pointer' }}
+                                      >
+                                        Prev
+                                      </button>
+                                      <span>Page {depSearchPage + 1} of {totalPages}</span>
+                                      <button
+                                        type="button"
+                                        disabled={depSearchPage >= totalPages - 1}
+                                        onClick={() => setDepSearchPage(prev => Math.min(totalPages - 1, prev + 1))}
+                                        style={{ background: 'white', border: '1px solid var(--gray-300)', padding: '2px 8px', borderRadius: 4, cursor: 'pointer' }}
+                                      >
+                                        Next
+                                      </button>
+                                    </div>
+                                  )}
+                                </>
+                              );
+                            })()}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Linked Dependents Tag List */}
+                    {accountForm.linkedIds.length > 0 && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', marginTop: '0.5rem' }}>
+                        <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--gray-600)' }}>Selected Dependents ({accountForm.linkedIds.length}):</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+                          {accountForm.linkedIds.map(id => {
+                            const dep = patients.find(x => x.id === Number(id));
+                            if (!dep) return null;
+                            return (
+                              <div key={id} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', padding: '3px 8px', background: 'var(--gray-100)', border: '1px solid var(--gray-300)', borderRadius: 12, fontSize: '0.72rem', color: 'var(--gray-700)' }}>
+                                <span>{dep.firstName} {dep.surname}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => setAccountForm({ ...accountForm, linkedIds: accountForm.linkedIds.filter(x => x !== id) })}
+                                  style={{ background: 'none', border: 'none', color: 'var(--red)', cursor: 'pointer', padding: 0, fontWeight: 700, display: 'flex' }}
+                                >
+                                  <RiCloseLine size={12} />
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </Field>
+
+                  {/* Register New Dependents */}
+                  <div style={{ marginTop: '0.75rem', borderTop: '1px solid var(--gray-100)', paddingTop: '0.75rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                      <div>
+                        <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--gray-800)' }}>Register New Dependents</div>
+                        <div style={{ fontSize: '0.65rem', color: 'var(--gray-500)' }}>Create new patient records and link them to this wallet</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setNewDependentsToRegister([...newDependentsToRegister, { firstName: '', surname: '', middleName: '', age: '', sex: 'Male', phone: '', address: '' }])}
+                        style={{ 
+                          background: 'var(--teal-50)', 
+                          color: 'var(--teal-700)', 
+                          border: '1px solid var(--teal-200)', 
+                          padding: '0.4rem 0.8rem', 
+                          fontSize: '0.72rem', 
+                          fontWeight: 700, 
+                          cursor: 'pointer', 
+                          borderRadius: '4px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.35rem',
+                          transition: 'all 0.15s'
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.background = 'var(--teal-100)'; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = 'var(--teal-50)'; }}
+                      >
+                        <RiAddLine size={14} /> Add Dependent
+                      </button>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: 120, overflowY: 'auto' }}>
+                      {newDependentsToRegister.map((nd, idx) => (
+                        <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', padding: '0.5rem', border: '1px solid var(--gray-200)', borderRadius: 4, background: '#fafafa', position: 'relative' }}>
+                          <button
+                            type="button"
+                            onClick={() => setNewDependentsToRegister(newDependentsToRegister.filter((_, i) => i !== idx))}
+                            style={{ position: 'absolute', right: 4, top: 4, background: 'none', border: 'none', color: 'var(--red)', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 700 }}
+                          >
+                            Remove
+                          </button>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.25rem', paddingRight: '3rem' }}>
+                            <input required placeholder="First Name *" style={{ ...inputStyle(false), padding: '0.2rem 0.4rem', fontSize: '0.7rem' }} value={nd.firstName} onChange={e => {
+                              const list = [...newDependentsToRegister];
+                              list[idx].firstName = e.target.value;
+                              setNewDependentsToRegister(list);
+                            }} />
+                            <input required placeholder="Surname *" style={{ ...inputStyle(false), padding: '0.2rem 0.4rem', fontSize: '0.7rem' }} value={nd.surname} onChange={e => {
+                              const list = [...newDependentsToRegister];
+                              list[idx].surname = e.target.value;
+                              setNewDependentsToRegister(list);
+                            }} />
+                            <input placeholder="Age *" style={{ ...inputStyle(false), padding: '0.2rem 0.4rem', fontSize: '0.7rem' }} value={nd.age} onChange={e => {
+                              const list = [...newDependentsToRegister];
+                              list[idx].age = e.target.value;
+                              setNewDependentsToRegister(list);
+                            }} />
+                          </div>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.25rem' }}>
+                            <select style={{ ...inputStyle(false), padding: '0.2rem 0.4rem', fontSize: '0.7rem' }} value={nd.sex} onChange={e => {
+                              const list = [...newDependentsToRegister];
+                              list[idx].sex = e.target.value as any;
+                              setNewDependentsToRegister(list);
+                            }}>
+                              <option value="Male">Male</option>
+                              <option value="Female">Female</option>
+                            </select>
+                            <input placeholder="Phone" style={{ ...inputStyle(false), padding: '0.2rem 0.4rem', fontSize: '0.7rem' }} value={nd.phone} onChange={e => {
+                              const list = [...newDependentsToRegister];
+                              list[idx].phone = e.target.value;
+                              setNewDependentsToRegister(list);
+                            }} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div style={{ padding: '1rem 1.25rem', background: 'var(--gray-50)', display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', borderTop: '1px solid var(--gray-200)' }}>
+              <button type="button" onClick={() => setShowBillingAccountModal(false)} style={{ background: 'white', border: '1px solid var(--gray-300)', padding: '0.5rem 1rem', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer', borderRadius: 'var(--radius)' }}>
+                Cancel
+              </button>
+              <button type="submit" disabled={saving} style={{ background: 'var(--teal-700)', color: 'white', border: 'none', padding: '0.5rem 1.25rem', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer', borderRadius: 'var(--radius)' }}>
+                {saving ? 'Creating...' : 'Open Wallet'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {showLedgerModal && (
+        <div style={modalOverlay}>
+          <div style={{ ...modalBox, maxWidth: 1250 }}>
+            {/* Modal Header */}
+            <div style={{ background: 'var(--teal-800)', padding: '1rem 1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <h2 style={{ color: 'white', fontFamily: 'var(--font-display)', fontSize: '1rem', fontWeight: 700 }}>Account Workspace</h2>
+                <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.7rem', marginTop: '0.15rem' }}>{showLedgerModal.name} • Wallet Administration & Billing</p>
+              </div>
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <button
+                  type="button"
+                  onClick={() => handlePrintStatement(showLedgerModal)}
+                  style={{ background: 'white', color: 'var(--teal-800)', border: 'none', padding: '0.35rem 0.65rem', borderRadius: 4, cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.25rem' }}
+                >
+                  <RiPrinterLine size={14} /> Print Statement
+                </button>
+                <button type="button" onClick={() => setShowLedgerModal(null)} style={closeBtn}><RiCloseLine size={16} /></button>
+              </div>
+            </div>
+
+            {/* Modal Workspace Body (Dual Column Grid) */}
+            <div style={{ display: 'grid', gridTemplateColumns: '4fr 6fr', maxHeight: '75vh', minHeight: '500px' }}>
+              {/* Left Column: Account Details, Deposits & Dept Charges Forms */}
+              <div style={{ padding: '1.25rem', background: '#f8fafc', overflowY: 'auto', borderRight: '1px solid var(--gray-200)', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                {/* Balance Card */}
+                <div style={{ background: 'white', border: '1px solid var(--gray-200)', borderRadius: 6, padding: '1rem' }}>
+                  <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--gray-500)', textTransform: 'uppercase' }}>Current Balance</div>
+                  <div style={{ fontSize: '1.6rem', fontWeight: 800, color: showLedgerModal.balance >= 0 ? '#166534' : '#991b1b', marginTop: '0.2rem' }}>
+                    ₦{showLedgerModal.balance.toLocaleString('en-NG', { minimumFractionDigits: 2 })}
+                  </div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--gray-500)', marginTop: '0.5rem', display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Credit Limit:</span>
+                    <span style={{ fontWeight: 600 }}>₦{showLedgerModal.credit_limit.toLocaleString('en-NG')}</span>
+                  </div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--gray-500)', marginTop: '0.2rem', display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Account Type:</span>
+                    <span style={{ fontWeight: 600, textTransform: 'capitalize' }}>{showLedgerModal.type}</span>
+                  </div>
+                </div>
+
+                {/* Form Switcher */}
+                <div style={{ display: 'flex', borderBottom: '1px solid var(--gray-200)', gap: '0.5rem' }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowWorkspaceLogExpense(false)}
+                    style={{
+                      flex: 1, padding: '0.4rem', border: 'none', background: !showWorkspaceLogExpense ? 'white' : 'transparent',
+                      color: !showWorkspaceLogExpense ? 'var(--teal-700)' : 'var(--gray-500)',
+                      fontWeight: 600, fontSize: '0.72rem', borderBottom: !showWorkspaceLogExpense ? '2px solid var(--teal-600)' : '2px solid transparent',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Load Funds (Deposit)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const members = patients.filter(p => p.billingAccountId === showLedgerModal.id);
+                      setWorkspaceExpenseForm(prev => ({
+                        ...prev,
+                        patientId: members[0]?.id ? String(members[0].id) : ''
+                      }));
+                      setShowWorkspaceLogExpense(true);
+                    }}
+                    style={{
+                      flex: 1, padding: '0.4rem', border: 'none', background: showWorkspaceLogExpense ? 'white' : 'transparent',
+                      color: showWorkspaceLogExpense ? 'var(--teal-700)' : 'var(--gray-500)',
+                      fontWeight: 600, fontSize: '0.72rem', borderBottom: showWorkspaceLogExpense ? '2px solid var(--teal-600)' : '2px solid transparent',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Log Dept Charge
+                  </button>
+                </div>
+
+                {/* Load Funds Form */}
+                {!showWorkspaceLogExpense && (
+                  <div style={{ background: 'white', border: '1px solid var(--gray-200)', borderRadius: 6, padding: '1rem' }}>
+                    <h4 style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--gray-900)', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                      <RiWalletLine size={16} /> Load Funds (Deposit)
+                    </h4>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                      <Field label="Deposit Amount (₦)">
+                        <input
+                          type="number"
+                          min="1"
+                          placeholder="Amount to add"
+                          style={inputStyle(false)}
+                          value={depositAmount}
+                          onChange={e => setDepositAmount(e.target.value)}
+                        />
+                      </Field>
+                      <Field label="Payment Method">
+                        <select style={inputStyle(false)} value={depositMethod} onChange={e => setDepositMethod(e.target.value)}>
+                          <option value="cash">Cash</option>
+                          <option value="pos">POS</option>
+                          <option value="transfer">Bank Transfer</option>
+                        </select>
+                      </Field>
+                      <Field label="Notes / Description">
+                        <input
+                          placeholder="e.g. Monthly top-up"
+                          style={inputStyle(false)}
+                          value={depositNotes}
+                          onChange={e => setDepositNotes(e.target.value)}
+                        />
+                      </Field>
+                      <button
+                        type="button"
+                        disabled={depositing}
+                        onClick={() => handleDepositSubmit(showLedgerModal.id)}
+                        style={{ background: 'var(--teal-700)', color: 'white', border: 'none', padding: '0.5rem', fontWeight: 600, cursor: 'pointer', borderRadius: 'var(--radius)', fontSize: '0.78rem', marginTop: '0.25rem' }}
+                      >
+                        {depositing ? 'Processing...' : 'Load Funds'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Log Department Charge Form */}
+                {showWorkspaceLogExpense && (
+                  <form onSubmit={(e) => handleWorkspaceExpenseSubmit(e, showLedgerModal.id)} style={{ background: 'white', border: '1px solid var(--gray-200)', borderRadius: 6, padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                    <h4 style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--gray-900)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                      <RiFileTextLine size={16} /> Log Clinical Dept Charge
+                    </h4>
+
+                    <Field label="Select Patient Member *">
+                      <select
+                        required
+                        style={inputStyle(false)}
+                        value={workspaceExpenseForm.patientId}
+                        onChange={e => setWorkspaceExpenseForm({ ...workspaceExpenseForm, patientId: e.target.value })}
+                      >
+                        <option value="">-- Select Member --</option>
+                        {patients.filter(p => p.billingAccountId === showLedgerModal.id).map(p => (
+                          <option key={p.id} value={p.id}>{p.firstName} {p.surname} ({p.slipNumber})</option>
+                        ))}
+                      </select>
+                    </Field>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                      <Field label="Department">
+                        <select
+                          style={inputStyle(false)}
+                          value={workspaceExpenseForm.department}
+                          onChange={e => setWorkspaceExpenseForm({ ...workspaceExpenseForm, department: e.target.value })}
+                        >
+                          <option value="pharmacy">Pharmacy</option>
+                          <option value="consultation">Consultation</option>
+                          <option value="ward">Ward / Admission</option>
+                          <option value="nursing">Nursing / Dressing</option>
+                          <option value="consumables">Consumables</option>
+                          <option value="other">Other</option>
+                        </select>
+                      </Field>
+                      <Field label="Receipt/Bill Number *">
+                        <input
+                          required
+                          style={inputStyle(false)}
+                          placeholder="e.g. RX-2026-98"
+                          value={workspaceExpenseForm.receiptNumber}
+                          onChange={e => setWorkspaceExpenseForm({ ...workspaceExpenseForm, receiptNumber: e.target.value })}
+                        />
+                      </Field>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                      <Field label="Amount (₦) *">
+                        <input
+                          type="number"
+                          min="1"
+                          required
+                          style={inputStyle(false)}
+                          placeholder="Amount"
+                          value={workspaceExpenseForm.amount}
+                          onChange={e => setWorkspaceExpenseForm({ ...workspaceExpenseForm, amount: e.target.value })}
+                        />
+                      </Field>
+                      <Field label="Payment Method">
+                        <select
+                          style={inputStyle(false)}
+                          value={workspaceExpenseForm.paymentMethod}
+                          onChange={e => setWorkspaceExpenseForm({ ...workspaceExpenseForm, paymentMethod: e.target.value })}
+                        >
+                          <option value="wallet">Account Wallet</option>
+                          <option value="cash">Cash</option>
+                          <option value="pos">POS</option>
+                          <option value="transfer">Bank Transfer</option>
+                        </select>
+                      </Field>
+                    </div>
+
+                    <Field label="Description / Items">
+                      <input
+                        placeholder="e.g. Pharmacy Drugs"
+                        style={inputStyle(false)}
+                        value={workspaceExpenseForm.description}
+                        onChange={e => setWorkspaceExpenseForm({ ...workspaceExpenseForm, description: e.target.value })}
+                      />
+                    </Field>
+
+                    <button
+                      type="submit"
+                      disabled={saving}
+                      style={{ background: 'var(--teal-700)', color: 'white', border: 'none', padding: '0.5rem', fontWeight: 600, cursor: 'pointer', borderRadius: 'var(--radius)', fontSize: '0.78rem', marginTop: '0.25rem' }}
+                    >
+                      {saving ? 'Saving Charge...' : 'Log & Process Charge'}
+                    </button>
+                  </form>
+                )}
+              </div>
+
+              {/* Right Column: Tabbed Lists */}
+              <div style={{ padding: '1.25rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                {/* Tabs Selector */}
+                <div style={{ display: 'flex', borderBottom: '1px solid var(--gray-200)', gap: '1rem' }}>
+                  {[
+                    { id: 'members', label: `Linked Members` },
+                    { id: 'ledger', label: 'Transaction Statement' },
+                    { id: 'charges', label: 'Department Spend Logs' }
+                  ].map(tab => (
+                    <button
+                      key={tab.id}
+                      onClick={() => setWorkspaceTab(tab.id as any)}
+                      style={{
+                        padding: '0.5rem 0.25rem', border: 'none', background: 'none',
+                        color: workspaceTab === tab.id ? 'var(--teal-700)' : 'var(--gray-500)',
+                        fontWeight: 600, fontSize: '0.8rem', borderBottom: workspaceTab === tab.id ? '2px solid var(--teal-600)' : '2px solid transparent',
+                        cursor: 'pointer', transition: 'all 0.15s'
+                      }}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Inner Tab contents */}
+                {workspaceTab === 'members' && (() => {
+                  const members = patients.filter(p => p.billingAccountId === showLedgerModal.id);
+                  return (
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                        <h3 style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--gray-900)' }}>Account Members ({members.length})</h3>
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          <button
+                            type="button"
+                            onClick={() => setShowAddExisting(prev => !prev)}
+                            style={{ background: 'white', border: '1px solid var(--gray-300)', padding: '0.3rem 0.6rem', borderRadius: 4, cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600 }}
+                          >
+                            {showAddExisting ? 'Close Link Form' : 'Link Existing Patient'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setShowQuickRegisterDep(prev => !prev)}
+                            style={{ background: 'var(--teal-700)', color: 'white', border: 'none', padding: '0.3rem 0.6rem', borderRadius: 4, cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600 }}
+                          >
+                            {showQuickRegisterDep ? 'Close Register Form' : 'Register New Dependent'}
+                          </button>
+                        </div>
+                      </div>
+
+                      {showAddExisting && (
+                        <div style={{ background: '#f8fafc', padding: '#f8fafc', paddingBottom: '0.75rem', borderRadius: 6, border: '1px solid var(--gray-200)', marginBottom: '1rem' }}>
+                          <h4 style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--gray-700)', marginBottom: '0.5rem', padding: '0.5rem' }}>Link Existing Patient</h4>
+                          <div style={{ display: 'flex', gap: '0.5rem', padding: '0.5rem' }}>
+                            <select
+                              value={existingPatientToLink}
+                              onChange={e => setExistingPatientToLink(e.target.value)}
+                              style={{ ...inputStyle(false), flex: 1, padding: '0.35rem 0.5rem', fontSize: '0.75rem' }}
+                            >
+                              <option value="">-- Select Patient --</option>
+                              {patients
+                                .filter(p => !p.billingAccountId)
+                                .map(p => (
+                                  <option key={p.id} value={p.id}>{p.firstName} {p.surname} ({p.slipNumber})</option>
+                                ))}
+                            </select>
+                            <button
+                              type="button"
+                              onClick={() => handleLinkExistingDependent(showLedgerModal.id)}
+                              disabled={!existingPatientToLink}
+                              style={{ background: 'var(--teal-700)', color: 'white', border: 'none', padding: '0.35rem 0.75rem', fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer', borderRadius: 4 }}
+                            >
+                              Link Patient
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {showQuickRegisterDep && (
+                        <form
+                          onSubmit={(e) => handleQuickRegisterDependentSubmit(e, showLedgerModal.id)}
+                          style={{ background: '#f8fafc', padding: '1rem', borderRadius: 6, border: '1px solid var(--gray-200)', marginBottom: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}
+                        >
+                          <h4 style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--gray-700)' }}>Register & Link New Dependent</h4>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem' }}>
+                            <Field label="First Name *">
+                              <input required style={{ ...inputStyle(false), padding: '0.35rem 0.5rem', fontSize: '0.75rem' }} value={workspaceDepForm.firstName} onChange={e => setWorkspaceDepForm({ ...workspaceDepForm, firstName: e.target.value })} />
+                            </Field>
+                            <Field label="Surname *">
+                              <input required style={{ ...inputStyle(false), padding: '0.35rem 0.5rem', fontSize: '0.75rem' }} value={workspaceDepForm.surname} onChange={e => setWorkspaceDepForm({ ...workspaceDepForm, surname: e.target.value })} />
+                            </Field>
+                            <Field label="Middle Name">
+                              <input style={{ ...inputStyle(false), padding: '0.35rem 0.5rem', fontSize: '0.75rem' }} value={workspaceDepForm.middleName} onChange={e => setWorkspaceDepForm({ ...workspaceDepForm, middleName: e.target.value })} />
+                            </Field>
+                          </div>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem' }}>
+                            <Field label="Age *">
+                              <input required placeholder="e.g. 30" style={{ ...inputStyle(false), padding: '0.35rem 0.5rem', fontSize: '0.75rem' }} value={workspaceDepForm.age} onChange={e => setWorkspaceDepForm({ ...workspaceDepForm, age: e.target.value })} />
+                            </Field>
+                            <Field label="Sex">
+                              <select style={{ ...inputStyle(false), padding: '0.35rem 0.5rem', fontSize: '0.75rem' }} value={workspaceDepForm.sex} onChange={e => setWorkspaceDepForm({ ...workspaceDepForm, sex: e.target.value as any })}>
+                                <option value="Male">Male</option>
+                                <option value="Female">Female</option>
+                              </select>
+                            </Field>
+                            <Field label="Phone">
+                              <input style={{ ...inputStyle(false), padding: '0.35rem 0.5rem', fontSize: '0.75rem' }} value={workspaceDepForm.phone} onChange={e => setWorkspaceDepForm({ ...workspaceDepForm, phone: e.target.value })} />
+                            </Field>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '0.25rem' }}>
+                            <button type="button" onClick={() => setShowQuickRegisterDep(false)} style={{ background: 'white', border: '1px solid var(--gray-300)', padding: '0.35rem 0.75rem', fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer', borderRadius: 4 }}>Cancel</button>
+                            <button type="submit" style={{ background: 'var(--teal-700)', color: 'white', border: 'none', padding: '0.35rem 0.75rem', fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer', borderRadius: 4 }}>Register Member</button>
+                          </div>
+                        </form>
+                      )}
+
+                      <div style={{ overflowX: 'auto', border: '1px solid var(--gray-200)', borderRadius: 4, background: 'white' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem', textAlign: 'left' }}>
+                          <thead>
+                            <tr style={{ background: 'var(--gray-50)', borderBottom: '1px solid var(--gray-200)' }}>
+                              <th style={{ padding: '0.6rem 0.75rem', fontWeight: 600 }}>Name</th>
+                              <th style={{ padding: '0.6rem 0.75rem', fontWeight: 600 }}>Slip No.</th>
+                              <th style={{ padding: '0.6rem 0.75rem', fontWeight: 600, width: '120px', minWidth: '120px' }}>Age / Sex</th>
+                              <th style={{ padding: '0.6rem 0.75rem', fontWeight: 600 }}>Phone</th>
+                              <th style={{ padding: '0.6rem 0.75rem', fontWeight: 600 }}>Role</th>
+                              <th style={{ padding: '0.6rem 0.75rem', fontWeight: 600, textAlign: 'right' }}>Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {members.map(m => (
+                              <tr key={m.id} style={{ borderBottom: '1px solid var(--gray-100)' }}>
+                                <td style={{ padding: '0.6rem 0.75rem', fontWeight: 600 }}>{m.firstName} {m.surname}</td>
+                                <td style={{ padding: '0.6rem 0.75rem', fontFamily: 'var(--font-mono)' }}>{m.slipNumber}</td>
+                                <td style={{ padding: '0.6rem 0.75rem', whiteSpace: 'nowrap' }}>{m.age} / {m.sex}</td>
+                                <td style={{ padding: '0.6rem 0.75rem' }}>{m.phone || '—'}</td>
+                                <td style={{ padding: '0.6rem 0.75rem' }}>
+                                  <span style={{
+                                    fontSize: '0.65rem', fontWeight: 700, padding: '1px 6px', borderRadius: 4,
+                                    background: m.id === Number(showLedgerModal.owner_patient_id) ? '#eff6ff' : '#f1f5f9',
+                                    color: m.id === Number(showLedgerModal.owner_patient_id) ? '#1d4ed8' : '#475569'
+                                  }}>
+                                    {m.id === Number(showLedgerModal.owner_patient_id) ? 'Owner' : 'Dependent'}
+                                  </span>
+                                </td>
+                                <td style={{ padding: '0.6rem 0.75rem', textAlign: 'right' }}>
+                                  {m.id !== Number(showLedgerModal.owner_patient_id) && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleUnlinkDependent(m.id)}
+                                      style={{ background: 'none', border: 'none', color: 'var(--red)', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600 }}
+                                    >
+                                      Unlink
+                                    </button>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {workspaceTab === 'ledger' && (
+                  <div>
+                    <h3 style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--gray-900)', marginBottom: '0.75rem' }}>Account Ledger History</h3>
+                    {loadingLedger ? (
+                      <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--gray-400)' }}>Loading statement...</div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                        {billingTransactions.map(tx => {
+                          const dt = new Date(tx.created_at).toLocaleDateString('en-NG', {
+                            month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+                          });
+                          const isDeposit = tx.type === 'deposit' || tx.amount >= 0;
+                          return (
+                            <div key={tx.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.6rem 0.75rem', border: '1px solid var(--gray-100)', background: 'var(--gray-50)', borderRadius: 4 }}>
+                              <div>
+                                <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--gray-800)' }}>{tx.description}</div>
+                                <div style={{ fontSize: '0.65rem', color: 'var(--gray-500)', marginTop: '0.15rem' }}>
+                                  {dt} • Ref: {tx.reference_id || '—'} • Staff: {tx.created_by || '—'}
+                                </div>
+                              </div>
+                              <div style={{ textAlign: 'right', fontWeight: 700, fontSize: '0.82rem', color: isDeposit ? '#166534' : '#991b1b' }}>
+                                {isDeposit ? '+' : ''}₦{tx.amount.toLocaleString('en-NG', { minimumFractionDigits: 2 })}
+                              </div>
+                            </div>
+                          );
+                        })}
+                        {billingTransactions.length === 0 && (
+                          <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--gray-400)', fontSize: '0.78rem' }}>No transactions logged.</div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {workspaceTab === 'charges' && (
+                  <div>
+                    <h3 style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--gray-900)', marginBottom: '0.75rem' }}>Department Charge History</h3>
+                    <div style={{ overflowX: 'auto', border: '1px solid var(--gray-200)', borderRadius: 4, background: 'white' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem', textAlign: 'left' }}>
+                        <thead>
+                          <tr style={{ background: 'var(--gray-50)', borderBottom: '1px solid var(--gray-200)' }}>
+                            <th style={{ padding: '0.6rem 0.75rem', fontWeight: 600 }}>Date</th>
+                            <th style={{ padding: '0.6rem 0.75rem', fontWeight: 600 }}>Patient</th>
+                            <th style={{ padding: '0.6rem 0.75rem', fontWeight: 600 }}>Department</th>
+                            <th style={{ padding: '0.6rem 0.75rem', fontWeight: 600 }}>Receipt No.</th>
+                            <th style={{ padding: '0.6rem 0.75rem', fontWeight: 600 }}>Amount</th>
+                            <th style={{ padding: '0.6rem 0.75rem', fontWeight: 600 }}>Payment</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {externalCharges
+                            .filter(ec => ec.billingAccountId === showLedgerModal.id)
+                            .map(ec => {
+                              const dateStr = new Date(ec.createdAt).toLocaleDateString('en-NG', {
+                                month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+                              });
+                              return (
+                                <tr key={ec.id} style={{ borderBottom: '1px solid var(--gray-100)' }}>
+                                  <td style={{ padding: '0.6rem 0.75rem', color: 'var(--gray-600)' }}>{dateStr}</td>
+                                  <td style={{ padding: '0.6rem 0.75rem', fontWeight: 600 }}>{ec.patientName}</td>
+                                  <td style={{ padding: '0.6rem 0.75rem', textTransform: 'capitalize' }}>{ec.department}</td>
+                                  <td style={{ padding: '0.6rem 0.75rem', fontFamily: 'var(--font-mono)' }}>{ec.receiptNumber}</td>
+                                  <td style={{ padding: '0.6rem 0.75rem', fontWeight: 700 }}>₦{ec.amount.toLocaleString('en-NG', { minimumFractionDigits: 2 })}</td>
+                                  <td style={{ padding: '0.6rem 0.75rem', textTransform: 'uppercase', fontSize: '0.7rem' }}>{ec.paymentMethod}</td>
+                                </tr>
+                              );
+                            })}
+                          {externalCharges.filter(ec => ec.billingAccountId === showLedgerModal.id).length === 0 && (
+                            <tr>
+                              <td colSpan={6} style={{ padding: '2rem', textAlign: 'center', color: 'var(--gray-400)' }}>No department charges logged for this account.</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Quick Add Doctor Modal */}

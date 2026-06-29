@@ -7,7 +7,8 @@ import { useAuth } from '@/components/AuthProvider';
 import { RADIOLOGY_TEMPLATES, serializeRadiologyResults, deserializeRadiologyResults, RadiologyFormState, convertTextToFormattedHtml } from '@/lib/radiology-templates';
 import TemplateManager from '@/components/TemplateManager';
 import TestManager from '@/components/TestManager';
-import RichTextEditor from '@/components/RichTextEditor';
+import dynamic from 'next/dynamic';
+const RichTextEditor = dynamic(() => import('@/components/RichTextEditor'), { ssr: false });
 
 interface Props { department: Department; }
 

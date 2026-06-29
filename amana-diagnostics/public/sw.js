@@ -35,6 +35,11 @@ self.addEventListener('fetch', (event) => {
   }
   const url = new URL(event.request.url);
 
+  // Only intercept same-origin requests (prevents service worker from interfering with Supabase, external APIs, etc.)
+  if (url.origin !== self.location.origin) {
+    return;
+  }
+
   // 1. NEVER cache API requests or database routes - go straight to network
   if (url.pathname.startsWith('/api/') || url.pathname.includes('/_next/data/')) {
     event.respondWith(fetch(event.request));
@@ -67,6 +72,13 @@ self.addEventListener('fetch', (event) => {
           if (event.request.mode === 'navigate') {
             return caches.match('/');
           }
+          // Return a 503 response if the asset is not in cache and network is unavailable,
+          // preventing the service worker from throwing "Failed to fetch" due to returning undefined.
+          return new Response('Network connection offline', {
+            status: 503,
+            statusText: 'Service Unavailable',
+            headers: new Headers({ 'Content-Type': 'text/plain' })
+          });
         });
       })
   );

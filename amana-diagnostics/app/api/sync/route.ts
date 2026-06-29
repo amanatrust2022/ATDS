@@ -95,6 +95,7 @@ export async function POST(request: Request) {
       const { id: outboxId, table_name, action, record_id, payload } = item;
       const data = JSON.parse(payload);
       let success = false;
+      let skipStall = false;
 
       try {
         if (action === 'DELETE') {
@@ -111,6 +112,7 @@ export async function POST(request: Request) {
           const { error } = await deleteQuery;
           if (error) {
             console.error(`Supabase DELETE error for outbox item ${outboxId}:`, error);
+            if (error.code === '42P01') skipStall = true;
           } else {
             success = true;
           }
@@ -150,6 +152,7 @@ export async function POST(request: Request) {
           const { error } = await updateQuery;
           if (error) {
             console.error(`Supabase UPDATE error for outbox item ${outboxId}:`, error);
+            if (error.code === '42P01') skipStall = true;
           } else {
             success = true;
           }
@@ -180,6 +183,7 @@ export async function POST(request: Request) {
           const { error } = await supabase.from(table_name).upsert(data);
           if (error) {
             console.error(`Supabase INSERT (upsert) error for outbox item ${outboxId}:`, error);
+            if (error.code === '42P01') skipStall = true;
           } else {
             success = true;
           }
@@ -188,7 +192,7 @@ export async function POST(request: Request) {
         console.error(`Replication failed for outbox item ${outboxId}:`, err);
       }
 
-      if (success) {
+      if (success || skipStall) {
         db.prepare('DELETE FROM sync_outbox WHERE id = ?').run(outboxId);
       } else {
         // Stop sequential processing if an item fails to preserve dependency ordering (e.g. patients before tests)
@@ -372,18 +376,43 @@ export async function POST(request: Request) {
       });
     }
 
+    // Pull Patient Profiles
+    const { data: patientProfiles } = await supabase.from('patient_profiles').select('*').eq('organization_id', organizationId).gt('updated_at', lastPull);
+    if (patientProfiles && patientProfiles.length > 0) {
+      const insertProfile = db.prepare(`
+        INSERT INTO patient_profiles (
+          id, organization_id, first_name, surname, middle_name, phone, email, address, sex, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          first_name = excluded.first_name,
+          surname = excluded.surname,
+          middle_name = excluded.middle_name,
+          phone = excluded.phone,
+          email = excluded.email,
+          address = excluded.address,
+          sex = excluded.sex,
+          updated_at = excluded.updated_at
+      `);
+      patientProfiles.forEach((p) => {
+        insertProfile.run(
+          p.id, p.organization_id, p.first_name, p.surname, p.middle_name, p.phone, p.email, p.address, p.sex, p.created_at, p.updated_at
+        );
+      });
+    }
+
     // Pull Patients
     const { data: patients } = await supabase.from('patients').select('*').eq('organization_id', organizationId).gt('updated_at', lastPull);
     if (patients && patients.length > 0) {
       const insertPatient = db.prepare(`
         INSERT INTO patients (
-          id, slip_number, registered_at, first_name, surname, middle_name, age, sex, phone, email, address,
+          id, patient_profile_id, slip_number, registered_at, first_name, surname, middle_name, age, sex, phone, email, address,
           referred_by, referring_facility, referring_doctor_id, referring_facility_id,
           commission_assigned, commission_type, commission_value, commission_amount, commission_status,
           commission_paid_at, commission_paid_notes, total_amount, discount_type, discount_value, discount_amount,
           net_amount, paid_amount, payment_status, payment_method, organization_id, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
+          patient_profile_id = excluded.patient_profile_id,
           slip_number = excluded.slip_number,
           registered_at = excluded.registered_at,
           first_name = excluded.first_name,
@@ -417,7 +446,7 @@ export async function POST(request: Request) {
       `);
       patients.forEach((p) => {
         insertPatient.run(
-          p.id, p.slip_number, p.registered_at, p.first_name, p.surname, p.middle_name, p.age, p.sex, p.phone, p.email, p.address,
+          p.id, p.patient_profile_id, p.slip_number, p.registered_at, p.first_name, p.surname, p.middle_name, p.age, p.sex, p.phone, p.email, p.address,
           p.referred_by, p.referring_facility, p.referring_doctor_id, p.referring_facility_id,
           p.commission_assigned ? 1 : 0, p.commission_type, p.commission_value, p.commission_amount, p.commission_status,
           p.commission_paid_at, p.commission_paid_notes, p.total_amount ?? 0, p.discount_type || 'none', p.discount_value ?? 0, p.discount_amount ?? 0,
@@ -463,6 +492,79 @@ export async function POST(request: Request) {
           t.organization_id, t.updated_at
         );
       });
+    }
+
+    // Pull Billing Accounts (Safe Try-Catch)
+    try {
+      const { data: accounts } = await supabase.from('billing_accounts').select('*').eq('organization_id', organizationId).gt('updated_at', lastPull);
+      if (accounts && accounts.length > 0) {
+        const insertAcc = db.prepare(`
+          INSERT INTO billing_accounts (id, organization_id, name, owner_patient_id, balance, credit_limit, type, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET
+            name = excluded.name,
+            owner_patient_id = excluded.owner_patient_id,
+            balance = excluded.balance,
+            credit_limit = excluded.credit_limit,
+            type = excluded.type,
+            updated_at = excluded.updated_at
+        `);
+        accounts.forEach((a: any) => {
+          insertAcc.run(a.id, a.organization_id, a.name, a.owner_patient_id, a.balance, a.credit_limit, a.type, a.created_at, a.updated_at);
+        });
+      }
+    } catch (pullAccError: any) {
+      console.warn('[Sync] Skipping pull for billing_accounts:', pullAccError.message);
+    }
+
+    // Pull Billing Ledger Transactions (Safe Try-Catch)
+    try {
+      const { data: txs } = await supabase.from('billing_ledger_transactions').select('*').eq('organization_id', organizationId).gt('created_at', lastPull);
+      if (txs && txs.length > 0) {
+        const insertTx = db.prepare(`
+          INSERT INTO billing_ledger_transactions (id, organization_id, billing_account_id, patient_id, type, amount, description, reference_id, payment_method, created_by, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET
+            patient_id = excluded.patient_id,
+            type = excluded.type,
+            amount = excluded.amount,
+            description = excluded.description,
+            reference_id = excluded.reference_id,
+            payment_method = excluded.payment_method,
+            created_by = excluded.created_by
+        `);
+        txs.forEach((t: any) => {
+          insertTx.run(t.id, t.organization_id, t.billing_account_id, t.patient_id || null, t.type, t.amount, t.description, t.reference_id || null, t.payment_method || null, t.created_by || null, t.created_at);
+        });
+      }
+    } catch (pullTxError: any) {
+      console.warn('[Sync] Skipping pull for billing_ledger_transactions:', pullTxError.message);
+    }
+
+    // Pull External Department Charges (Safe Try-Catch)
+    try {
+      const { data: charges } = await supabase.from('external_department_charges').select('*').eq('organization_id', organizationId).gt('created_at', lastPull);
+      if (charges && charges.length > 0) {
+        const insertCharge = db.prepare(`
+          INSERT INTO external_department_charges (id, organization_id, patient_id, billing_account_id, department, receipt_number, amount, payment_method, status, description, created_by, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET
+            patient_id = excluded.patient_id,
+            billing_account_id = excluded.billing_account_id,
+            department = excluded.department,
+            receipt_number = excluded.receipt_number,
+            amount = excluded.amount,
+            payment_method = excluded.payment_method,
+            status = excluded.status,
+            description = excluded.description,
+            created_by = excluded.created_by
+        `);
+        charges.forEach((c: any) => {
+          insertCharge.run(c.id, c.organization_id, c.patient_id, c.billing_account_id || null, c.department, c.receipt_number, c.amount, c.payment_method, c.status || 'paid', c.description || null, c.created_by || null, c.created_at);
+        });
+      }
+    } catch (pullChargeError: any) {
+      console.warn('[Sync] Skipping pull for external_department_charges:', pullChargeError.message);
     }
 
     // Update metadata last pull timestamp

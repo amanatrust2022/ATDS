@@ -8,6 +8,11 @@
   padding: 0;
 }
 
+/* Force border-radius to 0 for all elements except circular ones (e.g. spinners, status dots, circular checkboxes) */
+*:not([style*="border-radius: 50%"]):not([style*="border-radius:50%"]):not(input[type="radio"]) {
+  border-radius: 0px !important;
+}
+
 :root {
   --teal-900: #111d3b;
   --teal-800: #1c3062;
