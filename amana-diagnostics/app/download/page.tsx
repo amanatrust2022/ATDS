@@ -3,27 +3,17 @@ import { useRouter } from 'next/navigation';
 import { RiMicroscopeLine, RiDownloadLine, RiCheckLine, RiArrowLeftLine, RiRefreshLine, RiShieldCheckLine, RiWifiOffLine, RiComputerLine, RiGithubLine, RiInformationLine } from '@remixicon/react';
 
 const CURRENT_VERSION = '1.0.0';
-const GITHUB_OWNER = 'amanatrust2022';
-const GITHUB_REPO = 'amana-releases';  // Public repo — source code stays private in ATDS
 
-// This URL works the moment a GitHub Release tagged v{version} is published.
-// Until then, it links to the releases page so users can check manually.
-const RELEASES_PAGE = `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases`;
-const DOWNLOAD_URL = `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest/download/Amana.Diagnostics.Hub.Setup.${CURRENT_VERSION}.exe`;
-
-// Set this to true once you have run `npm run release` and the first release is live on GitHub.
+// Retrieve Supabase URL dynamically from environment (fallback to Kano project URL)
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://okjwqvdvrqqhvvmvkikc.supabase.co';
+const DOWNLOAD_URL = `${supabaseUrl}/storage/v1/object/public/updates/amana-hub-portable.zip`;
 const RELEASE_LIVE = true;
 
 export default function DownloadPage() {
   const router = useRouter();
 
   const handleDownload = () => {
-    if (RELEASE_LIVE) {
-      window.open(DOWNLOAD_URL, '_blank');
-    } else {
-      // Until the first release is built, send them to the GitHub releases page
-      window.open(RELEASES_PAGE, '_blank');
-    }
+    window.open(DOWNLOAD_URL, '_blank');
   };
 
   return (
@@ -160,12 +150,11 @@ export default function DownloadPage() {
             </div>
           )}
 
-          {/* PRIMARY DOWNLOAD / CHECK RELEASES BUTTON */}
           <div className="a5" style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
             {RELEASE_LIVE ? (
               <button id="main-download-btn" onClick={handleDownload} className="btn-p" style={{ padding: '1rem 2.5rem', fontSize: '1.05rem' }}>
                 <RiDownloadLine size={22} />
-                Download for Windows (.exe)
+                Download Portable Local Hub (.zip)
               </button>
             ) : (
               <button id="main-download-btn" onClick={handleDownload} className="btn-g" style={{ padding: '1rem 2rem', fontSize: '.95rem', border: '1px solid rgba(245,158,11,.3)', color: '#fbbf24' }}>
@@ -288,7 +277,7 @@ export default function DownloadPage() {
         {RELEASE_LIVE ? (
           <button id="bottom-download-btn" onClick={handleDownload} className="btn-p" style={{ padding: '1rem 2.5rem', fontSize: '1.05rem', width: '100%', justifyContent: 'center' }}>
             <RiDownloadLine size={22} />
-            Download Amana Diagnostics Hub v{CURRENT_VERSION}
+            Download Portable Local Hub v{CURRENT_VERSION} (.zip)
           </button>
         ) : (
           <button id="bottom-download-btn" onClick={handleDownload} className="btn-g" style={{ padding: '1rem 2rem', fontSize: '.95rem', width: '100%', justifyContent: 'center', border: '1px solid rgba(245,158,11,.28)', color: '#fbbf24' }}>
@@ -297,9 +286,7 @@ export default function DownloadPage() {
           </button>
         )}
         <div style={{ marginTop: '1rem', fontSize: '.73rem', color: 'rgba(255,255,255,.2)' }}>
-          {RELEASE_LIVE
-            ? 'Free forever · Windows 10/11 · No credit card · No account needed to use the Local Hub'
-            : 'The installer will be available here once the first build is published to GitHub Releases.'}
+          Free forever · Windows 10/11 · No credit card · No account needed to use the Local Hub
         </div>
         <div style={{ marginTop: '2rem', padding: '1rem', background: 'rgba(255,255,255,.025)', border: '1px solid rgba(255,255,255,.06)', borderRadius: 12 }}>
           <p style={{ fontSize: '.8rem', color: 'rgba(255,255,255,.35)', lineHeight: 1.7 }}>

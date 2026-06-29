@@ -53,6 +53,14 @@ async function main() {
       'update-latest.zip',
       'application/zip'
     );
+
+    // Upload amana-hub-portable.zip
+    console.log('Uploading amana-hub-portable.zip...');
+    await uploadFile(
+      path.join(distDir, 'amana-hub-portable.zip'),
+      'amana-hub-portable.zip',
+      'application/zip'
+    );
     
     console.log('🎉 Update files deployed successfully to Supabase Storage!');
   } catch (error) {

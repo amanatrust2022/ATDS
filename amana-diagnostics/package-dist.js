@@ -170,10 +170,22 @@ async function main() {
     
     if (process.platform === 'win32') {
       execSync(`powershell -Command "Compress-Archive -Path '${serverDistDir}' -DestinationPath '${zipDest}' -Force"`);
-      console.log('✅ Packaged update-latest.zip successfully.');
     } else {
-      console.log('Zip creation skipped: platform is not Windows. Please manually zip the server directory on other operating systems.');
+      execSync(`cd "${distDir}" && zip -r update-latest.zip server`);
     }
+    console.log('✅ Packaged update-latest.zip successfully.');
+    console.log('');
+
+    // 8. Package entire portable distribution into amana-hub-portable.zip
+    console.log('[7] Packaging complete portable folder (amana-hub-portable.zip)...');
+    const portableZipDest = path.join(distDir, 'amana-hub-portable.zip');
+
+    if (process.platform === 'win32') {
+      execSync(`powershell -Command "Compress-Archive -Path 'dist/amana-server.exe', 'dist/node.exe', 'dist/server', 'dist/version.json' -DestinationPath '${portableZipDest}' -Force"`);
+    } else {
+      execSync(`cd "${distDir}" && zip -r amana-hub-portable.zip amana-server.exe node.exe server version.json`);
+    }
+    console.log('✅ Packaged amana-hub-portable.zip successfully.');
 
     console.log('');
     console.log('=====================================================================');
