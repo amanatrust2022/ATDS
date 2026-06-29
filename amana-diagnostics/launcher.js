@@ -168,9 +168,21 @@ async function runAutoUpdate() {
     const cloudVersionUrl = `${supabaseUrl}/storage/v1/object/public/updates/version.json`;
     const cloudVersion = await fetchJson(cloudVersionUrl, 6000); // 6s timeout
 
-    if (cloudVersion && cloudVersion.buildHash && cloudVersion.buildHash !== localVersion.buildHash) {
+    const localServerDir = path.join(baseDir, 'server');
+    const isFirstRun = !fs.existsSync(localServerDir);
+
+    if (isFirstRun) {
+      console.log('🆕 First run detected — downloading server files from cloud...');
+    } else if (cloudVersion && cloudVersion.buildHash && cloudVersion.buildHash !== localVersion.buildHash) {
       console.log(`🔄 New update available: v${cloudVersion.version} (Hash: ${cloudVersion.buildHash})`);
-      console.log('💾 Downloading update package, please wait...');
+    } else {
+      console.log('✅ Local Hub is up-to-date.');
+      return;
+    }
+
+    if (isFirstRun || (cloudVersion && cloudVersion.buildHash !== localVersion.buildHash)) {
+      console.log('💾 Downloading server package, please wait (this may take a minute)...');
+
 
       const zipUrl = `${supabaseUrl}/storage/v1/object/public/updates/update-latest.zip`;
       const zipPath = path.join(baseDir, 'update.zip');
@@ -238,9 +250,6 @@ async function runAutoUpdate() {
           fs.renameSync(backupServerDir, localServerDir);
         }
         throw swapError;
-      }
-    } else {
-      console.log('✅ Local Hub is up-to-date.');
     }
   } catch (err) {
     console.log(`ℹ️ Update check skipped or failed: ${err.message}. Starting current version.`);
