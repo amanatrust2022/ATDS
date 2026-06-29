@@ -1,0 +1,62 @@
+name: Build and Deploy Standalone Updates
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy-updates:
+    name: Build and Deploy Standalone updates
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: |
+          npm ci
+
+      - name: Build Next.js App
+        run: |
+          npm run build
+
+      - name: Assemble Standalone Server Folder
+        run: |
+          # 1. Create distribution folders
+          mkdir -p dist/server
+          
+          # 2. Copy Next.js standalone build output
+          cp -r .next/standalone/* dist/server/
+          
+          # 3. Copy public assets and static build chunks (which are served dynamically)
+          if [ -d "public" ]; then cp -r public dist/server/; fi
+          if [ -d ".next/static" ]; then cp -r .next/static dist/server/.next/; fi
+          
+          # 4. Generate version.json with github commit details
+          build_hash="build-${{ github.sha }}-${{ github.run_number }}"
+          echo "{\"version\": \"1.0.0\", \"buildHash\": \"$build_hash\", \"createdAt\": \"$(date -u +'%Y-%m-%dT%H:%M:%SZ')\"}" > dist/version.json
+          
+          echo "✅ Standalone server assembled in dist/server/"
+          echo "✅ Generated version.json with buildHash: $build_hash"
+
+      - name: Package Standalone Archive (ZIP)
+        run: |
+          cd dist
+          zip -r update-latest.zip server
+          cd ..
+          echo "✅ Compressed update-latest.zip successfully."
+
+      - name: Upload updates to Supabase Storage
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          node upload-updates.js
