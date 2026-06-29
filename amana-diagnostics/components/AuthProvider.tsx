@@ -189,7 +189,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const { data: { session }, error } = await Promise.race([sessionPromise, timeoutPromise]);
         
         if (error) {
-          if (mounted) setLoading(false);
+          console.warn('[AuthProvider] Session recovery error:', error.message);
+          // If the refresh token is invalid, clear client credentials to prevent error loops
+          if (error.message?.includes('Refresh Token') || error.status === 400) {
+            await supabase.auth.signOut().catch(() => {});
+          }
+          if (mounted) {
+            setSession(null);
+            setUser(null);
+            setProfile(null);
+            setOrganization(null);
+            setLoading(false);
+          }
           return;
         }
         

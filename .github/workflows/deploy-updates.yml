@@ -1,4 +1,4 @@
-name: Build and Deploy Standalone Updates
+name: Deploy Updates to Supabase
 
 on:
   push:
@@ -10,8 +10,8 @@ defaults:
     working-directory: amana-diagnostics
 
 jobs:
-  deploy-updates:
-    name: Build and Deploy Standalone Updates
+  upload-updates:
+    name: Upload Pre-built ZIPs to Supabase
     runs-on: ubuntu-latest
 
     steps:
@@ -26,16 +26,24 @@ jobs:
           cache-dependency-path: amana-diagnostics/package-lock.json
 
       - name: Install Dependencies
-        run: |
-          npm ci
+        run: npm ci
 
-      - name: Build Standalone Server and Package Zips
+      - name: Check if pre-built ZIPs exist in repo
+        id: check_zips
         run: |
-          npm run dist:package
+          if [ -f "dist/amana-hub-portable.zip" ] && [ -f "dist/update-latest.zip" ]; then
+            echo "zips_found=true" >> $GITHUB_OUTPUT
+            echo "✅ Found pre-built ZIP files in dist/"
+            ls -lh dist/*.zip
+          else
+            echo "zips_found=false" >> $GITHUB_OUTPUT
+            echo "⚠️  No pre-built ZIP files found in dist/. Skipping upload."
+            echo "   Run 'npm run dist:package' locally then commit the dist/*.zip files to trigger upload."
+          fi
 
-      - name: Upload updates to Supabase Storage
+      - name: Upload ZIPs to Supabase Storage
+        if: steps.check_zips.outputs.zips_found == 'true'
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: |
-          node upload-updates.js
+        run: node upload-updates.js
