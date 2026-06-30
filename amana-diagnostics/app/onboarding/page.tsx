@@ -36,10 +36,9 @@ export default function OnboardingPage() {
     if (organization) { setStatus('ready'); return; }
 
     // If the profile already has a linked organization, do NOT try to create it.
-    // Instead, trigger a refresh to fetch the organization details and wait.
+    // Instead, display the loading screen and wait for the AuthProvider to populate the organization object.
     if (profile.organization_id) {
       setStatus('loading');
-      refreshOrg();
       return;
     }
 
