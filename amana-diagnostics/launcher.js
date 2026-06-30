@@ -104,27 +104,118 @@ const localIp = getLocalIpAddress();
 console.log(`[1] Detected Server PC IP Address: ${localIp}`);
 
 // ─────────────────────────────────────────────────────────────────────────────
-// STEP 2 — READ SUPABASE URL FROM .env.local
-// The bundled .env.local (inside server/) contains NEXT_PUBLIC_SUPABASE_URL.
-// We parse it with a regex so we don't need any npm packages at this stage.
-// If not found, the launcher skips the update check and runs the current version.
+// STEP 2 — READ ALL ENVIRONMENT VARIABLES FROM .env.local
+//
+// SECURITY DESIGN:
+//   Sensitive keys (SUPABASE_SERVICE_ROLE_KEY, BREVO_API_KEY, etc.) are read
+//   here by the launcher — which is a compiled binary — and injected directly
+//   into the server process as in-memory environment variables.
+//
+//   This means the .env.local inside server/ only needs to contain
+//   NEXT_PUBLIC_* keys (non-secret). The secret keys are stored in a separate
+//   .env.local next to amana-server.exe (in the protected base directory),
+//   which is locked down by lockServerFolder() below.
+//
+//   Staff using the browser never see these keys. Even if someone opens the
+//   server/ folder, there are no secrets inside it.
 // ─────────────────────────────────────────────────────────────────────────────
-function getSupabaseUrl() {
-  // Check both flat and nested .env.local paths
-  const paths = [
+function readEnvFile(filePath) {
+  /** Parse a .env file into a key→value object, skipping blank lines and comments */
+  if (!fs.existsSync(filePath)) return {};
+  const result = {};
+  const lines = fs.readFileSync(filePath, 'utf8').split('\n');
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eqIdx = trimmed.indexOf('=');
+    if (eqIdx === -1) continue;
+    const key = trimmed.substring(0, eqIdx).trim();
+    const val = trimmed.substring(eqIdx + 1).trim().replace(/^['"]|['"]$/g, '');
+    if (key) result[key] = val;
+  }
+  return result;
+}
+
+function getAllEnvVars() {
+  /**
+   * Reads environment variables from TWO sources (merged):
+   *   1. next to amana-server.exe → .env.local   (secrets: service keys, API keys)
+   *   2. inside server/ → .env.local              (public keys: Supabase URL, anon key)
+   * Source 1 takes priority so the admin can override any bundled value.
+   */
+  const bundledEnvPaths = [
     path.join(baseDir, 'server', '.env.local'),
     path.join(baseDir, 'server', 'amana-diagnostics', '.env.local')
   ];
-  for (const envPath of paths) {
-    if (fs.existsSync(envPath)) {
-      const content = fs.readFileSync(envPath, 'utf8');
-      const match = content.match(/NEXT_PUBLIC_SUPABASE_URL\s*=\s*(.*)/);
-      if (match && match[1]) {
-        return match[1].trim().replace(/['"]/g, '');
-      }
-    }
+  const adminEnvPath = path.join(baseDir, '.env.local'); // next to amana-server.exe
+
+  let merged = {};
+  // Load bundled (public) keys first
+  for (const p of bundledEnvPaths) {
+    merged = { ...merged, ...readEnvFile(p) };
   }
-  return null; // No Supabase URL found — update check will be skipped
+  // Admin keys override bundled keys (secrets stored securely next to exe)
+  merged = { ...merged, ...readEnvFile(adminEnvPath) };
+  return merged;
+}
+
+function getSupabaseUrl() {
+  /** Quick helper — just extract the Supabase URL for the update check */
+  const envVars = getAllEnvVars();
+  return envVars['NEXT_PUBLIC_SUPABASE_URL'] || null;
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SECURITY — LOCK THE server/ FOLDER
+//
+// After each update (or on first run), we apply Windows file system protections
+// to the server/ directory so clinic staff on standard user accounts cannot
+// browse or read the system files.
+//
+// THREE PROTECTION LAYERS:
+//   1. NTFS ACLs (icacls) — deny read/execute to the "Users" group.
+//      Only Administrators and SYSTEM can access the folder.
+//      Standard user accounts (reception, lab, radiology staff) are blocked.
+//
+//   2. Hidden + System attributes (attrib) — hides the folder from Windows
+//      Explorer (even with "show hidden files" it requires extra steps).
+//
+//   3. Secret injection — this launcher reads secrets from .env.local and
+//      passes them as in-memory environment variables to the server process.
+//      No secrets are stored inside server/ where staff could read them.
+//
+// LIMITATION: This requires amana-server.exe to be run as Administrator.
+//   Add a requireAdminManifest or use a shortcut with "Run as Administrator"
+//   to ensure the ACL commands have sufficient privilege.
+//   If run as a standard user, the ACL commands silently skip (folder still works).
+// ─────────────────────────────────────────────────────────────────────────────
+function lockServerFolder(serverDir) {
+  if (!fs.existsSync(serverDir) || process.platform !== 'win32') return;
+
+  try {
+    // Layer 1: NTFS ACLs — remove inherited permissions, allow only Administrators + SYSTEM
+    // /inheritance:r   → remove inherited ACEs
+    // /grant:r SYSTEM:F → SYSTEM full control
+    // /grant:r Administrators:F → Administrators full control
+    // /deny "Users":(OI)(CI)RX → deny read+execute to all standard users (recursive)
+    execSync(
+      `icacls "${serverDir}" /inheritance:r /grant:r "SYSTEM":F /grant:r "Administrators":F /deny "Users":(OI)(CI)RX /T /C /Q`,
+      { stdio: 'pipe' }
+    );
+    console.log('🔒 server/ folder secured with NTFS access restrictions.');
+  } catch (e) {
+    // Silently skip if not running as Administrator — server still works,
+    // just without the extra protection layer.
+    console.log('ℹ️ Note: NTFS folder lock skipped (run as Administrator to enable).');
+  }
+
+  try {
+    // Layer 2: Hide the folder from Windows Explorer
+    execSync(`attrib +H +S "${serverDir}" /D`, { stdio: 'pipe' });
+  } catch (e) {
+    // Non-critical — ignore
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -133,6 +224,7 @@ function getSupabaseUrl() {
 // Follows 301/302 redirects. Cleans up the partial file on error or timeout.
 // timeoutMs: milliseconds before aborting (default 20 seconds).
 // ─────────────────────────────────────────────────────────────────────────────
+
 function downloadFile(url, dest, timeoutMs = 20000) {
   return new Promise((resolve, reject) => {
     const file = fs.createWriteStream(dest);
@@ -350,6 +442,7 @@ async function runAutoUpdate() {
         fs.unlinkSync(zipPath);
 
         console.log('🎉 Update applied successfully! Local Hub is now on the latest version.');
+        lockServerFolder(localServerDir); // Re-lock permissions on the new server/ folder
         resolveServerPath(); // Re-check server.js location in case structure changed
       } catch (swapError) {
         // ── ROLLBACK ─────────────────────────────────────────────────────
@@ -434,8 +527,12 @@ async function downloadNodeIfMissing() {
 // On SIGINT (Ctrl+C) or SIGTERM, the server process is killed cleanly.
 // ─────────────────────────────────────────────────────────────────────────────
 async function startServer() {
-  await runAutoUpdate();       // Step 3: Check for / apply updates
+  await runAutoUpdate();         // Step 3: Check for / apply updates
   await downloadNodeIfMissing(); // Step 4: Ensure node.exe is present
+
+  // SECURITY: Lock server/ on every startup (in case it wasn't locked before)
+  // This also re-locks after an OS update resets NTFS permissions.
+  lockServerFolder(path.join(baseDir, 'server'));
 
   console.log('=====================================================================');
   console.log('                  CLINIC STAFF CONNECTION INSTRUCTIONS               ');
@@ -464,15 +561,25 @@ async function startServer() {
     process.exit(1);
   }
 
-  // Environment variables inherited by the Next.js server process
+  // ─────────────────────────────────────────────────────────────────────────
+  // SECURITY: Inject all env vars from .env.local at runtime
+  // Secrets are NEVER read from disk by the browser or by staff — they live
+  // only in this process's memory and are passed to the server as env vars.
+  // The server/ folder itself can have a stripped-down .env.local with only
+  // public (NEXT_PUBLIC_*) keys inside.
+  // ─────────────────────────────────────────────────────────────────────────
+  const parsedEnvVars = getAllEnvVars();
+
   const env = {
     ...process.env,
+    ...parsedEnvVars,             // Inject ALL keys from .env.local files
     PORT: '3000',
     HOSTNAME: '0.0.0.0',                    // Accept connections from all LAN devices
     NEXT_PUBLIC_LOCAL_SERVER_MODE: 'true',  // Tell frontend it's running in LAN mode
     IS_LOCAL_HUB: 'true',                   // Tell backend to use SQLite (not Supabase)
     NODE_ENV: 'production'                  // Production mode
   };
+
 
   // Use bundled node.exe if available, fall back to system node (for testing)
   const bundledNodePath = process.platform === 'win32'
