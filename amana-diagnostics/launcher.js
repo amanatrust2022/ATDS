@@ -475,12 +475,38 @@ async function downloadNodeIfMissing() {
 // On SIGINT (Ctrl+C) or SIGTERM, the server process is killed cleanly.
 // ─────────────────────────────────────────────────────────────────────────────
 async function startServer() {
-  await runAutoUpdate();         // Step 3: Check for / apply updates
-  await downloadNodeIfMissing(); // Step 4: Ensure node.exe is present
+  try {
+    // Check if running from temp directory (unextracted ZIP preview on Windows)
+    const baseDirLower = baseDir.toLowerCase();
+    const isTempFolder = baseDirLower.includes('\\temp') || baseDirLower.includes('/temp') || baseDirLower.includes('temp1_');
+
+    if (isTempFolder) {
+      console.error('=====================================================================');
+      console.error('  ⚠️  CRITICAL: RUNNING FROM ZIP FILE DETECTED');
+      console.error('=====================================================================');
+      console.error('  It looks like you are running Amana Diagnostics directly from');
+      console.error('  inside the ZIP file without extracting it first.');
+      console.error('');
+      console.error('  This will cause the server to fail and crash on startup.');
+      console.error('');
+      console.error('  TO FIX THIS:');
+      console.error('    1. Close this window.');
+      console.error('    2. Right-click the downloaded "amana-hub-portable.zip" file.');
+      console.error('    3. Select "Extract All..." and choose a destination folder.');
+      console.error('    4. Open the extracted folder and run "amana-server.exe" from there.');
+      console.error('=====================================================================');
+      console.error('');
+      console.error('This window will stay open. Press Ctrl+C to close.');
+      setInterval(() => {}, 1000);
+      return;
+    }
+
+    await runAutoUpdate();         // Step 3: Check for / apply updates
+    await downloadNodeIfMissing(); // Step 4: Ensure node.exe is present
 
 
-  console.log('=====================================================================');
-  console.log('                  CLINIC STAFF CONNECTION INSTRUCTIONS               ');
+    console.log('=====================================================================');
+    console.log('                  CLINIC STAFF CONNECTION INSTRUCTIONS               ');
   console.log('=====================================================================');
   console.log('');
   console.log('  1. Connect all clinic laptops (Reception, Lab, Radiology) to the same Wi-Fi router.');
@@ -612,9 +638,25 @@ async function startServer() {
     process.exit(0);
   }
 
-  process.on('SIGINT', cleanup);  // Ctrl+C
-  process.on('SIGTERM', cleanup); // OS kill signal
-  process.on('exit', cleanup);    // Window closed
+    process.on('SIGINT', cleanup);  // Ctrl+C
+    process.on('SIGTERM', cleanup); // OS kill signal
+    process.on('exit', cleanup);    // Window closed
+  } catch (error) {
+    console.error('');
+    console.error('=====================================================================');
+    console.error('  ⚠️  LAUNCHER SETUP ERROR');
+    console.error('=====================================================================');
+    console.error(`  An error occurred during launcher initialization:`);
+    console.error(`  Detail: ${error.message}`);
+    console.error('');
+    console.error('  WHAT TO TRY:');
+    console.error('    1. Check your internet connection.');
+    console.error('    2. If the problem persists, delete version.json or node.exe and restart.');
+    console.error('=====================================================================');
+    console.error('');
+    console.error('This window will stay open. Press Ctrl+C to close.');
+    setInterval(() => {}, 1000);
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
