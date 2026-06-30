@@ -110,7 +110,7 @@ async function main() {
       console.log('✅ Found cached node-portable.exe in project root. Copying...');
       fs.copyFileSync(cachedNodePath, nodeDest);
     } else {
-      const nodeUrl = 'https://nodejs.org/dist/v22.2.0/win-x64/node.exe';
+      const nodeUrl = 'https://nodejs.org/dist/v22.11.0/win-x64/node.exe'; // v22.5.0+ required for node:sqlite
       console.log(`Downloading node.exe from: ${nodeUrl}`);
       let success = false;
       let lastError;

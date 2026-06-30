@@ -390,7 +390,11 @@ async function downloadNodeIfMissing() {
   if (fs.existsSync(nodeDest)) return; // Already present — skip
 
   console.log('[2b] node.exe not found. Downloading portable Node.js v22 for Windows...');
-  const nodeUrl = 'https://nodejs.org/dist/v22.2.0/win-x64/node.exe';
+  // IMPORTANT: Must be v22.5.0 or later — node:sqlite (used by localDb.ts) was
+  // introduced in Node v22.5.0. Using an older version causes the server to crash
+  // immediately on startup with "module not found" for node:sqlite.
+  // v22.11.0 is the first LTS release of the Node 22.x line.
+  const nodeUrl = 'https://nodejs.org/dist/v22.11.0/win-x64/node.exe';
   const tmpDest = nodeDest + '.tmp'; // Download to .tmp first, then rename (atomic)
 
   let lastErr;
@@ -486,8 +490,42 @@ async function startServer() {
   });
 
   serverProcess.on('error', (err) => {
-    console.error('Failed to start Next.js standalone server:', err);
-    process.exit(1);
+    console.error('');
+    console.error('=====================================================================');
+    console.error('  ERROR: Failed to start the server process.');
+    console.error(`  Detail: ${err.message}`);
+    console.error('  Common causes:');
+    console.error('    - node.exe is missing or corrupted (delete it and restart to re-download)');
+    console.error('    - server/ folder is missing (delete version.json and restart to re-download)');
+    console.error('=====================================================================');
+    console.error('');
+    console.error('Press Ctrl+C to close this window.');
+    // Keep the window open so staff can read the error
+    process.stdin.resume();
+  });
+
+  // If the server process exits unexpectedly (crash), show a clear message
+  // and keep the terminal open so clinic staff can see what went wrong.
+  serverProcess.on('exit', (code, signal) => {
+    if (code !== 0 && code !== null) {
+      console.error('');
+      console.error('=====================================================================');
+      console.error(`  ⚠️  SERVER CRASHED (exit code: ${code})`);
+      console.error('  The Amana Local Hub server stopped unexpectedly.');
+      console.error('');
+      console.error('  WHAT TO TRY:');
+      console.error('    1. Read the error messages above for the specific cause.');
+      console.error('    2. If you see "node:sqlite" errors → delete node.exe and restart');
+      console.error('       (launcher will re-download the correct Node version).');
+      console.error('    3. If you see "Cannot find module" → delete server/ folder and');
+      console.error('       restart (launcher will re-download the server files).');
+      console.error('    4. Contact your system administrator if the error persists.');
+      console.error('=====================================================================');
+      console.error('');
+      console.error('This window will stay open. Press Ctrl+C to close.');
+      // Keep event loop alive so the window stays open for staff to read the error
+      process.stdin.resume();
+    }
   });
 
   // Auto-open browser after 2 seconds (gives server time to bind to port 3000)
