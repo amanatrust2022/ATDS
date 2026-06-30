@@ -503,7 +503,10 @@ async function startServer() {
   if (!fs.existsSync(serverPath)) {
     console.error(`Error: Next.js standalone server not found at: ${serverPath}`);
     console.error('This usually means the server/ download failed. Check internet connection and restart.');
-    process.exit(1);
+    console.error('');
+    console.error('This window will stay open. Press Ctrl+C to close.');
+    setInterval(() => {}, 1000);
+    return;
   }
 
   // ─────────────────────────────────────────────────────────────────────────
