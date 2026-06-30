@@ -113,15 +113,21 @@ async function main() {
     );
 
     console.log('Uploading amana-hub-portable.zip...');
-    await uploadToSupabase(
-      path.join(distDir, 'amana-hub-portable.zip'),
-      'amana-hub-portable.zip',
-      'application/zip'
-    );
-
-    console.log('');
-    console.log('🎉 All files deployed to Supabase Storage!');
-    console.log(`Download URL: ${supabaseUrl}/storage/v1/object/public/updates/amana-hub-portable.zip`);
+    try {
+      await uploadToSupabase(
+        path.join(distDir, 'amana-hub-portable.zip'),
+        'amana-hub-portable.zip',
+        'application/zip'
+      );
+      console.log('🎉 All files deployed to Supabase Storage!');
+      console.log(`Download URL: ${supabaseUrl}/storage/v1/object/public/updates/amana-hub-portable.zip`);
+    } catch (zipError) {
+      console.warn('\n⚠️  Warning: amana-hub-portable.zip could not be uploaded to Supabase Storage.');
+      console.warn(`Reason: ${zipError.message}`);
+      console.warn('This is expected if your Supabase storage bucket has a 50MB file size limit.');
+      console.warn('Note: Existing hubs will still auto-update successfully because version.json');
+      console.warn('and update-latest.zip were uploaded successfully!');
+    }
   } catch (error) {
     console.error('❌ Deployment failed:', error.message);
     process.exit(1);

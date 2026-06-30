@@ -286,16 +286,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signOut = async () => {
+    // Clear local storage and React states immediately so the UI redirects instantly
+    localStorage.removeItem('amana_offline_session');
+    setUser(null);
+    setProfile(null);
+    setOrganization(null);
+    setSession(null);
+
+    // Trigger Supabase cloud signout in the background without blocking the UI
     try {
-      localStorage.removeItem('amana_offline_session');
       await supabase.auth.signOut();
     } catch (e) {
       console.warn('Sign out from Supabase failed or offline:', e);
-    } finally {
-      setUser(null);
-      setProfile(null);
-      setOrganization(null);
-      setSession(null);
     }
   };
 

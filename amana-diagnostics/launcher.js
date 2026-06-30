@@ -99,7 +99,7 @@ function getLocalIpAddress() {
   }
   return '127.0.0.1'; // Fallback: only accessible on this machine
 }
-
+//console.log, operate the apikeys, do the needful
 const localIp = getLocalIpAddress();
 console.log(`[1] Detected Server PC IP Address: ${localIp}`);
 
@@ -190,7 +190,7 @@ function downloadFile(url, dest, timeoutMs = 20000) {
         if (response.statusCode !== 200) {
           clearTimeout(timer);
           file.close();
-          fs.unlink(dest, () => {}); // Clean up empty/partial file
+          fs.unlink(dest, () => { }); // Clean up empty/partial file
           reject(new Error(`Server returned status code: ${response.statusCode}`));
           return;
         }
@@ -206,7 +206,7 @@ function downloadFile(url, dest, timeoutMs = 20000) {
       req.on('error', (err) => {
         clearTimeout(timer);
         file.close();
-        fs.unlink(dest, () => {}); // Clean up on network error
+        fs.unlink(dest, () => { }); // Clean up on network error
         reject(err);
       });
 
@@ -214,7 +214,7 @@ function downloadFile(url, dest, timeoutMs = 20000) {
       timer = setTimeout(() => {
         req.destroy();
         file.close();
-        fs.unlink(dest, () => {});
+        fs.unlink(dest, () => { });
         reject(new Error('Connection timed out'));
       }, timeoutMs);
     }
@@ -292,7 +292,7 @@ function fetchJson(url, timeoutMs = 5000) {
 // ─────────────────────────────────────────────────────────────────────────────
 async function runAutoUpdate() {
   console.log('[2] Checking for cloud updates...');
-  
+
   const supabaseUrl = getSupabaseUrl();
   if (!supabaseUrl) {
     // .env.local not found or NEXT_PUBLIC_SUPABASE_URL not set — skip update
@@ -307,7 +307,7 @@ async function runAutoUpdate() {
   if (fs.existsSync(localVersionPath)) {
     try {
       localVersion = JSON.parse(fs.readFileSync(localVersionPath, 'utf8'));
-    } catch (e) {} // If version.json is corrupt, fall back to 'initial'
+    } catch (e) { } // If version.json is corrupt, fall back to 'initial'
   }
 
   try {
@@ -551,9 +551,9 @@ async function startServer() {
     console.error('    - server/ folder is missing (delete version.json and restart to re-download)');
     console.error('=====================================================================');
     console.error('');
-    console.error('Press Ctrl+C to close this window.');
-    // Keep the window open so staff can read the error
-    process.stdin.resume();
+    console.error('This window will stay open. Press Ctrl+C to close.');
+    // Keep the window open indefinitely so staff can read the error
+    setInterval(() => {}, 1000);
   });
 
   // If the server process exits unexpectedly (crash), show a clear message
@@ -575,8 +575,8 @@ async function startServer() {
       console.error('=====================================================================');
       console.error('');
       console.error('This window will stay open. Press Ctrl+C to close.');
-      // Keep event loop alive so the window stays open for staff to read the error
-      process.stdin.resume();
+      // Keep event loop alive indefinitely so the window stays open for staff to read the error
+      setInterval(() => {}, 1000);
     }
   });
 
@@ -585,7 +585,7 @@ async function startServer() {
     console.log('[4] Launching default web browser...');
     const url = 'http://localhost:3000';
     let command = '';
-    
+
     if (process.platform === 'win32') {
       command = `start "" "${url}"`;
     } else if (process.platform === 'darwin') {
@@ -593,7 +593,7 @@ async function startServer() {
     } else {
       command = `xdg-open "${url}"`;
     }
-    
+
     const browserLauncher = spawn(command, { shell: true });
     browserLauncher.on('error', (err) => {
       console.error('Failed to automatically open browser:', err);
