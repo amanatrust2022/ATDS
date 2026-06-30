@@ -25,6 +25,15 @@ export default function OnboardingPage() {
   useEffect(() => {
     if (loading) return;
     
+    // If organization is already loaded, we are ready!
+    if (organization) { 
+      setStatus('ready'); 
+      return; 
+    }
+
+    // Prevent executing onboarding/creation checks if we are already in the middle of creating or ready
+    if (status === 'creating' || status === 'ready') return;
+
     // If we have no profile AND no user, they are truly logged out.
     // (RootWrapper actually handles this, but just in case)
     if (!profile) {
@@ -33,12 +42,12 @@ export default function OnboardingPage() {
        return; 
     }
     
-    if (organization) { setStatus('ready'); return; }
-
     // If the profile already has a linked organization, do NOT try to create it.
     // Instead, display the loading screen and wait for the AuthProvider to populate the organization object.
     if (profile.organization_id) {
-      setStatus('loading');
+      if (status !== 'loading') {
+        setStatus('loading');
+      }
       return;
     }
 
@@ -60,10 +69,12 @@ export default function OnboardingPage() {
         createOrgFromData(JSON.parse(stored));
       } else {
         // No stored data — show manual entry form
-        setStatus('no_data');
+        if (status !== 'no_data') {
+          setStatus('no_data');
+        }
       }
     }
-  }, [loading, profile, organization, user]);
+  }, [loading, profile, organization, user, status]);
 
   const createOrgFromData = async (data: any) => {
     setStatus('creating');
