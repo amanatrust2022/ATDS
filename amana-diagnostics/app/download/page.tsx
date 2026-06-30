@@ -6,7 +6,7 @@ const CURRENT_VERSION = '1.0.0';
 
 // Retrieve Supabase URL dynamically from environment (fallback to Kano project URL)
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://okjwqvdvrqqhvvmvkikc.supabase.co';
-const DOWNLOAD_URL = `${supabaseUrl}/storage/v1/object/public/updates/amana-hub-portable.zip`;
+const DOWNLOAD_URL = 'https://raw.githubusercontent.com/amanatrust2022/amana-releases/main/amana-hub-portable.zip';
 const RELEASE_LIVE = true;
 
 export default function DownloadPage() {
