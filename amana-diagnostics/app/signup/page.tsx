@@ -48,21 +48,52 @@ export default function SignupPage() {
     if (admin.password.length < 8) { setError('Password must be at least 8 characters.'); return; }
     setLoading(true); setError('');
 
+    let createdOrgId: string | null = null;
     try {
       localStorage.setItem('pending_org', JSON.stringify(org));
 
+      // 1. Create organization to reserve the slug
+      const { data: newOrg, error: orgErr } = await supabase.rpc('create_organization_for_signup', {
+        p_name:    org.name,
+        p_slug:    org.slug,
+        p_address: org.address || null,
+        p_phone:   org.phone   || null,
+        p_email:   org.email   || null,
+        p_letterhead_line2: org.letterheadLine2 || null,
+      });
+
+      if (orgErr) {
+        if (orgErr.message.includes('SLUG_TAKEN')) {
+          throw new Error('This Workspace ID (slug) is already taken. Please choose a different one.');
+        } else {
+          throw orgErr;
+        }
+      }
+      createdOrgId = newOrg.id;
+
+      // 2. Sign up user account with organization_id in metadata
       const { data, error: authErr } = await supabase.auth.signUp({
         email: admin.email,
         password: admin.password,
         options: {
-          data: { full_name: admin.fullName, role: 'admin' },
+          data: { 
+            full_name: admin.fullName, 
+            role: 'admin',
+            organization_id: createdOrgId,
+            pending_org_name: org.name,
+            pending_org_slug: org.slug,
+            pending_org_address: org.address,
+            pending_org_phone: org.phone,
+            pending_org_email: org.email,
+            pending_org_letterhead_line2: org.letterheadLine2
+          },
           emailRedirectTo: `${window.location.origin}/onboarding`,
         }
       });
 
       if (authErr) throw authErr;
 
-      // Supabase security feature: if user already exists, it returns a user but with an empty identities array.
+      // If user already exists, identities will be empty
       if (data.user && data.user.identities && data.user.identities.length === 0) {
         throw new Error('This email address is already registered. Please sign in instead.');
       }
@@ -74,6 +105,15 @@ export default function SignupPage() {
       }
     } catch (err: any) {
       setError(err.message || 'An unexpected error occurred during sign up.');
+      
+      // Rollback organization reservation if signup fails
+      if (createdOrgId) {
+        try {
+          await supabase.rpc('delete_organization_rollback', { p_org_id: createdOrgId });
+        } catch (rollbackErr) {
+          console.warn('Rollback failed:', rollbackErr);
+        }
+      }
     } finally {
       setLoading(false);
     }

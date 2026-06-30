@@ -11,14 +11,14 @@ type Status = 'loading' | 'creating' | 'no_data' | 'ready';
 const slugify = (t: string) => t.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
 export default function OnboardingPage() {
-  const { organization, profile, loading, refreshOrg } = useAuth();
+  const { user, organization, profile, loading, refreshOrg } = useAuth();
   const router = useRouter();
   const supabase = createClient();
 
   const [status, setStatus] = useState<Status>('loading');
   const [error, setError] = useState('');
 
-  // Fallback manual form (when no localStorage data found)
+  // Fallback manual form (when no localStorage/metadata data found)
   const [org, setOrg] = useState({ name: '', slug: '', address: '', phone: '', email: '', letterheadLine2: '' });
   const [submitting, setSubmitting] = useState(false);
 
@@ -35,15 +35,28 @@ export default function OnboardingPage() {
     
     if (organization) { setStatus('ready'); return; }
 
-    // Authenticated but no org — try localStorage first
-    const stored = localStorage.getItem('pending_org');
-    if (stored) {
-      createOrgFromData(JSON.parse(stored));
+    // Check user metadata first (world-standard persistent fallback)
+    const meta = user?.user_metadata;
+    if (meta && meta.pending_org_slug) {
+      createOrgFromData({
+        name: meta.pending_org_name,
+        slug: meta.pending_org_slug,
+        address: meta.pending_org_address || '',
+        phone: meta.pending_org_phone || '',
+        email: meta.pending_org_email || '',
+        letterheadLine2: meta.pending_org_letterhead_line2 || '',
+      });
     } else {
-      // No stored data — show manual entry form
-      setStatus('no_data');
+      // Fallback to localStorage
+      const stored = localStorage.getItem('pending_org');
+      if (stored) {
+        createOrgFromData(JSON.parse(stored));
+      } else {
+        // No stored data — show manual entry form
+        setStatus('no_data');
+      }
     }
-  }, [loading, profile, organization]);
+  }, [loading, profile, organization, user]);
 
   const createOrgFromData = async (data: any) => {
     setStatus('creating');
