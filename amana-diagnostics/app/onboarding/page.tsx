@@ -35,6 +35,14 @@ export default function OnboardingPage() {
     
     if (organization) { setStatus('ready'); return; }
 
+    // If the profile already has a linked organization, do NOT try to create it.
+    // Instead, trigger a refresh to fetch the organization details and wait.
+    if (profile.organization_id) {
+      setStatus('loading');
+      refreshOrg();
+      return;
+    }
+
     // Check user metadata first (world-standard persistent fallback)
     const meta = user?.user_metadata;
     if (meta && meta.pending_org_slug) {
