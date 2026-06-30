@@ -113,8 +113,7 @@ console.log(`[1] Detected Server PC IP Address: ${localIp}`);
 //
 //   This means the .env.local inside server/ only needs to contain
 //   NEXT_PUBLIC_* keys (non-secret). The secret keys are stored in a separate
-//   .env.local next to amana-server.exe (in the protected base directory),
-//   which is locked down by lockServerFolder() below.
+//   .env.local next to amana-server.exe (in the protected base directory).
 //
 //   Staff using the browser never see these keys. Even if someone opens the
 //   server/ folder, there are no secrets inside it.
@@ -167,56 +166,6 @@ function getSupabaseUrl() {
 
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SECURITY — LOCK THE server/ FOLDER
-//
-// After each update (or on first run), we apply Windows file system protections
-// to the server/ directory so clinic staff on standard user accounts cannot
-// browse or read the system files.
-//
-// THREE PROTECTION LAYERS:
-//   1. NTFS ACLs (icacls) — deny read/execute to the "Users" group.
-//      Only Administrators and SYSTEM can access the folder.
-//      Standard user accounts (reception, lab, radiology staff) are blocked.
-//
-//   2. Hidden + System attributes (attrib) — hides the folder from Windows
-//      Explorer (even with "show hidden files" it requires extra steps).
-//
-//   3. Secret injection — this launcher reads secrets from .env.local and
-//      passes them as in-memory environment variables to the server process.
-//      No secrets are stored inside server/ where staff could read them.
-//
-// LIMITATION: This requires amana-server.exe to be run as Administrator.
-//   Add a requireAdminManifest or use a shortcut with "Run as Administrator"
-//   to ensure the ACL commands have sufficient privilege.
-//   If run as a standard user, the ACL commands silently skip (folder still works).
-// ─────────────────────────────────────────────────────────────────────────────
-function lockServerFolder(serverDir) {
-  if (!fs.existsSync(serverDir) || process.platform !== 'win32') return;
-
-  try {
-    // Layer 1: NTFS ACLs — remove inherited permissions, allow only Administrators + SYSTEM
-    // /inheritance:r   → remove inherited ACEs
-    // /grant:r SYSTEM:F → SYSTEM full control
-    // /grant:r Administrators:F → Administrators full control
-    // /deny "Users":(OI)(CI)RX → deny read+execute to all standard users (recursive)
-    execSync(
-      `icacls "${serverDir}" /inheritance:r /grant:r "SYSTEM":F /grant:r "Administrators":F /deny "Users":(OI)(CI)RX /T /C /Q`,
-      { stdio: 'pipe' }
-    );
-    console.log('🔒 server/ folder secured with NTFS access restrictions.');
-  } catch (e) {
-    // Silently skip if not running as Administrator — server still works,
-    // just without the extra protection layer.
-    console.log('ℹ️ Note: NTFS folder lock skipped (run as Administrator to enable).');
-  }
-
-  try {
-    // Layer 2: Hide the folder from Windows Explorer
-    execSync(`attrib +H +S "${serverDir}" /D`, { stdio: 'pipe' });
-  } catch (e) {
-    // Non-critical — ignore
-  }
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPER — DOWNLOAD FILE (streaming, with redirect support and timeout)
@@ -442,7 +391,6 @@ async function runAutoUpdate() {
         fs.unlinkSync(zipPath);
 
         console.log('🎉 Update applied successfully! Local Hub is now on the latest version.');
-        lockServerFolder(localServerDir); // Re-lock permissions on the new server/ folder
         resolveServerPath(); // Re-check server.js location in case structure changed
       } catch (swapError) {
         // ── ROLLBACK ─────────────────────────────────────────────────────
@@ -530,9 +478,6 @@ async function startServer() {
   await runAutoUpdate();         // Step 3: Check for / apply updates
   await downloadNodeIfMissing(); // Step 4: Ensure node.exe is present
 
-  // SECURITY: Lock server/ on every startup (in case it wasn't locked before)
-  // This also re-locks after an OS update resets NTFS permissions.
-  lockServerFolder(path.join(baseDir, 'server'));
 
   console.log('=====================================================================');
   console.log('                  CLINIC STAFF CONNECTION INSTRUCTIONS               ');
