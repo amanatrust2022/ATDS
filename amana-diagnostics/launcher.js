@@ -178,6 +178,7 @@ function downloadFile(url, dest, timeoutMs = 20000) {
   return new Promise((resolve, reject) => {
     const file = fs.createWriteStream(dest);
     let timer;
+    let aborted = false;
 
     function get(requestUrl) {
       const req = https.get(requestUrl, (response) => {
@@ -188,34 +189,48 @@ function downloadFile(url, dest, timeoutMs = 20000) {
         }
 
         if (response.statusCode !== 200) {
+          aborted = true;
           clearTimeout(timer);
-          file.close();
-          fs.unlink(dest, () => { }); // Clean up empty/partial file
-          reject(new Error(`Server returned status code: ${response.statusCode}`));
+          req.destroy();
+          file.close(() => {
+            fs.unlink(dest, () => {
+              reject(new Error(`Server returned status code: ${response.statusCode}`));
+            });
+          });
           return;
         }
 
         response.pipe(file);
 
         file.on('finish', () => {
-          clearTimeout(timer);
-          file.close(() => resolve());
+          if (!aborted) {
+            clearTimeout(timer);
+            file.close(() => resolve());
+          }
         });
       });
 
       req.on('error', (err) => {
+        if (aborted) return;
+        aborted = true;
         clearTimeout(timer);
-        file.close();
-        fs.unlink(dest, () => { }); // Clean up on network error
-        reject(err);
+        file.close(() => {
+          fs.unlink(dest, () => {
+            reject(err);
+          });
+        });
       });
 
       // Kill the connection if it takes too long
       timer = setTimeout(() => {
+        if (aborted) return;
+        aborted = true;
         req.destroy();
-        file.close();
-        fs.unlink(dest, () => { });
-        reject(new Error('Connection timed out'));
+        file.close(() => {
+          fs.unlink(dest, () => {
+            reject(new Error('Connection timed out'));
+          });
+        });
       }, timeoutMs);
     }
 
@@ -447,7 +462,11 @@ async function downloadNodeIfMissing() {
       return;
     } catch (e) {
       lastErr = e;
-      if (fs.existsSync(tmpDest)) fs.unlinkSync(tmpDest); // Remove partial download
+      try {
+        if (fs.existsSync(tmpDest)) fs.unlinkSync(tmpDest); // Remove partial download
+      } catch (unlinkErr) {
+        // Ignore busy/locked file errors as the stream's callback will clean it up
+      }
       console.warn(`⚠️  Attempt ${attempt} failed: ${e.message}. Retrying...`);
       await new Promise(r => setTimeout(r, 2000)); // Wait 2s before retry
     }

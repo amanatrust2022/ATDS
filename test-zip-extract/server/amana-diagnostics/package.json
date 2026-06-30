@@ -1,0 +1,49 @@
+{
+  "name": "amana-diagnostics",
+  "version": "1.0.0",
+  "description": "Amana Diagnostics Hub — offline-first LIS for African diagnostic centres",
+  "author": "Amana Diagnostics",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "build:standalone": "next build",
+    "dist:package": "node package-dist.js"
+  },
+  "dependencies": {
+    "@remixicon/react": "^4.9.0",
+    "@supabase/ssr": "^0.10.2",
+    "@supabase/supabase-js": "^2.105.3",
+    "@tiptap/core": "^3.27.1",
+    "@tiptap/extension-color": "^3.27.1",
+    "@tiptap/extension-font-family": "^3.27.1",
+    "@tiptap/extension-highlight": "^3.27.1",
+    "@tiptap/extension-image": "^3.27.1",
+    "@tiptap/extension-table": "^3.27.1",
+    "@tiptap/extension-table-cell": "^3.27.1",
+    "@tiptap/extension-table-header": "^3.27.1",
+    "@tiptap/extension-table-row": "^3.27.1",
+    "@tiptap/extension-text-align": "^3.27.1",
+    "@tiptap/extension-text-style": "^3.27.1",
+    "@tiptap/extension-underline": "^3.27.1",
+    "@tiptap/pm": "^3.27.1",
+    "@tiptap/react": "^3.27.1",
+    "@tiptap/starter-kit": "^3.27.1",
+    "bonjour-service": "^1.2.1",
+    "html2pdf.js": "^0.14.0",
+    "lucide-react": "^1.14.0",
+    "mammoth": "^1.12.0",
+    "next": "^16.2.4",
+    "nodemailer": "^8.0.7",
+    "pdfmake": "^0.3.8",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "25.6.0",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "typescript": "6.0.3"
+  }
+}
