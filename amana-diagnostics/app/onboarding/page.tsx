@@ -49,9 +49,7 @@ export default function OnboardingPage() {
     setStatus('creating');
     setError('');
     try {
-      let orgId: string;
-
-      const { data: newOrg, error: orgErr } = await supabase.rpc('create_organization_for_signup', {
+      const { error: orgErr } = await supabase.rpc('create_organization_for_signup', {
         p_name:    data.name,
         p_slug:    data.slug,
         p_address: data.address || null,
@@ -62,28 +60,17 @@ export default function OnboardingPage() {
 
       if (orgErr) {
         if (orgErr.message.includes('SLUG_TAKEN')) {
-          // Already created — find it and link
-          const { data: existing } = await supabase
-            .from('organizations').select('id').eq('slug', data.slug).single();
-          if (!existing) throw new Error('Workspace ID conflict. Please use a different ID.');
-          orgId = existing.id;
+          throw new Error('This Workspace ID (slug) is already taken. Please choose a different one.');
         } else {
           throw orgErr;
         }
-      } else {
-        orgId = newOrg.id;
       }
-
-      // Link profile to org
-      const { error: updateErr } = await supabase
-        .from('profiles').update({ organization_id: orgId }).eq('id', profile!.id);
-      if (updateErr) throw updateErr;
 
       localStorage.removeItem('pending_org');
       await refreshOrg();
       // refreshOrg will update `organization` in context → useEffect fires again → status = 'ready'
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || 'An unexpected error occurred.');
       setStatus('no_data'); // Fall back to manual form
     }
   };

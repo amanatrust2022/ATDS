@@ -50,8 +50,9 @@ export default function RootWrapper({ children }: { children: React.ReactNode })
     checkConfig();
   }, []);
 
-  const isPublic = PUBLIC_PATHS.includes(pathname) || pathname.startsWith('/invite/') || pathname.startsWith('/portal');
-  const isOrgRoute = !isPublic && !pathname.startsWith('/login') && !pathname.startsWith('/signup');
+  const currentPath = pathname || '';
+  const isPublic = PUBLIC_PATHS.includes(currentPath) || currentPath.startsWith('/invite/') || currentPath.startsWith('/portal');
+  const isOrgRoute = !isPublic && !currentPath.startsWith('/login') && !currentPath.startsWith('/signup');
 
   useEffect(() => {
     if (loading) return;
@@ -60,15 +61,15 @@ export default function RootWrapper({ children }: { children: React.ReactNode })
     if (!user && !isPublic) { router.push('/login'); return; }
 
     // Logged in but no org yet → always go to onboarding (unless already there or on a public page)
-    if (user && !organization && pathname !== '/onboarding' && !pathname.startsWith('/invite/')) {
+    if (user && !organization && currentPath !== '/onboarding' && !currentPath.startsWith('/invite/')) {
       router.push('/onboarding'); return;
     }
 
     // Logged in with org → immediately redirect away from login/signup/landing to the role workspace
-    if (user && organization && (pathname === '/login' || pathname === '/signup' || pathname === '/')) {
+    if (user && organization && (currentPath === '/login' || currentPath === '/signup' || currentPath === '/')) {
       router.replace(getRolePath(profile?.role, organization.slug)); return;
     }
-  }, [user, profile, organization, loading, pathname]);
+  }, [user, profile, organization, loading, currentPath]);
 
   if (loading) {
     return (

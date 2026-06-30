@@ -18,12 +18,28 @@ export default function SignupPage() {
   const [org, setOrg] = useState({ name: '', slug: '', address: '', phone: '', email: '', letterheadLine2: '' });
   const [admin, setAdmin] = useState({ fullName: '', email: '', password: '', confirm: '' });
 
-  const handleOrgNext = (e: React.FormEvent) => {
+  const [checkingOrg, setCheckingOrg] = useState(false);
+
+  const handleOrgNext = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!org.name || !org.slug) { setError('Organisation name and workspace ID are required.'); return; }
     if (!/^[a-z0-9-]+$/.test(org.slug)) { setError('Workspace ID can only contain lowercase letters, numbers, and hyphens.'); return; }
+    
+    setCheckingOrg(true);
     setError('');
-    setStep(2);
+    try {
+      const { data: exists, error: checkErr } = await supabase.rpc('check_slug_exists', { p_slug: org.slug });
+      if (checkErr) throw checkErr;
+      if (exists) {
+        setError('This Workspace ID (slug) is already taken. Please choose a different one.');
+        return;
+      }
+      setStep(2);
+    } catch (err: any) {
+      setError(err.message || 'Failed to verify Workspace ID availability. Please try again.');
+    } finally {
+      setCheckingOrg(false);
+    }
   };
 
   const handleSignup = async (e: React.FormEvent) => {
@@ -147,8 +163,8 @@ export default function SignupPage() {
               <div><label style={lbl}>Facility Email</label><input style={inp} type="email" value={org.email} onChange={e => setOrg({ ...org, email: e.target.value })} placeholder="info@facility.com" /></div>
             </div>
             {error && <p style={{ color: '#f87171', fontSize: '0.82rem', background: 'rgba(248,113,113,0.1)', padding: '0.6rem 0.9rem', borderRadius: 6 }}>{error}</p>}
-            <button type="submit" style={{ background: '#4472c4', border: 'none', color: 'white', padding: '0.8rem', borderRadius: 8, fontWeight: 700, fontSize: '0.95rem', cursor: 'pointer', marginTop: '0.5rem' }}>
-              Continue to Admin Setup →
+            <button type="submit" disabled={checkingOrg} style={{ background: checkingOrg ? '#2a4a8a' : '#4472c4', border: 'none', color: 'white', padding: '0.8rem', borderRadius: 8, fontWeight: 700, fontSize: '0.95rem', cursor: checkingOrg ? 'not-allowed' : 'pointer', marginTop: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+              {checkingOrg ? 'Checking workspace ID...' : 'Continue to Admin Setup →'}
             </button>
           </form>
         )}
