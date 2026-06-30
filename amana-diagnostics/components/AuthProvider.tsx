@@ -87,6 +87,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
+      // If we are in local mode, we still want to check the cloud for updates
+      // if the local profile does not have an organization linked yet.
+      // This is crucial for completing cloud-based onboarding/invite flows.
+      if (IS_LOCAL_MODE && prof && !prof.organization_id) {
+        try {
+          const { data: cloudProf } = await supabase
+            .from('profiles').select('*').eq('id', userId).single();
+          if (cloudProf && cloudProf.organization_id) {
+            prof = cloudProf;
+            const { data: cloudOrg } = await supabase
+              .from('organizations').select('*').eq('id', cloudProf.organization_id).single();
+            org = cloudOrg;
+            fetchedFromCloud = true;
+          }
+        } catch (cloudErr) {
+          console.log('Could not sync profile from cloud during refresh:', cloudErr);
+        }
+      }
+
       if (!prof) {
         // Fallback/cloud behavior
         const { data } = await supabase
