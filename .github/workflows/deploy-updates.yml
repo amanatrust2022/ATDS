@@ -1,23 +1,65 @@
+# =============================================================================
+# AMANA DIAGNOSTICS — CI/CD: Auto-Deploy Updates to Supabase Storage
+# =============================================================================
+#
+# WHAT THIS DOES:
+#   Every time you push code to the `main` branch on GitHub, this workflow
+#   automatically:
+#     1. Checks out the repository on a fresh Ubuntu runner.
+#     2. Installs Node.js dependencies (npm ci for reproducible installs).
+#     3. Runs `npm run dist:package` → builds Next.js in standalone mode,
+#        compiles launcher.js → amana-server.exe via `pkg`, and packs:
+#          - update-latest.zip   (server/ folder only, ~36MB — for live updates)
+#          - amana-hub-portable.zip (amana-server.exe + version.json, ~14MB — initial download)
+#     4. Runs `node upload-updates.js` → uploads both ZIPs and version.json
+#        to the Supabase Storage bucket named `updates`.
+#
+# HOW CLINICS GET THE UPDATES:
+#   Each Local Hub (amana-server.exe) checks Supabase Storage for a new
+#   `version.json` every time it starts. If the buildHash has changed, it
+#   automatically downloads `update-latest.zip` and hot-swaps the server/
+#   folder — no manual action required from clinic staff.
+#
+# REQUIRED GITHUB SECRETS (Settings → Secrets and Variables → Actions):
+#   NEXT_PUBLIC_SUPABASE_URL   → e.g. https://okjwqvdvrqqhvvmvkikc.supabase.co
+#   SUPABASE_SERVICE_ROLE_KEY  → the service_role JWT from Supabase dashboard
+#                                (Project Settings → API → service_role key)
+#
+# NOTE: The `dist/` folder is gitignored. The ZIPs are built fresh on every
+#       run and uploaded directly — they are never committed to git.
+#
+# SUPABASE STORAGE BUCKET:
+#   Bucket name : updates
+#   Public      : true (anyone can download files via the public URL)
+#   File limit  : 200MB (set via SQL: UPDATE storage.buckets SET file_size_limit=209715200)
+#   Files stored: version.json, update-latest.zip, amana-hub-portable.zip
+# =============================================================================
+
 name: Deploy Updates to Supabase
 
 on:
   push:
     branches:
-      - main
+      - main  # Only trigger on pushes to the main branch
 
+# Set the working directory for all `run` steps to the amana-diagnostics subfolder,
+# since the repository root (ATDS/) contains other files unrelated to the Next.js app.
 defaults:
   run:
     working-directory: amana-diagnostics
 
 jobs:
   upload-updates:
-    name: Upload Pre-built ZIPs to Supabase
-    runs-on: ubuntu-latest
+    name: Build and Deploy Standalone Updates
+    runs-on: ubuntu-latest  # Ubuntu is used because pkg can cross-compile for Windows
 
     steps:
+      # ── Step 1: Checkout ──────────────────────────────────────────────────
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      # ── Step 2: Node.js Setup ─────────────────────────────────────────────
+      # Uses the npm cache keyed to the lockfile so installs are fast on repeat runs.
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -25,24 +67,28 @@ jobs:
           cache: 'npm'
           cache-dependency-path: amana-diagnostics/package-lock.json
 
+      # ── Step 3: Install Dependencies ──────────────────────────────────────
+      # `npm ci` is used instead of `npm install` for reproducibility:
+      # it installs exactly what is in package-lock.json with no version drift.
       - name: Install Dependencies
         run: npm ci
 
-      - name: Check if pre-built ZIPs exist in repo
-        id: check_zips
-        run: |
-          if [ -f "dist/amana-hub-portable.zip" ] && [ -f "dist/update-latest.zip" ]; then
-            echo "zips_found=true" >> $GITHUB_OUTPUT
-            echo "✅ Found pre-built ZIP files in dist/"
-            ls -lh dist/*.zip
-          else
-            echo "zips_found=false" >> $GITHUB_OUTPUT
-            echo "⚠️  No pre-built ZIP files found in dist/. Skipping upload."
-            echo "   Run 'npm run dist:package' locally then commit the dist/*.zip files to trigger upload."
-          fi
+      # ── Step 4: Build + Package ───────────────────────────────────────────
+      # Runs package-dist.js which:
+      #   - Runs `next build` with output: 'standalone'
+      #   - Copies .next/standalone → dist/server/
+      #   - Downloads node-portable.exe for Windows (cached between runs via node-portable.exe)
+      #   - Compiles launcher.js → amana-server.exe using `pkg`
+      #   - Creates update-latest.zip (server/ only)
+      #   - Creates amana-hub-portable.zip (amana-server.exe + version.json only)
+      - name: Build Standalone Server and Package ZIPs
+        run: npm run dist:package
 
+      # ── Step 5: Upload to Supabase ────────────────────────────────────────
+      # Runs upload-updates.js which uses Node's native `https` module (no npm deps)
+      # to stream each file directly to the Supabase Storage REST API.
+      # The `x-upsert: true` header overwrites existing files in the bucket.
       - name: Upload ZIPs to Supabase Storage
-        if: steps.check_zips.outputs.zips_found == 'true'
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}

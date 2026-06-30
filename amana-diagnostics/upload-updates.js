@@ -1,6 +1,46 @@
+/**
+ * =============================================================================
+ * AMANA DIAGNOSTICS — Upload Update Files to Supabase Storage
+ * =============================================================================
+ *
+ * WHAT THIS DOES:
+ *   Uploads three files from the local `dist/` folder to the Supabase Storage
+ *   `updates` bucket so all deployed Local Hubs can auto-update themselves.
+ *
+ * FILES UPLOADED:
+ *   dist/version.json          → Tiny metadata file (buildHash, version, createdAt).
+ *                                Each Local Hub checks this on startup to decide
+ *                                whether to download an update.
+ *   dist/update-latest.zip     → The Next.js standalone server/ folder (~36MB).
+ *                                Downloaded by existing Local Hubs when their
+ *                                buildHash doesn't match the cloud version.
+ *   dist/amana-hub-portable.zip → Initial download ZIP (~14MB: amana-server.exe
+ *                                 + version.json only). New clinics download this
+ *                                 from the website. On first launch, the launcher
+ *                                 downloads update-latest.zip automatically.
+ *
+ * HOW TO RUN MANUALLY (from your dev machine):
+ *   1. Run `npm run dist:package` first to build the dist/ files.
+ *   2. Set env vars and run:
+ *        $env:NEXT_PUBLIC_SUPABASE_URL="https://xxx.supabase.co"
+ *        $env:SUPABASE_SERVICE_ROLE_KEY="eyJ..."
+ *        node upload-updates.js
+ *
+ * WHY NATIVE HTTPS (not @supabase/supabase-js):
+ *   The Supabase JS client loads files into memory as a Buffer before uploading,
+ *   which causes out-of-memory errors or hangs for files >30MB. This script uses
+ *   Node's native `fs.createReadStream()` to stream files directly to the
+ *   Supabase Storage REST API without ever loading the full file into RAM.
+ *
+ * PUBLIC URL FORMAT (after upload):
+ *   {SUPABASE_URL}/storage/v1/object/public/updates/{filename}
+ * =============================================================================
+ */
+
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
+
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;

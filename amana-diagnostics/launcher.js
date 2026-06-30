@@ -1,14 +1,70 @@
+/**
+ * =============================================================================
+ * AMANA DIAGNOSTICS — LOCAL LAN HUB LAUNCHER
+ * =============================================================================
+ *
+ * PURPOSE:
+ *   This file is the entry point for the standalone offline clinic server.
+ *   It is compiled by `pkg` into `amana-server.exe` so clinic staff can
+ *   double-click it to start the system without needing Node.js installed.
+ *
+ * HOW IT WORKS (startup sequence):
+ *   1. Detects the Server PC's LAN IP address (so other clinic laptops can connect).
+ *   2. Reads `NEXT_PUBLIC_SUPABASE_URL` from the bundled .env.local file.
+ *   3. Connects to Supabase Storage and checks for a new version (version.json).
+ *   4. IF server/ folder is missing (FIRST RUN) → downloads update-latest.zip
+ *      from Supabase and extracts it, setting up the full Next.js server.
+ *   5. IF a newer buildHash is detected → hot-swaps the server/ folder atomically
+ *      (renames old to server_old/, moves new into server/), then rolls back if
+ *      anything fails.
+ *   6. Downloads node.exe from nodejs.org if not already present (one-time, ~75MB).
+ *   7. Spawns the Next.js standalone server via the bundled node.exe.
+ *   8. Opens the browser automatically to http://localhost:3000.
+ *
+ * FILES EXPECTED NEXT TO amana-server.exe:
+ *   - node.exe        → portable Windows Node.js runtime (auto-downloaded on first run)
+ *   - server/         → standalone Next.js app (auto-downloaded from Supabase on first run)
+ *   - version.json    → build hash used to detect whether an update is available
+ *
+ * KEY ENVIRONMENT FLAGS SET BEFORE SPAWNING SERVER:
+ *   - IS_LOCAL_HUB=true              → switches the app from Supabase to local SQLite
+ *   - NEXT_PUBLIC_LOCAL_SERVER_MODE=true → tells the frontend it's running on a LAN
+ *   - NODE_ENV=production             → production-level logging and caching
+ *
+ * DISTRIBUTING UPDATES TO ALL CLINICS:
+ *   Push to GitHub → GitHub Actions builds & uploads update-latest.zip and
+ *   version.json to Supabase Storage → on next clinic launch, each Local Hub
+ *   detects the new buildHash and auto-updates itself silently.
+ *
+ * TO BUILD A NEW amana-server.exe:
+ *   cd amana-diagnostics && npm run dist:package
+ *   (This runs package-dist.js which builds Next.js in standalone mode,
+ *    compiles this file with `pkg`, and zips everything for distribution.)
+ * =============================================================================
+ */
+
 const { spawn, execSync } = require('child_process');
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
 const https = require('https');
 
-// Determine paths relative to the executable location (or process.cwd() in dev)
+// ─────────────────────────────────────────────────────────────────────────────
+// BASE DIRECTORY DETECTION
+// When compiled with `pkg`, process.execPath is the .exe file itself.
+// When running raw with `node launcher.js` (dev/test), use process.cwd().
+// All file paths (server/, node.exe, version.json) are relative to baseDir.
+// ─────────────────────────────────────────────────────────────────────────────
 const isCompiled = process.pkg !== undefined;
 const baseDir = isCompiled ? path.dirname(process.execPath) : process.cwd();
 
-// Find Next.js standalone server path (can be in root of server/ or nested in amana-diagnostics/)
+// ─────────────────────────────────────────────────────────────────────────────
+// SERVER PATH RESOLUTION
+// The Next.js standalone server.js may be at:
+//   server/server.js               (flat structure — normal)
+//   server/amana-diagnostics/server.js  (nested — happens with some build configs)
+// resolveServerPath() checks both and updates `serverPath` accordingly.
+// ─────────────────────────────────────────────────────────────────────────────
 let serverPath = path.join(baseDir, 'server', 'server.js');
 function resolveServerPath() {
   serverPath = path.join(baseDir, 'server', 'server.js');
@@ -24,7 +80,12 @@ console.log('                 AMANA DIAGNOSTICS LOCAL LAN HUB                   
 console.log('=====================================================================');
 console.log('');
 
-// 1. Detect active local IPv4 address
+// ─────────────────────────────────────────────────────────────────────────────
+// STEP 1 — DETECT LAN IP ADDRESS
+// Scans all network interfaces and returns the first non-internal IPv4 address,
+// skipping virtual adapters (VirtualBox, VMware, Docker). This IP is printed so
+// clinic staff know what address to type into other laptops' browsers.
+// ─────────────────────────────────────────────────────────────────────────────
 function getLocalIpAddress() {
   const interfaces = os.networkInterfaces();
   for (const name of Object.keys(interfaces)) {
@@ -36,15 +97,20 @@ function getLocalIpAddress() {
       }
     }
   }
-  return '127.0.0.1';
+  return '127.0.0.1'; // Fallback: only accessible on this machine
 }
 
 const localIp = getLocalIpAddress();
 console.log(`[1] Detected Server PC IP Address: ${localIp}`);
 
-// 2. Parse Supabase URL from .env.local
+// ─────────────────────────────────────────────────────────────────────────────
+// STEP 2 — READ SUPABASE URL FROM .env.local
+// The bundled .env.local (inside server/) contains NEXT_PUBLIC_SUPABASE_URL.
+// We parse it with a regex so we don't need any npm packages at this stage.
+// If not found, the launcher skips the update check and runs the current version.
+// ─────────────────────────────────────────────────────────────────────────────
 function getSupabaseUrl() {
-  // Check both in root of server/ and nested amana-diagnostics/
+  // Check both flat and nested .env.local paths
   const paths = [
     path.join(baseDir, 'server', '.env.local'),
     path.join(baseDir, 'server', 'amana-diagnostics', '.env.local')
@@ -58,10 +124,15 @@ function getSupabaseUrl() {
       }
     }
   }
-  return null;
+  return null; // No Supabase URL found — update check will be skipped
 }
 
-// 3. Helper to Download File
+// ─────────────────────────────────────────────────────────────────────────────
+// HELPER — DOWNLOAD FILE (streaming, with redirect support and timeout)
+// Downloads any URL to a local file path using Node's native https module.
+// Follows 301/302 redirects. Cleans up the partial file on error or timeout.
+// timeoutMs: milliseconds before aborting (default 20 seconds).
+// ─────────────────────────────────────────────────────────────────────────────
 function downloadFile(url, dest, timeoutMs = 20000) {
   return new Promise((resolve, reject) => {
     const file = fs.createWriteStream(dest);
@@ -70,6 +141,7 @@ function downloadFile(url, dest, timeoutMs = 20000) {
     function get(requestUrl) {
       const req = https.get(requestUrl, (response) => {
         if (response.statusCode === 301 || response.statusCode === 302) {
+          // Follow redirect
           get(response.headers.location);
           return;
         }
@@ -77,7 +149,7 @@ function downloadFile(url, dest, timeoutMs = 20000) {
         if (response.statusCode !== 200) {
           clearTimeout(timer);
           file.close();
-          fs.unlink(dest, () => {});
+          fs.unlink(dest, () => {}); // Clean up empty/partial file
           reject(new Error(`Server returned status code: ${response.statusCode}`));
           return;
         }
@@ -93,11 +165,11 @@ function downloadFile(url, dest, timeoutMs = 20000) {
       req.on('error', (err) => {
         clearTimeout(timer);
         file.close();
-        fs.unlink(dest, () => {});
+        fs.unlink(dest, () => {}); // Clean up on network error
         reject(err);
       });
 
-      // Set timeout
+      // Kill the connection if it takes too long
       timer = setTimeout(() => {
         req.destroy();
         file.close();
@@ -110,7 +182,11 @@ function downloadFile(url, dest, timeoutMs = 20000) {
   });
 }
 
-// 4. Fetch JSON helper (with timeout)
+// ─────────────────────────────────────────────────────────────────────────────
+// HELPER — FETCH JSON (with timeout)
+// Used to check version.json from Supabase Storage without loading any npm
+// packages. Follows redirects and rejects on non-200 responses.
+// ─────────────────────────────────────────────────────────────────────────────
 function fetchJson(url, timeoutMs = 5000) {
   return new Promise((resolve, reject) => {
     let timer;
@@ -144,38 +220,69 @@ function fetchJson(url, timeoutMs = 5000) {
   });
 }
 
-// 5. Check and Apply Update
+// ─────────────────────────────────────────────────────────────────────────────
+// STEP 3 — AUTO-UPDATE (and first-run server download)
+//
+// This is the heart of the offline update system. It runs every time the
+// launcher starts, BEFORE the server process is spawned.
+//
+// FIRST RUN SCENARIO (server/ folder missing):
+//   The portable ZIP only contains amana-server.exe and version.json to keep
+//   the download small (~14MB). On first launch, the launcher detects that
+//   server/ is missing and downloads update-latest.zip from Supabase Storage,
+//   then extracts it to populate the server/ directory.
+//
+// UPDATE SCENARIO (server/ exists but buildHash differs):
+//   The launcher compares the local version.json buildHash against the cloud
+//   version.json. If they differ, it downloads and applies the update using
+//   an ATOMIC SWAP strategy (see below).
+//
+// ATOMIC SWAP STRATEGY (prevents corrupted state on power loss or crash):
+//   1. Download update-latest.zip → update.zip
+//   2. Extract to server_temp/
+//   3. Rename server/     → server_old/   (instant, OS-level)
+//   4. Rename server_temp/server/ → server/  (instant, OS-level)
+//   5. Delete server_old/ and temp files
+//   If step 4 fails → rename server_old/ back to server/ (rollback).
+//
+// OFFLINE SCENARIO (no internet):
+//   fetchJson() times out after 6 seconds. The catch block logs a message and
+//   the server starts normally with the current version. No crash, no hang.
+// ─────────────────────────────────────────────────────────────────────────────
 async function runAutoUpdate() {
   console.log('[2] Checking for cloud updates...');
   
   const supabaseUrl = getSupabaseUrl();
   if (!supabaseUrl) {
+    // .env.local not found or NEXT_PUBLIC_SUPABASE_URL not set — skip update
     console.log('ℹ️ Supabase URL not found in config. Skipping update check.');
     return;
   }
 
+  // Read the current local version hash
   const localVersionPath = path.join(baseDir, 'version.json');
   let localVersion = { version: '1.0.0', buildHash: 'initial' };
 
   if (fs.existsSync(localVersionPath)) {
     try {
       localVersion = JSON.parse(fs.readFileSync(localVersionPath, 'utf8'));
-    } catch (e) {}
+    } catch (e) {} // If version.json is corrupt, fall back to 'initial'
   }
 
   try {
-    // Check latest version info in Supabase Updates bucket
+    // Fetch version.json from the public Supabase Storage updates bucket
     const cloudVersionUrl = `${supabaseUrl}/storage/v1/object/public/updates/version.json`;
-    const cloudVersion = await fetchJson(cloudVersionUrl, 6000); // 6s timeout
+    const cloudVersion = await fetchJson(cloudVersionUrl, 6000); // 6s timeout (fast fail if offline)
 
     const localServerDir = path.join(baseDir, 'server');
-    const isFirstRun = !fs.existsSync(localServerDir);
+    const isFirstRun = !fs.existsSync(localServerDir); // server/ missing = fresh install
 
     if (isFirstRun) {
       console.log('🆕 First run detected — downloading server files from cloud...');
     } else if (cloudVersion && cloudVersion.buildHash && cloudVersion.buildHash !== localVersion.buildHash) {
       console.log(`🔄 New update available: v${cloudVersion.version} (Hash: ${cloudVersion.buildHash})`);
     } else {
+      // Version matches — nothing to do
       console.log('✅ Local Hub is up-to-date.');
       return;
     }
@@ -183,109 +290,148 @@ async function runAutoUpdate() {
     if (isFirstRun || (cloudVersion && cloudVersion.buildHash !== localVersion.buildHash)) {
       console.log('💾 Downloading server package, please wait (this may take a minute)...');
 
-
+      // update-latest.zip contains: server/ (the full Next.js standalone server)
+      // It is uploaded to Supabase Storage by GitHub Actions on every push to main.
       const zipUrl = `${supabaseUrl}/storage/v1/object/public/updates/update-latest.zip`;
       const zipPath = path.join(baseDir, 'update.zip');
       const tempExtractDir = path.join(baseDir, 'server_temp');
 
-      // Download update zip
-      await downloadFile(zipUrl, zipPath, 45000); // 45s timeout for 10-15MB bundle
+      // Download the zip (45 second timeout — it's ~36MB over a clinic LAN+internet connection)
+      await downloadFile(zipUrl, zipPath, 45000);
       console.log('✅ Update downloaded. Extracting files...');
 
-      // Clean temp extraction directory
+      // Clean temp directory from any previous failed extraction
       if (fs.existsSync(tempExtractDir)) {
         fs.rmSync(tempExtractDir, { recursive: true, force: true });
       }
       fs.mkdirSync(tempExtractDir, { recursive: true });
 
-      // Run PowerShell Expand-Archive (native on Windows)
+      // Extract the zip using the OS native tool (no npm dependencies needed)
       if (process.platform === 'win32') {
+        // PowerShell's Expand-Archive is always available on Windows 10/11
         execSync(`powershell -Command "Expand-Archive -Path '${zipPath}' -DestinationPath '${tempExtractDir}' -Force"`);
       } else {
-        // Unix fallback
+        // Linux/macOS fallback (used on the GitHub Actions Ubuntu runner)
         execSync(`unzip -o "${zipPath}" -d "${tempExtractDir}"`);
       }
 
       console.log('Applying update (atomic swap)...');
 
-      const localServerDir = path.join(baseDir, 'server');
+      // update-latest.zip is expected to contain a top-level `server/` folder
       const backupServerDir = path.join(baseDir, 'server_old');
       const extractedServerDir = path.join(tempExtractDir, 'server');
 
       if (!fs.existsSync(extractedServerDir)) {
-        throw new Error('Invalid update package structure: missing "server" folder.');
+        throw new Error('Invalid update package structure: missing "server" folder inside the zip.');
       }
 
-      // Perform atomic backup and replace
+      // Remove any leftover backup from a previous interrupted update
       if (fs.existsSync(backupServerDir)) {
         fs.rmSync(backupServerDir, { recursive: true, force: true });
       }
 
-      // Rename current to old
+      // ── ATOMIC SWAP ──────────────────────────────────────────────────────
+      // Rename operations are near-instantaneous on Windows (OS-level rename).
+      // If the process dies between steps 1 and 2, server_old/ still has data
+      // and the admin can manually rename it back.
       if (fs.existsSync(localServerDir)) {
-        fs.renameSync(localServerDir, backupServerDir);
+        fs.renameSync(localServerDir, backupServerDir); // Step 1: backup current
       }
 
       try {
-        // Move new folder to 'server'
-        fs.renameSync(extractedServerDir, localServerDir);
+        fs.renameSync(extractedServerDir, localServerDir); // Step 2: move new version in
 
-        // Update local version file
+        // Save the new version hash so next launch skips the download
         fs.writeFileSync(localVersionPath, JSON.stringify(cloudVersion, null, 2), 'utf8');
 
-        // Cleanup
+        // Cleanup: delete old backup and temp extraction folder and the zip
         fs.rmSync(backupServerDir, { recursive: true, force: true });
         fs.rmSync(tempExtractDir, { recursive: true, force: true });
         fs.unlinkSync(zipPath);
 
         console.log('🎉 Update applied successfully! Local Hub is now on the latest version.');
-        resolveServerPath(); // Re-resolve server path in case it changed
+        resolveServerPath(); // Re-check server.js location in case structure changed
       } catch (swapError) {
-        // Rollback
+        // ── ROLLBACK ─────────────────────────────────────────────────────
+        // If the rename of server_temp → server failed, restore the backup.
         console.error('Swap failed, rolling back to previous version:', swapError.message);
         if (fs.existsSync(backupServerDir)) {
           if (fs.existsSync(localServerDir)) {
             fs.rmSync(localServerDir, { recursive: true, force: true });
           }
-          fs.renameSync(backupServerDir, localServerDir);
+          fs.renameSync(backupServerDir, localServerDir); // Restore previous version
         }
         throw swapError;
+      }
     }
   } catch (err) {
+    // Any failure (network, extraction, swap) is caught here.
+    // The server still starts with whatever version is currently installed.
     console.log(`ℹ️ Update check skipped or failed: ${err.message}. Starting current version.`);
   }
   console.log('');
 }
 
-// Download portable node.exe on first run if not present
+// ─────────────────────────────────────────────────────────────────────────────
+// STEP 4 — DOWNLOAD node.exe IF MISSING
+//
+// The portable ZIP only contains amana-server.exe (~14MB) to keep the initial
+// download small. node.exe (~75MB) is downloaded from nodejs.org on first run.
+//
+// Once node.exe is present, this function exits immediately (no re-download).
+// If the download fails after 3 attempts, a warning is shown and the launcher
+// falls back to whatever `node` executable is on the system PATH (if any).
+//
+// node.exe is the Windows portable Node.js v22 binary — it requires no
+// installation and runs self-contained next to amana-server.exe.
+// ─────────────────────────────────────────────────────────────────────────────
 async function downloadNodeIfMissing() {
   const nodeDest = path.join(baseDir, 'node.exe');
-  if (fs.existsSync(nodeDest)) return; // Already present
+  if (fs.existsSync(nodeDest)) return; // Already present — skip
 
   console.log('[2b] node.exe not found. Downloading portable Node.js v22 for Windows...');
   const nodeUrl = 'https://nodejs.org/dist/v22.2.0/win-x64/node.exe';
-  const tmpDest = nodeDest + '.tmp';
+  const tmpDest = nodeDest + '.tmp'; // Download to .tmp first, then rename (atomic)
 
   let lastErr;
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      await downloadFile(nodeUrl, tmpDest, 120000); // 2 min timeout for 75MB
-      fs.renameSync(tmpDest, nodeDest);
+      await downloadFile(nodeUrl, tmpDest, 120000); // 2 min timeout for 75MB file
+      fs.renameSync(tmpDest, nodeDest); // Atomic rename: .tmp → node.exe
       console.log('✅ node.exe downloaded successfully.');
       return;
     } catch (e) {
       lastErr = e;
-      if (fs.existsSync(tmpDest)) fs.unlinkSync(tmpDest);
+      if (fs.existsSync(tmpDest)) fs.unlinkSync(tmpDest); // Remove partial download
       console.warn(`⚠️  Attempt ${attempt} failed: ${e.message}. Retrying...`);
-      await new Promise(r => setTimeout(r, 2000));
+      await new Promise(r => setTimeout(r, 2000)); // Wait 2s before retry
     }
   }
   console.warn(`⚠️  Could not download node.exe (${lastErr.message}). Will try system Node.js if available.`);
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// STEP 5 — START THE NEXT.JS SERVER
+//
+// After all updates and downloads are complete, spawns the Next.js standalone
+// server process using node.exe (or system node as fallback).
+//
+// Environment flags passed to the server:
+//   PORT=3000                          → listen on port 3000 on all interfaces
+//   HOSTNAME=0.0.0.0                   → accept connections from other LAN devices
+//   IS_LOCAL_HUB=true                  → use local SQLite DB instead of Supabase
+//   NEXT_PUBLIC_LOCAL_SERVER_MODE=true → frontend shows LAN sync UI, not cloud UI
+//   NODE_ENV=production                → enables production-level caching
+//
+// stdio: 'inherit' means server logs (console.log, errors, etc.) are printed
+// directly in this same console window the clinic staff sees.
+//
+// A browser is opened automatically after 2 seconds pointing to localhost:3000.
+// On SIGINT (Ctrl+C) or SIGTERM, the server process is killed cleanly.
+// ─────────────────────────────────────────────────────────────────────────────
 async function startServer() {
-  await runAutoUpdate();
-  await downloadNodeIfMissing();
+  await runAutoUpdate();       // Step 3: Check for / apply updates
+  await downloadNodeIfMissing(); // Step 4: Ensure node.exe is present
 
   console.log('=====================================================================');
   console.log('                  CLINIC STAFF CONNECTION INSTRUCTIONS               ');
@@ -310,21 +456,21 @@ async function startServer() {
 
   if (!fs.existsSync(serverPath)) {
     console.error(`Error: Next.js standalone server not found at: ${serverPath}`);
-    console.error('Please run the build and distribution pack scripts first.');
+    console.error('This usually means the server/ download failed. Check internet connection and restart.');
     process.exit(1);
   }
 
-  // 2. Set environment variables dynamically
+  // Environment variables inherited by the Next.js server process
   const env = {
     ...process.env,
     PORT: '3000',
-    HOSTNAME: '0.0.0.0',
-    NEXT_PUBLIC_LOCAL_SERVER_MODE: 'true',
-    IS_LOCAL_HUB: 'true',
-    NODE_ENV: 'production'
+    HOSTNAME: '0.0.0.0',                    // Accept connections from all LAN devices
+    NEXT_PUBLIC_LOCAL_SERVER_MODE: 'true',  // Tell frontend it's running in LAN mode
+    IS_LOCAL_HUB: 'true',                   // Tell backend to use SQLite (not Supabase)
+    NODE_ENV: 'production'                  // Production mode
   };
 
-  // 3. Spawn the Next.js server process
+  // Use bundled node.exe if available, fall back to system node (for testing)
   const bundledNodePath = process.platform === 'win32'
     ? path.join(baseDir, 'node.exe')
     : path.join(baseDir, 'node');
@@ -332,10 +478,11 @@ async function startServer() {
   const nodeExecutable = fs.existsSync(bundledNodePath) ? bundledNodePath : 'node';
   console.log(`Using Node engine: ${nodeExecutable}`);
 
+  // Spawn the Next.js server — it keeps running until this window is closed
   const serverProcess = spawn(nodeExecutable, [serverPath], {
     cwd: baseDir,
     env,
-    stdio: 'inherit' // Pipes server logs directly to this console window
+    stdio: 'inherit' // Forward server output to this console window
   });
 
   serverProcess.on('error', (err) => {
@@ -343,7 +490,7 @@ async function startServer() {
     process.exit(1);
   });
 
-  // 4. Automatically open browser to localhost:3000 after 2 seconds
+  // Auto-open browser after 2 seconds (gives server time to bind to port 3000)
   setTimeout(() => {
     console.log('[4] Launching default web browser...');
     const url = 'http://localhost:3000';
@@ -363,7 +510,7 @@ async function startServer() {
     });
   }, 2000);
 
-  // Graceful cleanup on termination
+  // Graceful shutdown: kill the server when this window is closed or Ctrl+C is pressed
   function cleanup() {
     console.log('\n[Shutting down Amana Local Hub server...]');
     if (serverProcess) {
@@ -372,9 +519,12 @@ async function startServer() {
     process.exit(0);
   }
 
-  process.on('SIGINT', cleanup);
-  process.on('SIGTERM', cleanup);
-  process.on('exit', cleanup);
+  process.on('SIGINT', cleanup);  // Ctrl+C
+  process.on('SIGTERM', cleanup); // OS kill signal
+  process.on('exit', cleanup);    // Window closed
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ENTRY POINT
+// ─────────────────────────────────────────────────────────────────────────────
 startServer();
