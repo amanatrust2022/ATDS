@@ -28,7 +28,7 @@ export async function GET(request: Request) {
           t.commission_type,
           t.commission_value,
           t.commission_amount,
-          p.created_at as patient_created_at
+          p.registered_at as patient_created_at
         FROM patient_tests t
         LEFT JOIN patients p ON t.patient_id = p.id
         WHERE t.organization_id = ? AND t.status = 'completed' AND t.completed_by IS NOT NULL
@@ -49,7 +49,7 @@ export async function GET(request: Request) {
 
       // 3. Fetch summary metrics for Billing Health (total billables)
       const patientBilling = db.prepare(`
-        SELECT total_amount, net_amount, created_at
+        SELECT total_amount, net_amount, registered_at as created_at
         FROM patients
         WHERE organization_id = ?
       `).all(orgId) as any[];
@@ -68,7 +68,7 @@ export async function GET(request: Request) {
         auth: { persistSession: false, autoRefreshToken: false }
       });
 
-      // Join tests with patient created_at
+      // Join tests with patient registered_at
       const [testsRes, ledgerRes, externalRes, billingRes] = await Promise.all([
         supabaseAdmin
           .from('patient_tests')
@@ -81,27 +81,32 @@ export async function GET(request: Request) {
             commission_type,
             commission_value,
             commission_amount,
-            patients(created_at)
+            patients(registered_at)
           `)
           .eq('organization_id', orgId)
           .eq('status', 'completed')
           .not('completed_by', 'is', null),
         supabaseAdmin.from('billing_ledger_transactions').select('created_by, amount, created_at, type').eq('organization_id', orgId).not('created_by', 'is', null),
         supabaseAdmin.from('external_department_charges').select('created_by, amount, created_at').eq('organization_id', orgId).not('created_by', 'is', null),
-        supabaseAdmin.from('patients').select('total_amount, net_amount, created_at').eq('organization_id', orgId)
+        supabaseAdmin.from('patients').select('total_amount, net_amount, registered_at').eq('organization_id', orgId)
       ]);
 
       // Map Supabase nested join response to flat patient_created_at
       const mappedTests = (testsRes.data || []).map((t: any) => ({
         ...t,
-        patient_created_at: t.patients?.created_at || null
+        patient_created_at: t.patients?.registered_at || null
+      }));
+
+      const mappedBilling = (billingRes.data || []).map((b: any) => ({
+        ...b,
+        created_at: b.registered_at
       }));
 
       return NextResponse.json({
         completedTests: mappedTests,
         ledgerTransactions: ledgerRes.data || [],
         externalCharges: externalRes.data || [],
-        patientBilling: billingRes.data || []
+        patientBilling: mappedBilling
       });
     }
   } catch (error: any) {

@@ -92,13 +92,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // This is crucial for completing cloud-based onboarding/invite flows.
       if (IS_LOCAL_MODE && prof && !prof.organization_id) {
         try {
-          const { data: cloudProf } = await supabase
-            .from('profiles').select('*').eq('id', userId).single();
-          if (cloudProf && cloudProf.organization_id) {
-            prof = cloudProf;
-            const { data: cloudOrg } = await supabase
-              .from('organizations').select('*').eq('id', cloudProf.organization_id).single();
-            org = cloudOrg;
+          const { data, error } = await supabase
+            .from('profiles')
+            .select('*, organizations(*)')
+            .eq('id', userId)
+            .single();
+          if (data && data.organization_id) {
+            const { organizations, ...profileData } = data;
+            prof = profileData;
+            org = Array.isArray(organizations) ? organizations[0] : organizations;
             fetchedFromCloud = true;
           }
         } catch (cloudErr) {
@@ -107,14 +109,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (!prof) {
-        // Fallback/cloud behavior
+        // Fallback/cloud behavior: joined query to avoid sequential roundtrips
         const { data } = await supabase
-          .from('profiles').select('*').eq('id', userId).single();
-        prof = data;
-        if (prof?.organization_id) {
-          const { data: orgData } = await supabase
-            .from('organizations').select('*').eq('id', prof.organization_id).single();
-          org = orgData;
+          .from('profiles')
+          .select('*, organizations(*)')
+          .eq('id', userId)
+          .single();
+        if (data) {
+          const { organizations, ...profileData } = data;
+          prof = profileData;
+          org = Array.isArray(organizations) ? organizations[0] : organizations;
         }
         fetchedFromCloud = true;
       }
@@ -174,28 +178,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const initializeAuth = async () => {
       try {
-        // In local mode, try to load offline mock session first to render immediately
-        if (IS_LOCAL_MODE) {
-          const cachedSessionStr = localStorage.getItem('amana_offline_session');
-          if (cachedSessionStr) {
-            try {
-              const cached = JSON.parse(cachedSessionStr);
-              if (cached && cached.user && cached.profile) {
-                if (mounted) {
-                  setUser(cached.user);
-                  setProfile(cached.profile);
-                  setOrganization(cached.organization || null);
-                  setSession(cached.session || null);
-                  setLoading(false);
-                  clearTimeout(safetyNet);
-                  // Trigger background validation of profile/org in case they were updated
-                  fetchProfileAndOrg(cached.user.id);
-                  return;
-                }
+        // Universal Client-side Cache Check: Load cached session first to render immediately
+        const cachedSessionStr = typeof window !== 'undefined' ? localStorage.getItem('amana_offline_session') : null;
+        if (cachedSessionStr) {
+          try {
+            const cached = JSON.parse(cachedSessionStr);
+            if (cached && cached.user && cached.profile) {
+              if (mounted) {
+                setUser(cached.user);
+                setProfile(cached.profile);
+                setOrganization(cached.organization || null);
+                setSession(cached.session || null);
+                setLoading(false);
+                clearTimeout(safetyNet);
+                // Trigger background validation of profile/org in case they were updated
+                fetchProfileAndOrg(cached.user.id);
               }
-            } catch (jsonErr) {
-              console.error('Failed to parse cached offline session:', jsonErr);
             }
+          } catch (jsonErr) {
+            console.error('Failed to parse cached offline session:', jsonErr);
           }
         }
 
@@ -226,16 +227,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (!mounted) return;
         
         if (session?.user) {
-          // If we have a user, fetch profile
+          // Fetch profile and update cache
           await fetchProfileAndOrg(session.user.id);
         } else {
+          // If no user on the cloud, clean up the cache
+          localStorage.removeItem('amana_offline_session');
           setProfile(null);
           setOrganization(null);
+          setUser(null);
+          setSession(null);
         }
-        
-        if (!mounted) return;
-        setSession(session);
-        setUser(session?.user ?? null);
       } catch (e) {
         // Ignore errors silently to behave like a normal app
         if (mounted) {
@@ -261,8 +262,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         try {
           if (event === 'SIGNED_OUT') {
+            localStorage.removeItem('amana_offline_session');
             setProfile(null);
             setOrganization(null);
+            setSession(null);
+            setUser(null);
           } else if (event === 'SIGNED_IN' || event === 'USER_UPDATED') {
             if (session?.user) {
               await fetchProfileAndOrg(session.user.id);
