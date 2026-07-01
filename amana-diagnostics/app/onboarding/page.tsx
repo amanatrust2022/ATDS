@@ -25,6 +25,7 @@ export default function OnboardingPage() {
   const supabase = createClient();
 
   const [status, setStatus] = useState<Status>('loading');
+  const [onboardingStatusText, setOnboardingStatusText] = useState('Loading your account...');
   const [error, setError] = useState('');
 
   // Fallback manual form (when no localStorage/metadata data found)
@@ -86,6 +87,13 @@ export default function OnboardingPage() {
   const createOrgFromData = async (data: any) => {
     setStatus('creating');
     setError('');
+    setOnboardingStatusText('Initiating workspace setup...');
+    
+    const t1 = setTimeout(() => setOnboardingStatusText('Reserving Workspace ID on cloud...'), 1000);
+    const t2 = setTimeout(() => setOnboardingStatusText('Creating organization details...'), 2500);
+    const t3 = setTimeout(() => setOnboardingStatusText('Configuring admin profile relations...'), 4500);
+    const t4 = setTimeout(() => setOnboardingStatusText('Syncing clinical workspace session...'), 7000);
+
     try {
       // 1. Create organization with a 12-second timeout
       const createPromise = supabase.rpc('create_organization_for_signup', {
@@ -120,7 +128,9 @@ export default function OnboardingPage() {
         'Workspace activation completed, but taking too long to load profile data. Please refresh the page.'
       );
       
+      clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4);
     } catch (err: any) {
+      clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4);
       setError(err.message || 'An unexpected error occurred.');
       setStatus('no_data'); // Fall back to manual form
     }
@@ -156,7 +166,7 @@ export default function OnboardingPage() {
           <RiLoader4Line size={40} />
         </div>
         <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.88rem' }}>
-          {status === 'creating' ? 'Setting up your workspace...' : 'Loading your account...'}
+          {status === 'creating' ? onboardingStatusText : 'Loading your account...'}
         </p>
       </div>
     );
@@ -202,7 +212,7 @@ export default function OnboardingPage() {
               <div><label style={lbl}>Email</label><input style={inp} type="email" value={org.email} onChange={e => setOrg({ ...org, email: e.target.value })} placeholder="info@facility.com" /></div>
             </div>
             <button type="submit" disabled={submitting} style={{ background: submitting ? '#2a4a8a' : '#4472c4', border: 'none', color: 'white', padding: '0.8rem', borderRadius: 8, fontWeight: 700, fontSize: '0.95rem', cursor: submitting ? 'not-allowed' : 'pointer', marginTop: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
-              {submitting ? 'Creating...' : <><RiCheckLine size={18} /> Create Workspace</>}
+              {submitting ? onboardingStatusText : <><RiCheckLine size={18} /> Create Workspace</>}
             </button>
           </form>
         </div>

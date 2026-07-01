@@ -30,6 +30,8 @@ export default function SignupPage() {
   const [showConfirm, setShowConfirm] = useState(false);
 
   const [checkingOrg, setCheckingOrg] = useState(false);
+  const [orgStatusText, setOrgStatusText] = useState('Checking Workspace ID...');
+  const [statusText, setStatusText] = useState('Creating account...');
 
   const handleOrgNext = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,7 +39,11 @@ export default function SignupPage() {
     if (!/^[a-z0-9-]+$/.test(org.slug)) { setError('Workspace ID can only contain lowercase letters, numbers, and hyphens.'); return; }
     
     setCheckingOrg(true);
+    setOrgStatusText('Connecting to registry...');
     setError('');
+    
+    const statusTimer = setTimeout(() => setOrgStatusText('Verifying workspace ID availability...'), 1000);
+
     try {
       const checkPromise = supabase.rpc('check_slug_exists', { p_slug: org.slug });
       const { data: exists, error: checkErr } = await withTimeout(
@@ -45,6 +51,9 @@ export default function SignupPage() {
         10000,
         'Workspace verification timed out due to slow network. Please try again.'
       );
+      
+      clearTimeout(statusTimer);
+
       if (checkErr) throw checkErr;
       if (exists) {
         setError('This Workspace ID (slug) is already taken. Please choose a different one.');
@@ -52,6 +61,7 @@ export default function SignupPage() {
       }
       setStep(2);
     } catch (err: any) {
+      clearTimeout(statusTimer);
       setError(err.message || 'Failed to verify Workspace ID availability. Please try again.');
     } finally {
       setCheckingOrg(false);
@@ -63,12 +73,20 @@ export default function SignupPage() {
     if (admin.password !== admin.confirm) { setError('Passwords do not match.'); return; }
     if (admin.password.length < 8) { setError('Password must be at least 8 characters.'); return; }
     setLoading(true); setError('');
+    setStatusText('Initiating registration...');
 
     let createdOrgId: string | null = null;
+    
+    // Dynamic progress timers to give instant-feeling visual feedback
+    const t1 = setTimeout(() => setStatusText('Reserving Workspace ID...'), 1000);
+    const t2 = setTimeout(() => setStatusText('Creating your Clinic profile...'), 2500);
+    const t3 = setTimeout(() => setStatusText('Registering Admin user account...'), 4500);
+    const t4 = setTimeout(() => setStatusText('Establishing secure credentials...'), 7000);
+
     try {
       localStorage.setItem('pending_org', JSON.stringify(org));
 
-      // 1. Create organization to reserve the slug with a 12-second timeout
+      // 1. Create organization to reserve the slug
       const createOrgPromise = supabase.rpc('create_organization_for_signup', {
         p_name:    org.name,
         p_slug:    org.slug,
@@ -94,7 +112,7 @@ export default function SignupPage() {
       }
       createdOrgId = newOrg.id;
 
-      // 2. Sign up user account with organization_id in metadata with a 15-second timeout
+      // 2. Sign up user account with organization_id in metadata
       const signUpPromise = supabase.auth.signUp({
         email: admin.email,
         password: admin.password,
@@ -127,12 +145,15 @@ export default function SignupPage() {
         throw new Error('This email address is already registered. Please sign in instead.');
       }
 
+      clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4);
+
       if (data.session) {
         router.push('/onboarding?new=1');
       } else {
         setStep('confirm');
       }
     } catch (err: any) {
+      clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4);
       setError(err.message || 'An unexpected error occurred during sign up.');
       
       // Rollback organization reservation if signup fails
@@ -234,7 +255,7 @@ export default function SignupPage() {
             </div>
             {error && <p style={{ color: '#f87171', fontSize: '0.82rem', background: 'rgba(248,113,113,0.1)', padding: '0.6rem 0.9rem', borderRadius: 6 }}>{error}</p>}
             <button type="submit" disabled={checkingOrg} style={{ background: checkingOrg ? '#2a4a8a' : '#4472c4', border: 'none', color: 'white', padding: '0.8rem', borderRadius: 8, fontWeight: 700, fontSize: '0.95rem', cursor: checkingOrg ? 'not-allowed' : 'pointer', marginTop: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
-              {checkingOrg ? 'Checking workspace ID...' : 'Continue to Admin Setup →'}
+              {checkingOrg ? orgStatusText : 'Continue to Admin Setup →'}
             </button>
           </form>
         )}
@@ -310,7 +331,7 @@ export default function SignupPage() {
             </div>
             {error && <p style={{ color: '#f87171', fontSize: '0.82rem', background: 'rgba(248,113,113,0.1)', padding: '0.6rem 0.9rem', borderRadius: 6 }}>{error}</p>}
             <button type="submit" disabled={loading} style={{ background: loading ? '#2a4a8a' : '#4472c4', border: 'none', color: 'white', padding: '0.8rem', borderRadius: 8, fontWeight: 700, fontSize: '0.95rem', cursor: loading ? 'not-allowed' : 'pointer', marginTop: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
-              {loading ? 'Creating account...' : <><RiCheckLine size={18} /> Create Workspace</>}
+              {loading ? statusText : <><RiCheckLine size={18} /> Create Workspace</>}
             </button>
             <button type="button" onClick={() => { setStep(1); setError(''); }} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.3rem', fontSize: '0.82rem' }}>
               <RiArrowLeftLine size={14} /> Back to facility details

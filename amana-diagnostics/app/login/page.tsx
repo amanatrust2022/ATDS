@@ -18,6 +18,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [statusText, setStatusText] = useState('Signing in...');
   const [error, setError] = useState('');
   const [resetMode, setResetMode] = useState(false);
   const [resetSent, setResetSent] = useState(false);
@@ -27,7 +28,8 @@ export default function LoginPage() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true); setError('');
-    
+    setStatusText('Checking local database...');
+
     const isLocalMode = typeof window !== 'undefined'
       ? (localStorage.getItem('amana_local_mode') === null
           ? (window.location.hostname === 'localhost' || 
@@ -38,8 +40,49 @@ export default function LoginPage() {
           : localStorage.getItem('amana_local_mode') === 'true')
       : (process.env.NEXT_PUBLIC_LOCAL_SERVER_MODE === 'true');
 
+    // 1. In Local Mode, prioritize local sqlite verification first (takes ~10ms)
+    if (isLocalMode) {
+      try {
+        const localRes = await fetch('/api/auth/local-login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+        
+        if (localRes.ok) {
+          const localSession = await localRes.json();
+          localStorage.setItem('amana_offline_session', JSON.stringify({
+            user: localSession.user,
+            profile: localSession.profile,
+            organization: localSession.organization,
+            session: null
+          }));
+          
+          // Asynchronously perform background cloud login check to cache/sync session
+          supabase.auth.signInWithPassword({ email, password }).then((res: any) => {
+            if (res && !res.error && res.data?.user) {
+              fetch('/api/auth/save-credentials', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password, userId: res.data.user.id })
+              }).catch(console.error);
+            }
+          }).catch(console.error);
+
+          window.location.reload();
+          return;
+        }
+      } catch (localLoginErr) {
+        console.warn('Local check failed or local server not running, falling back to cloud login:', localLoginErr);
+      }
+    }
+
+    // 2. Cloud login - with responsive progress steps to keep UI feeling instantaneous and alive
+    setStatusText('Connecting to cloud server...');
+    const timer1 = setTimeout(() => setStatusText('Verifying credentials on cloud...'), 1200);
+    const timer2 = setTimeout(() => setStatusText('Syncing clinical workspace...'), 3200);
+
     try {
-      // 1. Try Supabase Auth first with 8-second timeout
       let data, error;
       try {
         const authPromise = supabase.auth.signInWithPassword({ email, password });
@@ -50,8 +93,10 @@ export default function LoginPage() {
         error = { message: 'Network connection timed out (slow network).', status: 0 };
       }
       
+      clearTimeout(timer1);
+      clearTimeout(timer2);
+
       if (!error && data?.user) {
-        // Successful online login! Cache credentials locally
         if (isLocalMode) {
           try {
             await fetch('/api/auth/save-credentials', {
@@ -66,7 +111,6 @@ export default function LoginPage() {
         return;
       }
 
-      // If it's a network/connection error AND we are in local mode, attempt local login fallback
       const isNetworkError = error?.message?.includes('fetch') || 
                              error?.message?.includes('network') || 
                              error?.message?.includes('timed out') || 
@@ -83,7 +127,6 @@ export default function LoginPage() {
           
           if (localRes.ok) {
             const localSession = await localRes.json();
-            // Cache the local session so AuthProvider loads it
             localStorage.setItem('amana_offline_session', JSON.stringify({
               user: localSession.user,
               profile: localSession.profile,
@@ -91,7 +134,6 @@ export default function LoginPage() {
               session: null
             }));
             
-            // Force a reload to let AuthProvider pick up the cached session
             window.location.reload();
             return;
           } else {
@@ -108,6 +150,8 @@ export default function LoginPage() {
       setError(error ? error.message : 'Login failed');
       setLoading(false);
     } catch (err: any) {
+      clearTimeout(timer1);
+      clearTimeout(timer2);
       setError(err.message || 'An unexpected error occurred');
       setLoading(false);
     }
@@ -162,7 +206,7 @@ export default function LoginPage() {
             <div style={{ textAlign: 'center', color: 'white' }}>
               <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>✉️</div>
               <h2 style={{ fontWeight: 700, marginBottom: '0.5rem' }}>Check your email</h2>
-              <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.85rem', marginBottom: '1.5rem' }}>We sent a password reset link to {email}</p>
+              <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.85rem', marginBottom: '1.5rem' }}> we sent a password reset link to {email}</p>
               <button onClick={() => { setResetMode(false); setResetSent(false); }} style={{ background: 'none', border: '1px solid rgba(255,255,255,0.2)', color: 'white', padding: '0.6rem 1.5rem', borderRadius: 8, cursor: 'pointer', fontSize: '0.85rem' }}>Back to sign in</button>
             </div>
           ) : (
@@ -212,7 +256,7 @@ export default function LoginPage() {
                 )}
                 {error && <p style={{ color: '#f87171', fontSize: '0.82rem', background: 'rgba(248,113,113,0.1)', padding: '0.6rem 0.9rem', borderRadius: 6 }}>{error}</p>}
                 <button type="submit" disabled={loading} style={{ background: loading ? '#2a4a8a' : '#4472c4', border: 'none', color: 'white', padding: '0.8rem', borderRadius: 8, fontWeight: 700, fontSize: '0.95rem', cursor: loading ? 'not-allowed' : 'pointer', marginTop: '0.25rem' }}>
-                  {loading ? (resetMode ? 'Sending...' : 'Signing in...') : (resetMode ? 'Send reset link' : 'Sign in')}
+                  {loading ? (resetMode ? 'Sending...' : statusText) : (resetMode ? 'Send reset link' : 'Sign in')}
                 </button>
               </form>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1.5rem' }}>
