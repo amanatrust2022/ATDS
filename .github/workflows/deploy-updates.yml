@@ -21,9 +21,10 @@
 #   folder — no manual action required from clinic staff.
 #
 # REQUIRED GITHUB SECRETS (Settings → Secrets and Variables → Actions):
-#   NEXT_PUBLIC_SUPABASE_URL   → e.g. https://okjwqvdvrqqhvvmvkikc.supabase.co
-#   SUPABASE_SERVICE_ROLE_KEY  → the service_role JWT from Supabase dashboard
-#                                (Project Settings → API → service_role key)
+#   NEXT_PUBLIC_SUPABASE_URL       → e.g. https://okjwqvdvrqqhvvmvkikc.supabase.co
+#   NEXT_PUBLIC_SUPABASE_ANON_KEY  → the legacy JWT-based anon API key
+#   SUPABASE_SERVICE_ROLE_KEY      → the service_role JWT from Supabase dashboard
+#                                    (Project Settings → API → service_role key)
 #
 # NOTE: The `dist/` folder is gitignored. The ZIPs are built fresh on every
 #       run and uploaded directly — they are never committed to git.
@@ -82,6 +83,10 @@ jobs:
       #   - Creates update-latest.zip (server/ only)
       #   - Creates amana-hub-portable.zip (amana-server.exe + version.json only)
       - name: Build Standalone Server and Package ZIPs
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          NEXT_PUBLIC_LOCAL_SERVER_MODE: 'false'
         run: npm run dist:package
 
       # ── Step 5: Upload to Supabase ────────────────────────────────────────

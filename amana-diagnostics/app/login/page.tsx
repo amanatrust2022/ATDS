@@ -95,6 +95,7 @@ export default function LoginPage() {
       clearTimeout(timer2);
 
       if (!error && data?.user) {
+        // Success — save credentials locally if in local mode then reload
         if (isLocalMode) {
           try {
             await fetch('/api/auth/save-credentials', {
@@ -106,6 +107,8 @@ export default function LoginPage() {
             console.error('Failed to save credentials locally:', saveErr);
           }
         }
+        // Reload so AuthProvider picks up the new Supabase session via onAuthStateChange / getSession
+        window.location.reload();
         return;
       }
 

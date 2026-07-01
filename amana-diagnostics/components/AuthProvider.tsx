@@ -1,5 +1,5 @@
 'use client';
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { createClient } from '@/lib/supabase';
 import { User, Session } from '@supabase/supabase-js';
 
@@ -37,15 +37,20 @@ type AuthContextType = {
   refreshOrg: () => Promise<void>;
 };
 
-const IS_LOCAL_MODE = typeof window !== 'undefined'
-  ? (localStorage.getItem('amana_local_mode') === null
-      ? (window.location.hostname === 'localhost' || 
-         window.location.hostname === '127.0.0.1' || 
-         window.location.hostname.startsWith('192.168.') || 
-         window.location.hostname.startsWith('10.') || 
-         window.location.hostname.startsWith('172.'))
-      : localStorage.getItem('amana_local_mode') === 'true')
-  : (process.env.NEXT_PUBLIC_LOCAL_SERVER_MODE === 'true');
+// Computed once per page load, client-side only. Safe for cloud (Vercel).
+function getIsLocalMode(): boolean {
+  if (typeof window === 'undefined') return false; // SSR — never local
+  const stored = localStorage.getItem('amana_local_mode');
+  if (stored !== null) return stored === 'true';
+  const h = window.location.hostname;
+  return (
+    h === 'localhost' ||
+    h === '127.0.0.1' ||
+    h.startsWith('192.168.') ||
+    h.startsWith('10.') ||
+    h.startsWith('172.')
+  );
+}
 
 const AuthContext = createContext<AuthContextType>({
   user: null, profile: null, organization: null,
@@ -60,17 +65,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [organization, setOrganization] = useState<Organization | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  // Track whether we've already resolved from cache so we don't clobber it
+  const resolvedFromCache = useRef(false);
 
   const supabase = createClient();
 
   const fetchProfileAndOrg = async (userId: string) => {
+    const IS_LOCAL_MODE = getIsLocalMode();
     try {
-      let prof = null;
-      let org = null;
+      let prof: any = null;
+      let org: any = null;
       let fetchedFromCloud = false;
 
       if (IS_LOCAL_MODE) {
-        // Fetch from local SQLite server endpoints
+        // Fetch from local SQLite server endpoints (~5ms)
         try {
           const profRes = await fetch(`/api/profiles?userId=${userId}`);
           if (profRes.ok) {
@@ -83,38 +91,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
           }
         } catch (localErr) {
-          console.warn('Local database lookup failed, falling back to Supabase:', localErr);
+          console.warn('[AuthProvider] Local database lookup failed, falling back to Supabase:', localErr);
         }
       }
 
-      // If we are in local mode, we still want to check the cloud for updates
-      // if the local profile does not have an organization linked yet.
-      // This is crucial for completing cloud-based onboarding/invite flows.
+      // In local mode: if org not found locally, check cloud (covers invite/onboarding flows)
       if (IS_LOCAL_MODE && prof && !prof.organization_id) {
         try {
-          const { data, error } = await supabase
+          const { data } = await supabase
             .from('profiles')
             .select('*, organizations(*)')
             .eq('id', userId)
             .single();
-          if (data && data.organization_id) {
+          if (data?.organization_id) {
             const { organizations, ...profileData } = data;
             prof = profileData;
             org = Array.isArray(organizations) ? organizations[0] : organizations;
             fetchedFromCloud = true;
           }
         } catch (cloudErr) {
-          console.log('Could not sync profile from cloud during refresh:', cloudErr);
+          console.log('[AuthProvider] Could not sync profile from cloud:', cloudErr);
         }
       }
 
+      // Cloud mode (Vercel) — single joined query, ~150-300ms
       if (!prof) {
-        // Fallback/cloud behavior: joined query to avoid sequential roundtrips
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from('profiles')
           .select('*, organizations(*)')
           .eq('id', userId)
           .single();
+        if (error) throw error;
         if (data) {
           const { organizations, ...profileData } = data;
           prof = profileData;
@@ -126,15 +133,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setProfile(prof ?? null);
       setOrganization(org ?? null);
 
+      // Always update the SWR cache with fresh data
       if (prof) {
+        const cachedUser = user ?? { id: userId, email: prof.email || '' };
         localStorage.setItem('amana_offline_session', JSON.stringify({
-          user: { id: userId, email: (prof as any).email || '' },
+          user: { id: userId, email: (prof as any).email || (cachedUser as any).email || '' },
           profile: prof,
           organization: org,
           session: null
         }));
 
-        // Cache cloud profile and organization locally in SQLite
+        // Back-sync cloud profile into local SQLite
         if (fetchedFromCloud && IS_LOCAL_MODE) {
           try {
             await fetch('/api/profiles', {
@@ -150,14 +159,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               });
             }
           } catch (syncErr) {
-            console.warn('Failed to cache profile/org to local SQLite:', syncErr);
+            console.warn('[AuthProvider] Failed to cache to local SQLite:', syncErr);
           }
         }
       }
     } catch (e) {
-      console.error('fetchProfileAndOrg error:', e);
-      setProfile(null);
-      setOrganization(null);
+      console.error('[AuthProvider] fetchProfileAndOrg error:', e);
+      // Don't null out profile/org here — keep last-known state to avoid flicker
     }
   };
 
@@ -168,82 +176,86 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let mounted = true;
 
-    // A completely silent safety net. If Supabase hangs (e.g. due to corrupted local storage), 
-    // we unblock the UI after 2.5 seconds without throwing scary errors.
+    // Safety net: unblock UI after 3s if Supabase never responds
     const safetyNet = setTimeout(() => {
       if (mounted && loading) {
+        console.warn('[AuthProvider] Safety net fired — Supabase did not respond in 3s');
         setLoading(false);
       }
-    }, 2500);
+    }, 3000);
 
     const initializeAuth = async () => {
       try {
-        // Universal Client-side Cache Check: Load cached session first to render immediately
-        const cachedSessionStr = typeof window !== 'undefined' ? localStorage.getItem('amana_offline_session') : null;
-        if (cachedSessionStr) {
+        // ── STEP 1: Instant paint from SWR cache (~1ms) ───────────────────
+        const cachedStr = typeof window !== 'undefined'
+          ? localStorage.getItem('amana_offline_session')
+          : null;
+
+        if (cachedStr) {
           try {
-            const cached = JSON.parse(cachedSessionStr);
-            if (cached && cached.user && cached.profile) {
+            const cached = JSON.parse(cachedStr);
+            if (cached?.user?.id && cached?.profile) {
               if (mounted) {
-                setUser(cached.user);
+                setUser(cached.user as any);
                 setProfile(cached.profile);
-                setOrganization(cached.organization || null);
-                setSession(cached.session || null);
+                setOrganization(cached.organization ?? null);
+                setSession(cached.session ?? null);
                 setLoading(false);
+                resolvedFromCache.current = true;
                 clearTimeout(safetyNet);
-                // Trigger background validation of profile/org in case they were updated
+                // Background re-validation — do NOT await, let it update silently
                 fetchProfileAndOrg(cached.user.id);
               }
             }
-          } catch (jsonErr) {
-            console.error('Failed to parse cached offline session:', jsonErr);
+          } catch {
+            localStorage.removeItem('amana_offline_session');
           }
         }
 
-        // Race the session fetch against a silent timeout
-        const sessionPromise = supabase.auth.getSession();
-        const timeoutPromise = new Promise<{ data: { session: null }, error: null }>((resolve) => {
-          setTimeout(() => resolve({ data: { session: null }, error: null }), 2000);
-        });
+        // ── STEP 2: Validate real Supabase session ─────────────────────────
+        // Race: Supabase getSession vs 3s timeout
+        const { data: { session }, error } = await Promise.race([
+          supabase.auth.getSession(),
+          new Promise<{ data: { session: null }, error: null }>(res =>
+            setTimeout(() => res({ data: { session: null }, error: null }), 3000)
+          )
+        ]);
 
-        const { data: { session }, error } = await Promise.race([sessionPromise, timeoutPromise]);
-        
+        if (!mounted) return;
+
         if (error) {
-          console.warn('[AuthProvider] Session recovery error:', error.message);
-          // If the refresh token is invalid, clear client credentials to prevent error loops
-          if (error.message?.includes('Refresh Token') || error.status === 400) {
+          console.warn('[AuthProvider] getSession error:', error.message);
+          // Invalid refresh token — clear everything and force re-login
+          if (error.message?.includes('Refresh Token') || (error as any).status === 400) {
+            localStorage.removeItem('amana_offline_session');
             await supabase.auth.signOut().catch(() => {});
+            setSession(null); setUser(null); setProfile(null); setOrganization(null);
           }
-          if (mounted) {
-            setSession(null);
-            setUser(null);
-            setProfile(null);
-            setOrganization(null);
-            setLoading(false);
-          }
+          setLoading(false);
           return;
         }
-        
-        if (!mounted) return;
-        
+
         if (session?.user) {
-          // Fetch profile and update cache
+          // We have a real session — update state and fetch fresh profile
+          setSession(session);
+          setUser(session.user);
           await fetchProfileAndOrg(session.user.id);
-        } else {
-          // If no user on the cloud, clean up the cache
+        } else if (!resolvedFromCache.current) {
+          // No session, no cache — user is genuinely logged out
+          // Only clear cache if we didn't already paint from it (avoid erasing valid cache)
           localStorage.removeItem('amana_offline_session');
           setProfile(null);
           setOrganization(null);
           setUser(null);
           setSession(null);
         }
+        // If we resolved from cache but there's no live session (e.g. timeout),
+        // keep the cached state visible — don't clobber it.
+
       } catch (e) {
-        // Ignore errors silently to behave like a normal app
-        if (mounted) {
-          setProfile(null);
-          setOrganization(null);
-          setUser(null);
-          setSession(null);
+        console.error('[AuthProvider] initializeAuth error:', e);
+        if (mounted && !resolvedFromCache.current) {
+          setProfile(null); setOrganization(null); setUser(null); setSession(null);
         }
       } finally {
         if (mounted) {
@@ -255,29 +267,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     initializeAuth();
 
+    // ── Auth state change listener ────────────────────────────────────────
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event: string, session: any) => {
+      async (event: string, session: Session | null) => {
         if (!mounted) return;
+        // Skip INITIAL_SESSION — we handle it in initializeAuth
         if (event === 'INITIAL_SESSION') return;
 
         try {
           if (event === 'SIGNED_OUT') {
             localStorage.removeItem('amana_offline_session');
+            resolvedFromCache.current = false;
             setProfile(null);
             setOrganization(null);
             setSession(null);
             setUser(null);
-          } else if (event === 'SIGNED_IN' || event === 'USER_UPDATED') {
+          } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
             if (session?.user) {
+              setSession(session);
+              setUser(session.user);
               await fetchProfileAndOrg(session.user.id);
             }
           }
-          
-          if (!mounted) return;
-          setSession(session);
-          setUser(session?.user ?? null);
         } catch (e) {
-          // Silent catch
+          console.warn('[AuthProvider] onAuthStateChange error:', e);
         }
       }
     );
@@ -290,19 +303,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signOut = async () => {
-    // Clear local storage and React states immediately so the UI redirects instantly
     localStorage.removeItem('amana_offline_session');
+    resolvedFromCache.current = false;
     setUser(null);
     setProfile(null);
     setOrganization(null);
     setSession(null);
-
-    // Trigger Supabase cloud signout in the background without blocking the UI
-    try {
-      await supabase.auth.signOut();
-    } catch (e) {
-      console.warn('Sign out from Supabase failed or offline:', e);
-    }
+    supabase.auth.signOut().catch((e: unknown) => console.warn('[AuthProvider] signOut error:', e));
   };
 
   return (
