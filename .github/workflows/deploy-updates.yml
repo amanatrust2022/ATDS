@@ -103,11 +103,11 @@ jobs:
       # Only runs if the RELEASES_PAT secret is configured. Clones the public releases
       # repo, copies the newly built amana-hub-portable.zip, and pushes it.
       - name: Push Portable ZIP to Public Releases Repository
-        if: ${{ secrets.RELEASES_PAT != '' }}
+        if: ${{ env.RELEASES_PAT != '' }}
         env:
           RELEASES_PAT: ${{ secrets.RELEASES_PAT }}
         run: |
-          git clone https://${{ secrets.RELEASES_PAT }}@github.com/amanatrust2022/amana-releases.git temp-releases-clone
+          git clone https://$RELEASES_PAT@github.com/amanatrust2022/amana-releases.git temp-releases-clone
           cp dist/amana-hub-portable.zip temp-releases-clone/
           cd temp-releases-clone
           git config user.name "GitHub Actions"
