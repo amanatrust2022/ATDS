@@ -44,9 +44,21 @@ export async function sendEmailWithAttachment({ to, subject, htmlContent, attach
   });
 
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || 'Failed to send email');
+    let errMsg = 'Failed to send email';
+    try {
+      const error = await response.json();
+      errMsg = error.message || error.message || errMsg;
+    } catch (_) {
+      try {
+        errMsg = await response.text();
+      } catch (_) {}
+    }
+    throw new Error(errMsg);
   }
 
-  return response.json();
+  try {
+    return await response.json();
+  } catch (_) {
+    return { success: true };
+  }
 }

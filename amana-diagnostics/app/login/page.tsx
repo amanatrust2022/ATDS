@@ -2,11 +2,21 @@
 import { useState } from 'react';
 import { createClient } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
-import { RiMicroscopeLine, RiLockPasswordLine, RiMailLine } from '@remixicon/react';
+import { RiMicroscopeLine, RiLockPasswordLine, RiMailLine, RiEyeLine, RiEyeOffLine } from '@remixicon/react';
+
+function withTimeout(promise: Promise<any>, ms: number, errorMsg: string): Promise<any> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(errorMsg)), ms)
+    )
+  ]);
+}
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [resetMode, setResetMode] = useState(false);
@@ -29,8 +39,16 @@ export default function LoginPage() {
       : (process.env.NEXT_PUBLIC_LOCAL_SERVER_MODE === 'true');
 
     try {
-      // 1. Try Supabase Auth first
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      // 1. Try Supabase Auth first with 8-second timeout
+      let data, error;
+      try {
+        const authPromise = supabase.auth.signInWithPassword({ email, password });
+        const res = await withTimeout(authPromise, 8000, 'Network connection timed out');
+        data = res.data;
+        error = res.error;
+      } catch (err: any) {
+        error = { message: 'Network connection timed out (slow network).', status: 0 };
+      }
       
       if (!error && data?.user) {
         // Successful online login! Cache credentials locally
@@ -51,6 +69,7 @@ export default function LoginPage() {
       // If it's a network/connection error AND we are in local mode, attempt local login fallback
       const isNetworkError = error?.message?.includes('fetch') || 
                              error?.message?.includes('network') || 
+                             error?.message?.includes('timed out') || 
                              error?.status === 0 || 
                              (error && typeof window !== 'undefined' && !window.navigator.onLine);
 
@@ -96,12 +115,21 @@ export default function LoginPage() {
 
   const handleReset = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/update-password`,
-    });
-    if (error) setError(error.message);
-    else setResetSent(true);
+    setLoading(true); setError('');
+    try {
+      const resetPromise = supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/update-password`,
+      });
+      const { error } = await withTimeout(
+        resetPromise,
+        10000,
+        'Password reset request timed out due to slow network. Please check your connection and try again.'
+      );
+      if (error) setError(error.message);
+      else setResetSent(true);
+    } catch (err: any) {
+      setError(err.message || 'Connection timed out. Please try again.');
+    }
     setLoading(false);
   };
 
@@ -153,7 +181,33 @@ export default function LoginPage() {
                 {!resetMode && (
                   <div style={{ position: 'relative' }}>
                     <RiLockPasswordLine size={16} color="rgba(255,255,255,0.25)" style={{ position: 'absolute', left: '0.9rem', top: '50%', transform: 'translateY(-50%)' }} />
-                    <input type="password" value={password} onChange={e => setPassword(e.target.value)} required placeholder="Password" style={inp} />
+                    <input 
+                      type={showPassword ? "text" : "password"} 
+                      value={password} 
+                      onChange={e => setPassword(e.target.value)} 
+                      required 
+                      placeholder="Password" 
+                      style={{ ...inp, paddingRight: '2.8rem' }} 
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      style={{
+                        position: 'absolute',
+                        right: '0.9rem',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        background: 'none',
+                        border: 'none',
+                        color: 'rgba(255,255,255,0.25)',
+                        cursor: 'pointer',
+                        padding: 0,
+                        display: 'flex',
+                        alignItems: 'center'
+                      }}
+                    >
+                      {showPassword ? <RiEyeOffLine size={16} /> : <RiEyeLine size={16} />}
+                    </button>
                   </div>
                 )}
                 {error && <p style={{ color: '#f87171', fontSize: '0.82rem', background: 'rgba(248,113,113,0.1)', padding: '0.6rem 0.9rem', borderRadius: 6 }}>{error}</p>}

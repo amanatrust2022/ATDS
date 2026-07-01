@@ -1,12 +1,23 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { createClient } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
-import { RiMicroscopeLine, RiLockPasswordLine, RiCheckLine } from '@remixicon/react';
+import { RiMicroscopeLine, RiLockPasswordLine, RiCheckLine, RiEyeLine, RiEyeOffLine } from '@remixicon/react';
+
+function withTimeout(promise: Promise<any>, ms: number, errorMsg: string): Promise<any> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(errorMsg)), ms)
+    )
+  ]);
+}
 
 export default function UpdatePasswordPage() {
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [done, setDone] = useState(false);
@@ -18,10 +29,20 @@ export default function UpdatePasswordPage() {
     if (password !== confirm) { setError('Passwords do not match.'); return; }
     if (password.length < 8) { setError('Password must be at least 8 characters.'); return; }
     setLoading(true); setError('');
-    const { error } = await supabase.auth.updateUser({ password });
-    if (error) { setError(error.message); setLoading(false); return; }
-    setDone(true);
-    setTimeout(() => router.push('/login'), 2500);
+    try {
+      const updatePromise = supabase.auth.updateUser({ password });
+      const { error } = await withTimeout(
+        updatePromise,
+        10000,
+        'Password update timed out due to slow network. Please check your connection and try again.'
+      );
+      if (error) { setError(error.message); setLoading(false); return; }
+      setDone(true);
+      setTimeout(() => router.push('/login'), 2500);
+    } catch (err: any) {
+      setError(err.message || 'An unexpected error occurred. Please try again.');
+      setLoading(false);
+    }
   };
 
   const inp: React.CSSProperties = {
@@ -54,11 +75,63 @@ export default function UpdatePasswordPage() {
           <form onSubmit={handleUpdate} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <div style={{ position: 'relative' }}>
               <RiLockPasswordLine size={16} color="rgba(255,255,255,0.25)" style={{ position: 'absolute', left: '0.9rem', top: '50%', transform: 'translateY(-50%)' }} />
-              <input type="password" value={password} onChange={e => setPassword(e.target.value)} required placeholder="New password (min 8 chars)" style={inp} />
+              <input 
+                type={showPassword ? "text" : "password"} 
+                value={password} 
+                onChange={e => setPassword(e.target.value)} 
+                required 
+                placeholder="New password (min 8 chars)" 
+                style={{ ...inp, paddingRight: '2.8rem' }} 
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                style={{
+                  position: 'absolute',
+                  right: '0.9rem',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'none',
+                  border: 'none',
+                  color: 'rgba(255,255,255,0.25)',
+                  cursor: 'pointer',
+                  padding: 0,
+                  display: 'flex',
+                  alignItems: 'center'
+                }}
+              >
+                {showPassword ? <RiEyeOffLine size={16} /> : <RiEyeLine size={16} />}
+              </button>
             </div>
             <div style={{ position: 'relative' }}>
               <RiLockPasswordLine size={16} color="rgba(255,255,255,0.25)" style={{ position: 'absolute', left: '0.9rem', top: '50%', transform: 'translateY(-50%)' }} />
-              <input type="password" value={confirm} onChange={e => setConfirm(e.target.value)} required placeholder="Confirm new password" style={inp} />
+              <input 
+                type={showConfirm ? "text" : "password"} 
+                value={confirm} 
+                onChange={e => setConfirm(e.target.value)} 
+                required 
+                placeholder="Confirm new password" 
+                style={{ ...inp, paddingRight: '2.8rem' }} 
+              />
+              <button
+                type="button"
+                onClick={() => setShowConfirm(!showConfirm)}
+                style={{
+                  position: 'absolute',
+                  right: '0.9rem',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'none',
+                  border: 'none',
+                  color: 'rgba(255,255,255,0.25)',
+                  cursor: 'pointer',
+                  padding: 0,
+                  display: 'flex',
+                  alignItems: 'center'
+                }}
+              >
+                {showConfirm ? <RiEyeOffLine size={16} /> : <RiEyeLine size={16} />}
+              </button>
             </div>
             {error && <p style={{ color: '#f87171', fontSize: '0.82rem', background: 'rgba(248,113,113,0.1)', padding: '0.6rem 0.9rem', borderRadius: 6 }}>{error}</p>}
             <button type="submit" disabled={loading} style={{ background: loading ? '#2a4a8a' : '#4472c4', border: 'none', color: 'white', padding: '0.8rem', borderRadius: 8, fontWeight: 700, fontSize: '0.95rem', cursor: loading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>

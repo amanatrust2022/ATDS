@@ -224,7 +224,8 @@ function initDb(db: any) {
       last_name TEXT,
       signature_url TEXT,
       role TEXT NOT NULL,
-      organization_id TEXT
+      organization_id TEXT,
+      email TEXT
     );
   `);
 
@@ -391,6 +392,10 @@ function initDb(db: any) {
 
   try {
     db.exec(`ALTER TABLE patients ADD COLUMN patient_profile_id INTEGER;`);
+  } catch (e) {}
+
+  try {
+    db.exec(`ALTER TABLE profiles ADD COLUMN email TEXT;`);
   } catch (e) {}
 }
 

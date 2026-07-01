@@ -2,7 +2,16 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
-import { RiMicroscopeLine, RiCheckLine, RiShieldCheckLine, RiUploadCloud2Line } from '@remixicon/react';
+import { RiMicroscopeLine, RiCheckLine, RiShieldCheckLine, RiUploadCloud2Line, RiEyeLine, RiEyeOffLine } from '@remixicon/react';
+
+function withTimeout(promise: Promise<any>, ms: number, errorMsg: string): Promise<any> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(errorMsg)), ms)
+    )
+  ]);
+}
 
 export default function InviteAcceptPage() {
   const params = useParams();
@@ -29,24 +38,38 @@ export default function InviteAcceptPage() {
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
 
   useEffect(() => {
     const fetchInvite = async () => {
-      const { data, error } = await supabase
-        .from('invitations')
-        .select('*, organizations(*)')
-        .eq('token', token)
-        .is('accepted_at', null)
-        .gt('expires_at', new Date().toISOString())
-        .single();
+      try {
+        const fetchPromise = supabase
+          .from('invitations')
+          .select('*, organizations(*)')
+          .eq('token', token)
+          .is('accepted_at', null)
+          .gt('expires_at', new Date().toISOString())
+          .single();
 
-      if (error || !data) {
+        const { data, error } = await withTimeout(
+          fetchPromise,
+          10000,
+          'Invite lookup timed out. Please check your network connection.'
+        );
+
+        if (error || !data) {
+          setInvalid(true);
+        } else {
+          setInvite(data);
+          setOrg(data.organizations);
+        }
+      } catch (err: any) {
+        console.error('Invite fetch error:', err);
         setInvalid(true);
-      } else {
-        setInvite(data);
-        setOrg(data.organizations);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
     if (token) fetchInvite();
   }, [token]);
@@ -68,12 +91,19 @@ export default function InviteAcceptPage() {
     setSubmitting(true); setError('');
 
     try {
-      // 1. Upload Signature
+      // 1. Upload Signature (15-second timeout)
       const fileExt = signatureFile.name.split('.').pop();
       const fileName = `${invite.id}-${Math.random()}.${fileExt}`;
-      const { data: uploadData, error: uploadError } = await supabase.storage
+      
+      const uploadPromise = supabase.storage
         .from('signatures')
         .upload(fileName, signatureFile);
+
+      const { data: uploadData, error: uploadError } = await withTimeout(
+        uploadPromise,
+        15000,
+        'Signature upload timed out (slow network). Please try again.'
+      );
 
       if (uploadError) throw uploadError;
 
@@ -84,8 +114,8 @@ export default function InviteAcceptPage() {
       // 2. Format Full Name
       const fullName = `${form.title} ${form.firstName} ${form.lastName ? form.lastName + ' ' : ''}${form.surname}`.trim();
 
-      // 3. Create auth user with org + role from invite in metadata
-      const { data: authData, error: signUpErr } = await supabase.auth.signUp({
+      // 3. Create auth user (15-second timeout)
+      const signUpPromise = supabase.auth.signUp({
         email: invite.email,
         password: form.password,
         options: {
@@ -102,15 +132,37 @@ export default function InviteAcceptPage() {
         }
       });
 
+      const { data: authData, error: signUpErr } = await withTimeout(
+        signUpPromise,
+        15000,
+        'Signup request timed out (slow network). Please check your internet connection.'
+      );
+
       if (signUpErr) throw signUpErr;
 
-      // 4. Mark invite as accepted
-      await supabase.from('invitations').update({ accepted_at: new Date().toISOString() }).eq('token', token);
+      // 4. Mark invite as accepted via API
+      const acceptInvitePromise = fetch('/api/invite/accept', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token }),
+      }).then(async res => {
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || 'Failed to finalize invitation status');
+        }
+        return res.json();
+      });
 
-      // 5. Redirect directly to workspace (since Confirm Email is OFF, they are logged in)
+      await withTimeout(
+        acceptInvitePromise,
+        10000,
+        'Failed to finalize invitation status. Connection timed out.'
+      );
+
+      // 5. Redirect directly to workspace
       router.push('/');
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || 'An unexpected connection error occurred.');
       setSubmitting(false);
     }
   };
@@ -138,7 +190,7 @@ export default function InviteAcceptPage() {
         <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🔗</div>
         <h2 style={{ fontWeight: 700, marginBottom: '0.5rem' }}>Invalid or expired link</h2>
         <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.85rem', marginBottom: '1.5rem' }}>
-          This invite link has already been used or has expired. Please contact your administrator for a new invite.
+          This invite link has already been used, expired, or verification timed out due to slow network. Please contact your administrator.
         </p>
         <a href="/login" style={{ color: '#7fa3e0', textDecoration: 'none', fontWeight: 600 }}>← Back to sign in</a>
       </div>
@@ -232,11 +284,67 @@ export default function InviteAcceptPage() {
           <div style={{ background: 'rgba(255,255,255,0.03)', padding: '1.25rem', borderRadius: 8, display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <div>
               <label style={lbl}>Create Password *</label>
-              <input type="password" style={{...inp, background: 'rgba(0,0,0,0.2)'}} value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} placeholder="At least 8 characters" required />
+              <div style={{ position: 'relative' }}>
+                <input 
+                  type={showPassword ? "text" : "password"} 
+                  style={{...inp, background: 'rgba(0,0,0,0.2)', paddingRight: '2.8rem'}} 
+                  value={form.password} 
+                  onChange={e => setForm({ ...form, password: e.target.value })} 
+                  placeholder="At least 8 characters" 
+                  required 
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  style={{
+                    position: 'absolute',
+                    right: '0.9rem',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'none',
+                    border: 'none',
+                    color: 'rgba(255,255,255,0.25)',
+                    cursor: 'pointer',
+                    padding: 0,
+                    display: 'flex',
+                    alignItems: 'center'
+                  }}
+                >
+                  {showPassword ? <RiEyeOffLine size={16} /> : <RiEyeLine size={16} />}
+                </button>
+              </div>
             </div>
             <div>
               <label style={lbl}>Confirm Password *</label>
-              <input type="password" style={{...inp, background: 'rgba(0,0,0,0.2)'}} value={form.confirm} onChange={e => setForm({ ...form, confirm: e.target.value })} placeholder="Repeat password" required />
+              <div style={{ position: 'relative' }}>
+                <input 
+                  type={showConfirm ? "text" : "password"} 
+                  style={{...inp, background: 'rgba(0,0,0,0.2)', paddingRight: '2.8rem'}} 
+                  value={form.confirm} 
+                  onChange={e => setForm({ ...form, confirm: e.target.value })} 
+                  placeholder="Repeat password" 
+                  required 
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirm(!showConfirm)}
+                  style={{
+                    position: 'absolute',
+                    right: '0.9rem',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'none',
+                    border: 'none',
+                    color: 'rgba(255,255,255,0.25)',
+                    cursor: 'pointer',
+                    padding: 0,
+                    display: 'flex',
+                    alignItems: 'center'
+                  }}
+                >
+                  {showConfirm ? <RiEyeOffLine size={16} /> : <RiEyeLine size={16} />}
+                </button>
+              </div>
             </div>
           </div>
 

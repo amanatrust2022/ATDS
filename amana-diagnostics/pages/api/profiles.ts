@@ -17,7 +17,13 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
       }
 
       if (userId) {
-        const profile = db.prepare('SELECT * FROM profiles WHERE id = ?').get(userId);
+        const profile = db.prepare(`
+          SELECT p.*, COALESCE(p.email, la.email) AS email
+          FROM profiles p
+          LEFT JOIN local_auth la ON p.id = la.user_id
+          WHERE p.id = ?
+        `).get(userId);
+        
         if (!profile) {
           res.status(404).json({ error: 'Profile not found' });
           return;
@@ -26,7 +32,12 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
         return;
       }
 
-      const profiles = db.prepare('SELECT * FROM profiles WHERE organization_id = ?').all(organizationId);
+      const profiles = db.prepare(`
+        SELECT p.*, COALESCE(p.email, la.email) AS email
+        FROM profiles p
+        LEFT JOIN local_auth la ON p.id = la.user_id
+        WHERE p.organization_id = ?
+      `).all(organizationId);
       res.status(200).json(profiles);
       return;
     }
@@ -39,8 +50,8 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
       }
 
       db.prepare(`
-        INSERT INTO profiles (id, full_name, title, first_name, surname, last_name, signature_url, role, organization_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO profiles (id, full_name, title, first_name, surname, last_name, signature_url, role, organization_id, email)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
           full_name = excluded.full_name,
           title = excluded.title,
@@ -49,7 +60,8 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
           last_name = excluded.last_name,
           signature_url = excluded.signature_url,
           role = excluded.role,
-          organization_id = excluded.organization_id
+          organization_id = excluded.organization_id,
+          email = COALESCE(excluded.email, profiles.email)
       `).run(
         profile.id,
         profile.full_name,
@@ -59,7 +71,8 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
         profile.last_name || null,
         profile.signature_url || null,
         profile.role,
-        profile.organization_id || null
+        profile.organization_id || null,
+        profile.email || null
       );
 
       res.status(200).json({ success: true });

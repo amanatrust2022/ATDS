@@ -4,13 +4,23 @@ import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase';
 import { useAuth } from '@/components/AuthProvider';
 import Header from '@/components/Header';
-import { RiUserAddLine, RiShieldUserLine, RiDeleteBinLine, RiSettings4Line } from '@remixicon/react';
+import { RiUserAddLine, RiShieldUserLine, RiDeleteBinLine, RiSettings4Line, RiEyeLine, RiEyeOffLine } from '@remixicon/react';
+
+function withTimeout(promise: Promise<any>, ms: number, errorMsg: string): Promise<any> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(errorMsg)), ms)
+    )
+  ]);
+}
 
 export default function StaffManagement() {
   const { profile } = useAuth();
   const [staff, setStaff] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState({ email: '', password: '', fullName: '', role: 'reception' });
+  const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const supabase = createClient();
 
@@ -31,28 +41,36 @@ export default function StaffManagement() {
     e.preventDefault();
     setSubmitting(true);
     
-    // Note: In a real app, you'd use a Supabase Edge Function or the Admin Auth API 
-    // to create users without logging them in. 
-    // For this prototype, we'll use a signUp with metadata which our trigger handles.
-    const { error } = await supabase.auth.signUp({
-      email: form.email,
-      password: form.password,
-      options: {
-        data: {
-          full_name: form.fullName,
-          role: form.role
+    try {
+      const signUpPromise = supabase.auth.signUp({
+        email: form.email,
+        password: form.password,
+        options: {
+          data: {
+            full_name: form.fullName,
+            role: form.role
+          }
         }
-      }
-    });
+      });
 
-    if (error) {
-      alert(error.message);
-    } else {
-      alert('Staff registered successfully! They can now log in.');
-      setForm({ email: '', password: '', fullName: '', role: 'reception' });
-      fetchStaff();
+      const { error } = await withTimeout(
+        signUpPromise,
+        10000,
+        'Staff registration request timed out. Please check your internet connection.'
+      );
+
+      if (error) {
+        alert(error.message);
+      } else {
+        alert('Staff registered successfully! They can now log in.');
+        setForm({ email: '', password: '', fullName: '', role: 'reception' });
+        fetchStaff();
+      }
+    } catch (err: any) {
+      alert(err.message || 'Connection timed out. Please try again.');
+    } finally {
+      setSubmitting(false);
     }
-    setSubmitting(false);
   };
 
   const updateRole = async (id: string, role: string) => {
@@ -83,7 +101,8 @@ export default function StaffManagement() {
           {/* Add Staff Form */}
           <div style={{ background: 'white', padding: '1.5rem', borderRadius: 'var(--radius-lg)', border: '1px solid var(--gray-300)', height: 'fit-content' }}>
             <h3 style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.1rem', fontWeight: 700 }}>
-              <RiUserAddLine size={20} color="var(--teal-700)" /> Register New Staff
+              <RiUserAddLine size={20} color="var(--teal-800)" />
+              Add New Staff Member
             </h3>
             <form onSubmit={handleCreateStaff} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div>
@@ -109,14 +128,35 @@ export default function StaffManagement() {
               </div>
               <div>
                 <label style={labelStyle}>Temporary Password</label>
-                <input 
-                  style={inputStyle} 
-                  type="password"
-                  value={form.password} 
-                  onChange={e => setForm({...form, password: e.target.value})} 
-                  required 
-                  placeholder="At least 6 characters"
-                />
+                <div style={{ position: 'relative' }}>
+                  <input 
+                    style={{ ...inputStyle, paddingRight: '2.8rem' }} 
+                    type={showPassword ? "text" : "password"}
+                    value={form.password} 
+                    onChange={e => setForm({...form, password: e.target.value})} 
+                    required 
+                    placeholder="At least 6 characters"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    style={{
+                      position: 'absolute',
+                      right: '0.75rem',
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      background: 'none',
+                      border: 'none',
+                      color: 'var(--gray-400)',
+                      cursor: 'pointer',
+                      padding: 0,
+                      display: 'flex',
+                      alignItems: 'center'
+                    }}
+                  >
+                    {showPassword ? <RiEyeOffLine size={16} /> : <RiEyeLine size={16} />}
+                  </button>
+                </div>
               </div>
               <div>
                 <label style={labelStyle}>Access Role</label>

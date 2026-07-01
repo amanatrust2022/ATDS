@@ -2,10 +2,19 @@
 import { useState } from 'react';
 import { createClient } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
-import { RiMicroscopeLine, RiArrowLeftLine, RiCheckLine, RiMailLine } from '@remixicon/react';
+import { RiMicroscopeLine, RiArrowLeftLine, RiCheckLine, RiMailLine, RiEyeLine, RiEyeOffLine } from '@remixicon/react';
 
 const slugify = (text: string) =>
   text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+function withTimeout(promise: Promise<any>, ms: number, errorMsg: string): Promise<any> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(errorMsg)), ms)
+    )
+  ]);
+}
 
 type Step = 1 | 2 | 'confirm';
 
@@ -17,6 +26,8 @@ export default function SignupPage() {
   const [error, setError] = useState('');
   const [org, setOrg] = useState({ name: '', slug: '', address: '', phone: '', email: '', letterheadLine2: '' });
   const [admin, setAdmin] = useState({ fullName: '', email: '', password: '', confirm: '' });
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
 
   const [checkingOrg, setCheckingOrg] = useState(false);
 
@@ -28,7 +39,12 @@ export default function SignupPage() {
     setCheckingOrg(true);
     setError('');
     try {
-      const { data: exists, error: checkErr } = await supabase.rpc('check_slug_exists', { p_slug: org.slug });
+      const checkPromise = supabase.rpc('check_slug_exists', { p_slug: org.slug });
+      const { data: exists, error: checkErr } = await withTimeout(
+        checkPromise,
+        10000,
+        'Workspace verification timed out due to slow network. Please try again.'
+      );
       if (checkErr) throw checkErr;
       if (exists) {
         setError('This Workspace ID (slug) is already taken. Please choose a different one.');
@@ -52,8 +68,8 @@ export default function SignupPage() {
     try {
       localStorage.setItem('pending_org', JSON.stringify(org));
 
-      // 1. Create organization to reserve the slug
-      const { data: newOrg, error: orgErr } = await supabase.rpc('create_organization_for_signup', {
+      // 1. Create organization to reserve the slug with a 12-second timeout
+      const createOrgPromise = supabase.rpc('create_organization_for_signup', {
         p_name:    org.name,
         p_slug:    org.slug,
         p_address: org.address || null,
@@ -61,6 +77,13 @@ export default function SignupPage() {
         p_email:   org.email   || null,
         p_letterhead_line2: org.letterheadLine2 || null,
       });
+      const newOrgRes = await withTimeout(
+        createOrgPromise,
+        12000,
+        'Workspace setup timed out (slow network). Please try again.'
+      );
+
+      const { data: newOrg, error: orgErr } = newOrgRes;
 
       if (orgErr) {
         if (orgErr.message.includes('SLUG_TAKEN')) {
@@ -71,8 +94,8 @@ export default function SignupPage() {
       }
       createdOrgId = newOrg.id;
 
-      // 2. Sign up user account with organization_id in metadata
-      const { data, error: authErr } = await supabase.auth.signUp({
+      // 2. Sign up user account with organization_id in metadata with a 15-second timeout
+      const signUpPromise = supabase.auth.signUp({
         email: admin.email,
         password: admin.password,
         options: {
@@ -90,7 +113,13 @@ export default function SignupPage() {
           emailRedirectTo: `${window.location.origin}/onboarding`,
         }
       });
+      const dataRes = await withTimeout(
+        signUpPromise,
+        15000,
+        'Signup request timed out (slow network). Please check your internet connection.'
+      );
 
+      const { data, error: authErr } = dataRes;
       if (authErr) throw authErr;
 
       // If user already exists, identities will be empty
@@ -109,7 +138,8 @@ export default function SignupPage() {
       // Rollback organization reservation if signup fails
       if (createdOrgId) {
         try {
-          await supabase.rpc('delete_organization_rollback', { p_org_id: createdOrgId });
+          const rollbackPromise = supabase.rpc('delete_organization_rollback', { p_org_id: createdOrgId });
+          await withTimeout(rollbackPromise, 5000, 'Rollback timed out');
         } catch (rollbackErr) {
           console.warn('Rollback failed:', rollbackErr);
         }
@@ -214,8 +244,70 @@ export default function SignupPage() {
           <form onSubmit={handleSignup} style={{ display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
             <div><label style={lbl}>Your Full Name *</label><input style={inp} value={admin.fullName} onChange={e => setAdmin({ ...admin, fullName: e.target.value })} placeholder="e.g. Dr. Aisha Ibrahim" required /></div>
             <div><label style={lbl}>Email Address *</label><input style={inp} type="email" value={admin.email} onChange={e => setAdmin({ ...admin, email: e.target.value })} placeholder="admin@facility.com" required /></div>
-            <div><label style={lbl}>Password *</label><input style={inp} type="password" value={admin.password} onChange={e => setAdmin({ ...admin, password: e.target.value })} placeholder="At least 8 characters" required /></div>
-            <div><label style={lbl}>Confirm Password *</label><input style={inp} type="password" value={admin.confirm} onChange={e => setAdmin({ ...admin, confirm: e.target.value })} placeholder="Repeat password" required /></div>
+            <div>
+              <label style={lbl}>Password *</label>
+              <div style={{ position: 'relative' }}>
+                <input 
+                  style={{ ...inp, paddingRight: '2.8rem' }} 
+                  type={showPassword ? "text" : "password"} 
+                  value={admin.password} 
+                  onChange={e => setAdmin({ ...admin, password: e.target.value })} 
+                  placeholder="At least 8 characters" 
+                  required 
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  style={{
+                    position: 'absolute',
+                    right: '0.9rem',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'none',
+                    border: 'none',
+                    color: 'rgba(255,255,255,0.25)',
+                    cursor: 'pointer',
+                    padding: 0,
+                    display: 'flex',
+                    alignItems: 'center'
+                  }}
+                >
+                  {showPassword ? <RiEyeOffLine size={16} /> : <RiEyeLine size={16} />}
+                </button>
+              </div>
+            </div>
+            <div>
+              <label style={lbl}>Confirm Password *</label>
+              <div style={{ position: 'relative' }}>
+                <input 
+                  style={{ ...inp, paddingRight: '2.8rem' }} 
+                  type={showConfirm ? "text" : "password"} 
+                  value={admin.confirm} 
+                  onChange={e => setAdmin({ ...admin, confirm: e.target.value })} 
+                  placeholder="Repeat password" 
+                  required 
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirm(!showConfirm)}
+                  style={{
+                    position: 'absolute',
+                    right: '0.9rem',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'none',
+                    border: 'none',
+                    color: 'rgba(255,255,255,0.25)',
+                    cursor: 'pointer',
+                    padding: 0,
+                    display: 'flex',
+                    alignItems: 'center'
+                  }}
+                >
+                  {showConfirm ? <RiEyeOffLine size={16} /> : <RiEyeLine size={16} />}
+                </button>
+              </div>
+            </div>
             {error && <p style={{ color: '#f87171', fontSize: '0.82rem', background: 'rgba(248,113,113,0.1)', padding: '0.6rem 0.9rem', borderRadius: 6 }}>{error}</p>}
             <button type="submit" disabled={loading} style={{ background: loading ? '#2a4a8a' : '#4472c4', border: 'none', color: 'white', padding: '0.8rem', borderRadius: 8, fontWeight: 700, fontSize: '0.95rem', cursor: loading ? 'not-allowed' : 'pointer', marginTop: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
               {loading ? 'Creating account...' : <><RiCheckLine size={18} /> Create Workspace</>}

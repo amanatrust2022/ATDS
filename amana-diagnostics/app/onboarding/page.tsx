@@ -5,10 +5,19 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
 import { RiCheckLine, RiTeamLine, RiRocketLine, RiMicroscopeLine, RiLoader4Line } from '@remixicon/react';
 
-// What the onboarding page is currently doing
+// Onboarding page with network timeout checks
 type Status = 'loading' | 'creating' | 'no_data' | 'ready';
 
 const slugify = (t: string) => t.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+function withTimeout(promise: Promise<any>, ms: number, errorMsg: string): Promise<any> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(errorMsg)), ms)
+    )
+  ]);
+}
 
 export default function OnboardingPage() {
   const { user, organization, profile, loading, refreshOrg } = useAuth();
@@ -35,7 +44,6 @@ export default function OnboardingPage() {
     if (status === 'creating' || status === 'ready') return;
 
     // If we have no profile AND no user, they are truly logged out.
-    // (RootWrapper actually handles this, but just in case)
     if (!profile) {
        setStatus('no_data'); 
        setError('We could not load your user profile. Please contact support or try logging out and back in.');
@@ -43,7 +51,6 @@ export default function OnboardingPage() {
     }
     
     // If the profile already has a linked organization, do NOT try to create it.
-    // Instead, display the loading screen and wait for the AuthProvider to populate the organization object.
     if (profile.organization_id) {
       if (status !== 'loading') {
         setStatus('loading');
@@ -80,7 +87,8 @@ export default function OnboardingPage() {
     setStatus('creating');
     setError('');
     try {
-      const { error: orgErr } = await supabase.rpc('create_organization_for_signup', {
+      // 1. Create organization with a 12-second timeout
+      const createPromise = supabase.rpc('create_organization_for_signup', {
         p_name:    data.name,
         p_slug:    data.slug,
         p_address: data.address || null,
@@ -88,6 +96,12 @@ export default function OnboardingPage() {
         p_email:   data.email   || null,
         p_letterhead_line2: data.letterheadLine2 || null,
       });
+
+      const { error: orgErr } = await withTimeout(
+        createPromise,
+        12000,
+        'Workspace creation request timed out due to a slow network. Please check your connection and try again.'
+      );
 
       if (orgErr) {
         if (orgErr.message.includes('SLUG_TAKEN')) {
@@ -98,8 +112,14 @@ export default function OnboardingPage() {
       }
 
       localStorage.removeItem('pending_org');
-      await refreshOrg();
-      // refreshOrg will update `organization` in context → useEffect fires again → status = 'ready'
+
+      // 2. Refresh workspace context with a 10-second timeout
+      await withTimeout(
+        refreshOrg(),
+        10000,
+        'Workspace activation completed, but taking too long to load profile data. Please refresh the page.'
+      );
+      
     } catch (err: any) {
       setError(err.message || 'An unexpected error occurred.');
       setStatus('no_data'); // Fall back to manual form
