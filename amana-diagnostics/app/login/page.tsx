@@ -95,8 +95,9 @@ export default function LoginPage() {
       clearTimeout(timer2);
 
       if (!error && data?.user) {
-        // Success — save credentials locally if in local mode then reload
+        // Success
         if (isLocalMode) {
+          // Local Mode: save credentials then reload to pick up the local session
           try {
             await fetch('/api/auth/save-credentials', {
               method: 'POST',
@@ -107,9 +108,11 @@ export default function LoginPage() {
             console.error('Failed to save credentials locally:', saveErr);
           }
           window.location.reload();
+        } else {
+          // Cloud Mode: do NOT reload — let AuthProvider's onAuthStateChange redirect us.
+          // Show a progress message while the profile is fetched and the redirect fires.
+          setStatusText('Redirecting to workspace...');
         }
-        // In Cloud Mode, we do NOT reload the page. This prevents destroying the HTTP connection 
-        // and session state, allowing the AuthProvider's onAuthStateChange to transition instantly.
         return;
       }
 

@@ -62,11 +62,16 @@ export default function RootWrapper({ children }: { children: React.ReactNode })
     if (!user && !isPublic) { router.push('/login'); return; }
 
     // Logged in but no profile or no organization linked yet → go to onboarding.
+    // IMPORTANT: Exclude /login and /signup — in Cloud Mode, auth fires before profile is fetched,
+    // so redirecting from these paths would fire before the profile data arrives, causing a premature
+    // redirect to /onboarding even for users with a valid organization.
     const hasNoOrg = !profile || !profile.organization_id;
     if (
       user &&
       hasNoOrg &&
       currentPath !== '/onboarding' &&
+      currentPath !== '/login' &&
+      currentPath !== '/signup' &&
       !currentPath.startsWith('/invite/')
     ) {
       router.push('/onboarding'); return;
