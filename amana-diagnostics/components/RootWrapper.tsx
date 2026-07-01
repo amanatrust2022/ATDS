@@ -60,13 +60,21 @@ export default function RootWrapper({ children }: { children: React.ReactNode })
     // Not logged in → redirect to login (except on public pages)
     if (!user && !isPublic) { router.push('/login'); return; }
 
-    // Logged in but no org yet → always go to onboarding (unless already there or on a public page)
-    if (user && !organization && currentPath !== '/onboarding' && !currentPath.startsWith('/invite/')) {
+    // Logged in but no org yet → go to onboarding.
+    // NEVER redirect from /login or /signup — the user must complete auth first.
+    if (
+      user &&
+      !organization &&
+      currentPath !== '/onboarding' &&
+      currentPath !== '/login' &&
+      currentPath !== '/signup' &&
+      !currentPath.startsWith('/invite/')
+    ) {
       router.push('/onboarding'); return;
     }
 
     // Logged in with org → immediately redirect away from login/signup/landing to the role workspace
-    if (user && organization && (currentPath === '/login' || currentPath === '/signup' || currentPath === '/')) {
+    if (user && organization && (currentPath === '/login' || currentPath === '/signup' || currentPath === '/' || currentPath === '/onboarding')) {
       router.replace(getRolePath(profile?.role, organization.slug)); return;
     }
   }, [user, profile, organization, loading, currentPath]);

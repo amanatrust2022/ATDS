@@ -72,6 +72,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const fetchProfileAndOrg = async (userId: string) => {
     const IS_LOCAL_MODE = getIsLocalMode();
+    const hasCache = !!profile && !!organization;
+    if (!hasCache) {
+      setLoading(true);
+    }
     try {
       let prof: any = null;
       let org: any = null;
@@ -91,7 +95,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
           }
         } catch (localErr) {
-          console.warn('[AuthProvider] Local database lookup failed, falling back to Supabase:', localErr);
+          console.warn('Local database lookup failed, falling back to Supabase:', localErr);
         }
       }
 
@@ -110,7 +114,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             fetchedFromCloud = true;
           }
         } catch (cloudErr) {
-          console.log('[AuthProvider] Could not sync profile from cloud:', cloudErr);
+          console.log('Could not sync profile from cloud during refresh:', cloudErr);
         }
       }
 
@@ -159,13 +163,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               });
             }
           } catch (syncErr) {
-            console.warn('[AuthProvider] Failed to cache to local SQLite:', syncErr);
+            console.warn('Failed to cache profile/org to local SQLite:', syncErr);
           }
         }
       }
     } catch (e) {
-      console.error('[AuthProvider] fetchProfileAndOrg error:', e);
-      // Don't null out profile/org here — keep last-known state to avoid flicker
+      console.error('fetchProfileAndOrg error:', e);
+      setProfile(null);
+      setOrganization(null);
+    } finally {
+      if (!hasCache) {
+        setLoading(false);
+      }
     }
   };
 
