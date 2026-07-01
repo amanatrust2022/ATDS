@@ -72,7 +72,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const fetchProfileAndOrg = async (userId: string) => {
     const IS_LOCAL_MODE = getIsLocalMode();
-    const hasCache = !!profile && !!organization;
+    
+    // Check localStorage directly to avoid stale React state closure issues
+    const cachedSessionStr = typeof window !== 'undefined' ? localStorage.getItem('amana_offline_session') : null;
+    let hasCache = false;
+    if (cachedSessionStr) {
+      try {
+        const cached = JSON.parse(cachedSessionStr);
+        if (cached && cached.profile && cached.organization) {
+          hasCache = true;
+        }
+      } catch (e) {}
+    }
+
     if (!hasCache) {
       setLoading(true);
     }

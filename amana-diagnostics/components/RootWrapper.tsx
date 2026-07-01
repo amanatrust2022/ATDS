@@ -60,11 +60,12 @@ export default function RootWrapper({ children }: { children: React.ReactNode })
     // Not logged in → redirect to login (except on public pages)
     if (!user && !isPublic) { router.push('/login'); return; }
 
-    // Logged in but no org yet → go to onboarding.
+    // Logged in but no profile or no organization linked yet → go to onboarding.
     // NEVER redirect from /login or /signup — the user must complete auth first.
+    const hasNoOrg = !profile || !profile.organization_id;
     if (
       user &&
-      !organization &&
+      hasNoOrg &&
       currentPath !== '/onboarding' &&
       currentPath !== '/login' &&
       currentPath !== '/signup' &&
