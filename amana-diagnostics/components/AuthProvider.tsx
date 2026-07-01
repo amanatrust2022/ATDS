@@ -71,6 +71,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const supabase = createClient();
 
   const fetchProfileAndOrg = async (userId: string) => {
+    console.log('[AuthProvider] fetchProfileAndOrg starting for:', userId);
     const IS_LOCAL_MODE = getIsLocalMode();
     
     // Check localStorage directly to avoid stale React state closure issues
@@ -85,9 +86,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch (e) {}
     }
 
-    if (!hasCache) {
-      setLoading(true);
-    }
+    console.log('[AuthProvider] fetchProfileAndOrg hasCache:', hasCache, 'IS_LOCAL_MODE:', IS_LOCAL_MODE);
     try {
       let prof: any = null;
       let org: any = null;
@@ -96,6 +95,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (IS_LOCAL_MODE) {
         // Fetch from local SQLite server endpoints (~5ms)
         try {
+          console.log('[AuthProvider] fetchProfileAndOrg fetching from local SQLite...');
           const profRes = await fetch(`/api/profiles?userId=${userId}`);
           if (profRes.ok) {
             prof = await profRes.json();
@@ -107,13 +107,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
           }
         } catch (localErr) {
-          console.warn('Local database lookup failed, falling back to Supabase:', localErr);
+          console.warn('[AuthProvider] Local database lookup failed, falling back to Supabase:', localErr);
         }
       }
 
       // In local mode: if org not found locally, check cloud (covers invite/onboarding flows)
       if (IS_LOCAL_MODE && prof && !prof.organization_id) {
         try {
+          console.log('[AuthProvider] fetchProfileAndOrg (Local Mode fallback) checking cloud profile...');
           const { data } = await supabase
             .from('profiles')
             .select('*, organizations(*)')
@@ -126,12 +127,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             fetchedFromCloud = true;
           }
         } catch (cloudErr) {
-          console.log('Could not sync profile from cloud during refresh:', cloudErr);
+          console.log('[AuthProvider] Could not sync profile from cloud during refresh:', cloudErr);
         }
       }
 
       // Cloud mode (Vercel) — single joined query, ~150-300ms
       if (!prof) {
+        console.log('[AuthProvider] fetchProfileAndOrg querying cloud Supabase profiles...');
         const { data, error } = await supabase
           .from('profiles')
           .select('*, organizations(*)')
@@ -146,6 +148,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         fetchedFromCloud = true;
       }
 
+      console.log('[AuthProvider] fetchProfileAndOrg resolved:', { full_name: prof?.full_name, org_slug: org?.slug });
       setProfile(prof ?? null);
       setOrganization(org ?? null);
 
@@ -162,6 +165,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Back-sync cloud profile into local SQLite
         if (fetchedFromCloud && IS_LOCAL_MODE) {
           try {
+            console.log('[AuthProvider] fetchProfileAndOrg syncing cloud profile/org to local SQLite...');
             await fetch('/api/profiles', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -175,18 +179,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               });
             }
           } catch (syncErr) {
-            console.warn('Failed to cache profile/org to local SQLite:', syncErr);
+            console.warn('[AuthProvider] Failed to cache profile/org to local SQLite:', syncErr);
           }
         }
       }
     } catch (e) {
-      console.error('fetchProfileAndOrg error:', e);
+      console.error('[AuthProvider] fetchProfileAndOrg error:', e);
       setProfile(null);
       setOrganization(null);
     } finally {
-      if (!hasCache) {
-        setLoading(false);
-      }
+      console.log('[AuthProvider] fetchProfileAndOrg completed');
     }
   };
 

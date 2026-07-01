@@ -105,28 +105,31 @@ export default function StaffManagement() {
     let inviteData: any[] = [];
 
     if (isLocalMode) {
-      try {
-        const res = await fetch(`/api/profiles?organizationId=${organization.id}`);
-        if (res.ok) {
-          staffData = await res.json();
-        }
-      } catch (err) {
-        console.error('Failed to fetch local profiles:', err);
-      }
+      const fetchProfiles = fetch(`/api/profiles?organizationId=${organization.id}`)
+        .then(res => res.ok ? res.json() : [])
+        .catch(err => {
+          console.error('Failed to fetch local profiles:', err);
+          return [];
+        });
 
-      try {
-        const { data, error } = await supabase
-          .from('invitations')
-          .select('*')
-          .eq('organization_id', organization.id)
-          .is('accepted_at', null)
-          .order('created_at', { ascending: false });
-        if (!error && data) {
-          inviteData = data;
-        }
-      } catch (err) {
-        console.warn('Failed to fetch invitations from Supabase (offline fallback):', err);
-      }
+      const fetchInvites = supabase
+        .from('invitations')
+        .select('*')
+        .eq('organization_id', organization.id)
+        .is('accepted_at', null)
+        .order('created_at', { ascending: false })
+        .then(({ data, error }) => {
+          if (error) throw error;
+          return data || [];
+        })
+        .catch(err => {
+          console.warn('Failed to fetch invitations from Supabase (offline fallback):', err);
+          return [];
+        });
+
+      const [sData, iData] = await Promise.all([fetchProfiles, fetchInvites]);
+      staffData = sData;
+      inviteData = iData;
     } else {
       try {
         const [{ data: sData }, { data: iData }] = await Promise.all([

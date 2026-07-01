@@ -106,9 +106,10 @@ export default function LoginPage() {
           } catch (saveErr) {
             console.error('Failed to save credentials locally:', saveErr);
           }
+          window.location.reload();
         }
-        // Reload so AuthProvider picks up the new Supabase session via onAuthStateChange / getSession
-        window.location.reload();
+        // In Cloud Mode, we do NOT reload the page. This prevents destroying the HTTP connection 
+        // and session state, allowing the AuthProvider's onAuthStateChange to transition instantly.
         return;
       }
 

@@ -27,28 +27,33 @@ export default function AdminOverview() {
       let inviteCount = 0;
 
       if (isLocalMode) {
-        try {
-          const res = await fetch(`/api/profiles?organizationId=${organization.id}`);
-          if (res.ok) {
-            const profiles = await res.json();
-            staffCount = Array.isArray(profiles) ? profiles.length : 0;
-          }
-        } catch (err) {
-          console.error('Failed to fetch local profiles for stats:', err);
-        }
+        const fetchProfiles = fetch(`/api/profiles?organizationId=${organization.id}`)
+          .then(res => res.ok ? res.json() : [])
+          .then(profiles => {
+            return Array.isArray(profiles) ? profiles.length : 0;
+          })
+          .catch(err => {
+            console.error('Failed to fetch local profiles for stats:', err);
+            return 0;
+          });
 
-        try {
-          const { count, error } = await supabase
-            .from('invitations')
-            .select('*', { count: 'exact', head: true })
-            .eq('organization_id', organization.id)
-            .is('accepted_at', null);
-          if (!error && count !== null) {
-            inviteCount = count;
-          }
-        } catch (err) {
-          console.warn('Failed to fetch invitations from Supabase (offline fallback):', err);
-        }
+        const fetchInvites = supabase
+          .from('invitations')
+          .select('*', { count: 'exact', head: true })
+          .eq('organization_id', organization.id)
+          .is('accepted_at', null)
+          .then(({ count, error }) => {
+            if (error) throw error;
+            return count || 0;
+          })
+          .catch(err => {
+            console.warn('Failed to fetch invitations from Supabase (offline fallback):', err);
+            return 0;
+          });
+
+        const [sCount, iCount] = await Promise.all([fetchProfiles, fetchInvites]);
+        staffCount = sCount;
+        inviteCount = iCount;
       } else {
         try {
           const [{ count: sCount }, { count: iCount }] = await Promise.all([

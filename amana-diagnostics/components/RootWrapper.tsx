@@ -56,19 +56,17 @@ export default function RootWrapper({ children }: { children: React.ReactNode })
 
   useEffect(() => {
     if (loading) return;
+    if (!pathname) return; // Prevent running redirect logic before Next.js hydration has resolved the pathname
 
     // Not logged in → redirect to login (except on public pages)
     if (!user && !isPublic) { router.push('/login'); return; }
 
     // Logged in but no profile or no organization linked yet → go to onboarding.
-    // NEVER redirect from /login or /signup — the user must complete auth first.
     const hasNoOrg = !profile || !profile.organization_id;
     if (
       user &&
       hasNoOrg &&
       currentPath !== '/onboarding' &&
-      currentPath !== '/login' &&
-      currentPath !== '/signup' &&
       !currentPath.startsWith('/invite/')
     ) {
       router.push('/onboarding'); return;
