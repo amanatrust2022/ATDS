@@ -3,7 +3,7 @@ import { useAuth } from '@/components/AuthProvider';
 import { useRouter, usePathname } from 'next/navigation';
 import { useEffect } from 'react';
 
-const PUBLIC_PATHS = ['/', '/login', '/signup', '/onboarding', '/update-password', '/download'];
+const PUBLIC_PATHS = ['/', '/login', '/signup', '/update-password', '/download'];
 
 // Maps each staff role to its direct workspace URL
 const getRolePath = (role: string | undefined, slug: string) => {

@@ -118,11 +118,11 @@ export default function StaffManagement() {
         .eq('organization_id', organization.id)
         .is('accepted_at', null)
         .order('created_at', { ascending: false })
-        .then(({ data, error }) => {
+        .then(({ data, error }: any) => {
           if (error) throw error;
           return data || [];
         })
-        .catch(err => {
+        .catch((err: any) => {
           console.warn('Failed to fetch invitations from Supabase (offline fallback):', err);
           return [];
         });

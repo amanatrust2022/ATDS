@@ -267,17 +267,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             // First time load, block UI until profile/org resolved
             await fetchProfileAndOrg(session.user.id);
           }
-        } else if (!resolvedFromCache.current) {
-          // No session, no cache — user is genuinely logged out
-          // Only clear cache if we didn't already paint from it (avoid erasing valid cache)
-          localStorage.removeItem('amana_offline_session');
-          setProfile(null);
-          setOrganization(null);
-          setUser(null);
-          setSession(null);
+        } else {
+          // No cloud session. 
+          // In Cloud Mode, this means the user is genuinely logged out (we clear cache instantly).
+          // In Local Mode, they can still be logged in locally via cache.
+          const IS_LOCAL_MODE = getIsLocalMode();
+          if (!IS_LOCAL_MODE) {
+            localStorage.removeItem('amana_offline_session');
+            resolvedFromCache.current = false;
+            setProfile(null);
+            setOrganization(null);
+            setUser(null);
+            setSession(null);
+          } else if (!resolvedFromCache.current) {
+            // Local Mode with no cache — user is genuinely logged out
+            localStorage.removeItem('amana_offline_session');
+            setProfile(null);
+            setOrganization(null);
+            setUser(null);
+            setSession(null);
+          }
         }
-        // If we resolved from cache but there's no live session (e.g. timeout),
-        // keep the cached state visible — don't clobber it.
 
       } catch (e) {
         console.error('[AuthProvider] initializeAuth error:', e);

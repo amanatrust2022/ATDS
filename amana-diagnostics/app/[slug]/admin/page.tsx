@@ -42,11 +42,11 @@ export default function AdminOverview() {
           .select('*', { count: 'exact', head: true })
           .eq('organization_id', organization.id)
           .is('accepted_at', null)
-          .then(({ count, error }) => {
+          .then(({ count, error }: any) => {
             if (error) throw error;
             return count || 0;
           })
-          .catch(err => {
+          .catch((err: any) => {
             console.warn('Failed to fetch invitations from Supabase (offline fallback):', err);
             return 0;
           });
