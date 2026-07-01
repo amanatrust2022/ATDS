@@ -4,13 +4,9 @@ import { createClient } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import { RiMicroscopeLine, RiLockPasswordLine, RiMailLine, RiEyeLine, RiEyeOffLine } from '@remixicon/react';
 
-function withTimeout(promise: Promise<any>, ms: number, errorMsg: string): Promise<any> {
-  return Promise.race([
-    promise,
-    new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error(errorMsg)), ms)
-    )
-  ]);
+function withTimeout(promise: Promise<any>, ms: number, onWarning: () => void): Promise<any> {
+  const timer = setTimeout(onWarning, ms);
+  return promise.finally(() => clearTimeout(timer));
 }
 
 export default function LoginPage() {
@@ -86,11 +82,13 @@ export default function LoginPage() {
       let data, error;
       try {
         const authPromise = supabase.auth.signInWithPassword({ email, password });
-        const res = await withTimeout(authPromise, 8000, 'Network connection timed out');
+        const res = await withTimeout(authPromise, 8000, () => {
+          setError('Slow network connection detected. Still attempting to sign in... please wait.');
+        });
         data = res.data;
         error = res.error;
       } catch (err: any) {
-        error = { message: 'Network connection timed out (slow network).', status: 0 };
+        error = { message: err.message || 'Connection failed.', status: 0 };
       }
       
       clearTimeout(timer1);
@@ -167,7 +165,7 @@ export default function LoginPage() {
       const { error } = await withTimeout(
         resetPromise,
         10000,
-        'Password reset request timed out due to slow network. Please check your connection and try again.'
+        () => setError('Slow network connection detected. Still sending password reset email... please wait.')
       );
       if (error) setError(error.message);
       else setResetSent(true);
@@ -206,7 +204,7 @@ export default function LoginPage() {
             <div style={{ textAlign: 'center', color: 'white' }}>
               <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>✉️</div>
               <h2 style={{ fontWeight: 700, marginBottom: '0.5rem' }}>Check your email</h2>
-              <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.85rem', marginBottom: '1.5rem' }}> we sent a password reset link to {email}</p>
+              <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.85rem', marginBottom: '1.5rem' }}>we sent a password reset link to {email}</p>
               <button onClick={() => { setResetMode(false); setResetSent(false); }} style={{ background: 'none', border: '1px solid rgba(255,255,255,0.2)', color: 'white', padding: '0.6rem 1.5rem', borderRadius: 8, cursor: 'pointer', fontSize: '0.85rem' }}>Back to sign in</button>
             </div>
           ) : (

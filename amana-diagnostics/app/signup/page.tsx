@@ -7,13 +7,9 @@ import { RiMicroscopeLine, RiArrowLeftLine, RiCheckLine, RiMailLine, RiEyeLine, 
 const slugify = (text: string) =>
   text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
-function withTimeout(promise: Promise<any>, ms: number, errorMsg: string): Promise<any> {
-  return Promise.race([
-    promise,
-    new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error(errorMsg)), ms)
-    )
-  ]);
+function withTimeout(promise: Promise<any>, ms: number, onWarning: () => void): Promise<any> {
+  const timer = setTimeout(onWarning, ms);
+  return promise.finally(() => clearTimeout(timer));
 }
 
 type Step = 1 | 2 | 'confirm';
@@ -49,7 +45,7 @@ export default function SignupPage() {
       const { data: exists, error: checkErr } = await withTimeout(
         checkPromise,
         10000,
-        'Workspace verification timed out due to slow network. Please try again.'
+        () => setError('Slow network connection detected. Still verifying workspace ID availability... please wait.')
       );
       
       clearTimeout(statusTimer);
@@ -98,7 +94,7 @@ export default function SignupPage() {
       const newOrgRes = await withTimeout(
         createOrgPromise,
         12000,
-        'Workspace setup timed out (slow network). Please try again.'
+        () => setError('Slow network connection detected. Still setting up workspace... please wait.')
       );
 
       const { data: newOrg, error: orgErr } = newOrgRes;
@@ -134,7 +130,7 @@ export default function SignupPage() {
       const dataRes = await withTimeout(
         signUpPromise,
         15000,
-        'Signup request timed out (slow network). Please check your internet connection.'
+        () => setError('Slow network connection detected. Still creating user account... please wait.')
       );
 
       const { data, error: authErr } = dataRes;
@@ -160,7 +156,7 @@ export default function SignupPage() {
       if (createdOrgId) {
         try {
           const rollbackPromise = supabase.rpc('delete_organization_rollback', { p_org_id: createdOrgId });
-          await withTimeout(rollbackPromise, 5000, 'Rollback timed out');
+          await withTimeout(rollbackPromise, 5000, () => {});
         } catch (rollbackErr) {
           console.warn('Rollback failed:', rollbackErr);
         }

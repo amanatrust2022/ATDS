@@ -6,13 +6,9 @@ import { useAuth } from '@/components/AuthProvider';
 import Header from '@/components/Header';
 import { RiUserAddLine, RiShieldUserLine, RiDeleteBinLine, RiSettings4Line, RiEyeLine, RiEyeOffLine } from '@remixicon/react';
 
-function withTimeout(promise: Promise<any>, ms: number, errorMsg: string): Promise<any> {
-  return Promise.race([
-    promise,
-    new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error(errorMsg)), ms)
-    )
-  ]);
+function withTimeout(promise: Promise<any>, ms: number, onWarning: () => void): Promise<any> {
+  const timer = setTimeout(onWarning, ms);
+  return promise.finally(() => clearTimeout(timer));
 }
 
 export default function StaffManagement() {
@@ -56,7 +52,7 @@ export default function StaffManagement() {
       const { error } = await withTimeout(
         signUpPromise,
         10000,
-        'Staff registration request timed out. Please check your internet connection.'
+        () => alert('Slow network connection detected. Still registering staff member... please wait.')
       );
 
       if (error) {
@@ -67,7 +63,7 @@ export default function StaffManagement() {
         fetchStaff();
       }
     } catch (err: any) {
-      alert(err.message || 'Connection timed out. Please try again.');
+      alert(err.message || 'Connection failed. Please try again.');
     } finally {
       setSubmitting(false);
     }

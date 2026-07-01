@@ -4,13 +4,9 @@ import { createClient } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import { RiMicroscopeLine, RiLockPasswordLine, RiCheckLine, RiEyeLine, RiEyeOffLine } from '@remixicon/react';
 
-function withTimeout(promise: Promise<any>, ms: number, errorMsg: string): Promise<any> {
-  return Promise.race([
-    promise,
-    new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error(errorMsg)), ms)
-    )
-  ]);
+function withTimeout(promise: Promise<any>, ms: number, onWarning: () => void): Promise<any> {
+  const timer = setTimeout(onWarning, ms);
+  return promise.finally(() => clearTimeout(timer));
 }
 
 export default function UpdatePasswordPage() {
@@ -34,7 +30,7 @@ export default function UpdatePasswordPage() {
       const { error } = await withTimeout(
         updatePromise,
         10000,
-        'Password update timed out due to slow network. Please check your connection and try again.'
+        () => setError('Slow network connection detected. Still updating password... please wait.')
       );
       if (error) { setError(error.message); setLoading(false); return; }
       setDone(true);

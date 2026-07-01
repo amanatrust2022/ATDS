@@ -4,13 +4,9 @@ import { useParams, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
 import { RiMicroscopeLine, RiCheckLine, RiShieldCheckLine, RiUploadCloud2Line, RiEyeLine, RiEyeOffLine } from '@remixicon/react';
 
-function withTimeout(promise: Promise<any>, ms: number, errorMsg: string): Promise<any> {
-  return Promise.race([
-    promise,
-    new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error(errorMsg)), ms)
-    )
-  ]);
+function withTimeout(promise: Promise<any>, ms: number, onWarning: () => void): Promise<any> {
+  const timer = setTimeout(onWarning, ms);
+  return promise.finally(() => clearTimeout(timer));
 }
 
 export default function InviteAcceptPage() {
@@ -55,7 +51,7 @@ export default function InviteAcceptPage() {
         const { data, error } = await withTimeout(
           fetchPromise,
           10000,
-          'Invite lookup timed out. Please check your network connection.'
+          () => setError('Slow network connection detected. Still retrieving invitation details... please wait.')
         );
 
         if (error || !data) {
@@ -91,7 +87,7 @@ export default function InviteAcceptPage() {
     setSubmitting(true); setError('');
 
     try {
-      // 1. Upload Signature (15-second timeout)
+      // 1. Upload Signature
       const fileExt = signatureFile.name.split('.').pop();
       const fileName = `${invite.id}-${Math.random()}.${fileExt}`;
       
@@ -102,7 +98,7 @@ export default function InviteAcceptPage() {
       const { data: uploadData, error: uploadError } = await withTimeout(
         uploadPromise,
         15000,
-        'Signature upload timed out (slow network). Please try again.'
+        () => setError('Slow network connection detected. Still uploading your signature image... please wait.')
       );
 
       if (uploadError) throw uploadError;
@@ -114,7 +110,7 @@ export default function InviteAcceptPage() {
       // 2. Format Full Name
       const fullName = `${form.title} ${form.firstName} ${form.lastName ? form.lastName + ' ' : ''}${form.surname}`.trim();
 
-      // 3. Create auth user (15-second timeout)
+      // 3. Create auth user
       const signUpPromise = supabase.auth.signUp({
         email: invite.email,
         password: form.password,
@@ -135,28 +131,21 @@ export default function InviteAcceptPage() {
       const { data: authData, error: signUpErr } = await withTimeout(
         signUpPromise,
         15000,
-        'Signup request timed out (slow network). Please check your internet connection.'
+        () => setError('Slow network connection detected. Still creating your account credentials... please wait.')
       );
 
       if (signUpErr) throw signUpErr;
 
-      // 4. Mark invite as accepted via API
-      const acceptInvitePromise = fetch('/api/invite/accept', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token }),
-      }).then(async res => {
-        if (!res.ok) {
-          const errData = await res.json().catch(() => ({}));
-          throw new Error(errData.error || 'Failed to finalize invitation status');
-        }
-        return res.json();
-      });
+      // 4. Mark invite as accepted
+      const markInvitePromise = supabase
+        .from('invitations')
+        .update({ accepted_at: new Date().toISOString() })
+        .eq('token', token);
 
       await withTimeout(
-        acceptInvitePromise,
+        markInvitePromise,
         10000,
-        'Failed to finalize invitation status. Connection timed out.'
+        () => setError('Slow network connection detected. Still finalizing invitation status... please wait.')
       );
 
       // 5. Redirect directly to workspace

@@ -10,13 +10,9 @@ type Status = 'loading' | 'creating' | 'no_data' | 'ready';
 
 const slugify = (t: string) => t.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
-function withTimeout(promise: Promise<any>, ms: number, errorMsg: string): Promise<any> {
-  return Promise.race([
-    promise,
-    new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error(errorMsg)), ms)
-    )
-  ]);
+function withTimeout(promise: Promise<any>, ms: number, onWarning: () => void): Promise<any> {
+  const timer = setTimeout(onWarning, ms);
+  return promise.finally(() => clearTimeout(timer));
 }
 
 export default function OnboardingPage() {
@@ -95,7 +91,7 @@ export default function OnboardingPage() {
     const t4 = setTimeout(() => setOnboardingStatusText('Syncing clinical workspace session...'), 7000);
 
     try {
-      // 1. Create organization with a 12-second timeout
+      // 1. Create organization
       const createPromise = supabase.rpc('create_organization_for_signup', {
         p_name:    data.name,
         p_slug:    data.slug,
@@ -108,7 +104,7 @@ export default function OnboardingPage() {
       const { error: orgErr } = await withTimeout(
         createPromise,
         12000,
-        'Workspace creation request timed out due to a slow network. Please check your connection and try again.'
+        () => setError('Slow network connection detected. Still creating workspace... please wait.')
       );
 
       if (orgErr) {
@@ -121,11 +117,11 @@ export default function OnboardingPage() {
 
       localStorage.removeItem('pending_org');
 
-      // 2. Refresh workspace context with a 10-second timeout
+      // 2. Refresh workspace context
       await withTimeout(
         refreshOrg(),
         10000,
-        'Workspace activation completed, but taking too long to load profile data. Please refresh the page.'
+        () => setError('Slow network connection detected. Still refreshing your profile... please wait.')
       );
       
       clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4);
@@ -168,6 +164,7 @@ export default function OnboardingPage() {
         <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.88rem' }}>
           {status === 'creating' ? onboardingStatusText : 'Loading your account...'}
         </p>
+        {error && <p style={{ color: '#f87171', fontSize: '0.82rem', background: 'rgba(248,113,113,0.1)', padding: '0.6rem 0.9rem', borderRadius: 6, maxWidth: 400, textAlign: 'center' }}>{error}</p>}
       </div>
     );
   }
