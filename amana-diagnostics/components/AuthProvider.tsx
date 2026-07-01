@@ -224,8 +224,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 setLoading(false);
                 resolvedFromCache.current = true;
                 clearTimeout(safetyNet);
-                // Background re-validation — do NOT await, let it update silently
-                fetchProfileAndOrg(cached.user.id);
               }
             }
           } catch {
@@ -260,7 +258,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           // We have a real session — update state and fetch fresh profile
           setSession(session);
           setUser(session.user);
-          await fetchProfileAndOrg(session.user.id);
+          if (resolvedFromCache.current) {
+            // Background re-validation without blocking UI
+            fetchProfileAndOrg(session.user.id);
+          } else {
+            // First time load, block UI until profile/org resolved
+            await fetchProfileAndOrg(session.user.id);
+          }
         } else if (!resolvedFromCache.current) {
           // No session, no cache — user is genuinely logged out
           // Only clear cache if we didn't already paint from it (avoid erasing valid cache)
@@ -296,13 +300,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (event === 'INITIAL_SESSION') return;
 
         try {
+          const IS_LOCAL_MODE = getIsLocalMode();
           if (event === 'SIGNED_OUT') {
-            localStorage.removeItem('amana_offline_session');
-            resolvedFromCache.current = false;
-            setProfile(null);
-            setOrganization(null);
-            setSession(null);
-            setUser(null);
+            if (!IS_LOCAL_MODE) {
+              localStorage.removeItem('amana_offline_session');
+              resolvedFromCache.current = false;
+              setProfile(null);
+              setOrganization(null);
+              setSession(null);
+              setUser(null);
+            }
           } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
             if (session?.user) {
               setSession(session);
