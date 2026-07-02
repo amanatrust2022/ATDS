@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '@/components/AuthProvider';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
+import { createOrganizationWithFallback } from '@/lib/workspace';
 import { RiCheckLine, RiTeamLine, RiRocketLine, RiMicroscopeLine, RiLoader4Line } from '@remixicon/react';
 
 // Onboarding page with network timeout checks
@@ -91,28 +92,15 @@ export default function OnboardingPage() {
     const t4 = setTimeout(() => setOnboardingStatusText('Syncing clinical workspace session...'), 7000);
 
     try {
-      // 1. Create organization
-      const createPromise = supabase.rpc('create_organization_for_signup', {
-        p_name:    data.name,
-        p_slug:    data.slug,
-        p_address: data.address || null,
-        p_phone:   data.phone   || null,
-        p_email:   data.email   || null,
-        p_letterhead_line2: data.letterheadLine2 || null,
-      });
-
-      const { error: orgErr } = await withTimeout(
-        createPromise,
+      // 1. Create organization (falls back to direct insert if the RPC is unavailable)
+      const { organization: createdOrg } = await withTimeout(
+        createOrganizationWithFallback(supabase, data, { userId: user?.id }),
         12000,
         () => setError('Slow network connection detected. Still creating workspace... please wait.')
       );
 
-      if (orgErr) {
-        if (orgErr.message.includes('SLUG_TAKEN')) {
-          throw new Error('This Workspace ID (slug) is already taken. Please choose a different one.');
-        } else {
-          throw orgErr;
-        }
+      if (!createdOrg?.id) {
+        throw new Error('Failed to create your workspace. Please try again.');
       }
 
       localStorage.removeItem('pending_org');

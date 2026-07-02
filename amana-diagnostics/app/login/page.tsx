@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { createClient } from '@/lib/supabase';
+import { clearPersistedAuthState } from '@/lib/workspace';
 import { useRouter } from 'next/navigation';
 import { RiMicroscopeLine, RiLockPasswordLine, RiMailLine, RiEyeLine, RiEyeOffLine } from '@remixicon/react';
 
@@ -24,6 +25,7 @@ export default function LoginPage() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true); setError('');
+    clearPersistedAuthState();
     setStatusText('Checking local database...');
 
     const isLocalMode = typeof window !== 'undefined'
@@ -95,9 +97,16 @@ export default function LoginPage() {
       clearTimeout(timer2);
 
       if (!error && data?.user) {
-        // Success
+        // Success — clear stale cache first (prevents old profile from showing during reload)
+        // then do a full page reload so AuthProvider starts fresh with the new Supabase tokens.
+        //
+        // WHY reload instead of relying on onAuthStateChange:
+        //   Supabase's SDK may NOT fire SIGNED_IN if the browser already has an active session
+        //   (e.g. on 2nd+ logins in the same browser). Reloading always gives us a clean boot.
+        localStorage.removeItem('amana_offline_session');
+
         if (isLocalMode) {
-          // Local Mode: save credentials then reload to pick up the local session
+          // Local Mode: also save credentials to local SQLite for offline auth
           try {
             await fetch('/api/auth/save-credentials', {
               method: 'POST',
@@ -107,12 +116,11 @@ export default function LoginPage() {
           } catch (saveErr) {
             console.error('Failed to save credentials locally:', saveErr);
           }
-          window.location.reload();
-        } else {
-          // Cloud Mode: do NOT reload — let AuthProvider's onAuthStateChange redirect us.
-          // Show a progress message while the profile is fetched and the redirect fires.
-          setStatusText('Redirecting to workspace...');
         }
+
+        // Reload for both modes — Supabase's own tokens are in its storage and will be picked up
+        window.location.reload();
+
         return;
       }
 

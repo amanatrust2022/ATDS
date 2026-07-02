@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { createClient } from '@/lib/supabase';
+import { createOrganizationWithFallback } from '@/lib/workspace';
 import { useRouter } from 'next/navigation';
 import { RiMicroscopeLine, RiArrowLeftLine, RiCheckLine, RiMailLine, RiEyeLine, RiEyeOffLine } from '@remixicon/react';
 
@@ -82,29 +83,22 @@ export default function SignupPage() {
     try {
       localStorage.setItem('pending_org', JSON.stringify(org));
 
-      // 1. Create organization to reserve the slug
-      const createOrgPromise = supabase.rpc('create_organization_for_signup', {
-        p_name:    org.name,
-        p_slug:    org.slug,
-        p_address: org.address || null,
-        p_phone:   org.phone   || null,
-        p_email:   org.email   || null,
-        p_letterhead_line2: org.letterheadLine2 || null,
-      });
-      const newOrgRes = await withTimeout(
-        createOrgPromise,
+      // 1. Create organization to reserve the slug (fallbacks to direct insert if the RPC is unavailable)
+      const { organization: newOrg } = await withTimeout(
+        createOrganizationWithFallback(supabase, {
+          name: org.name,
+          slug: org.slug,
+          address: org.address || null,
+          phone: org.phone || null,
+          email: org.email || null,
+          letterheadLine2: org.letterheadLine2 || null,
+        }),
         12000,
         () => setError('Slow network connection detected. Still setting up workspace... please wait.')
       );
 
-      const { data: newOrg, error: orgErr } = newOrgRes;
-
-      if (orgErr) {
-        if (orgErr.message.includes('SLUG_TAKEN')) {
-          throw new Error('This Workspace ID (slug) is already taken. Please choose a different one.');
-        } else {
-          throw orgErr;
-        }
+      if (!newOrg?.id) {
+        throw new Error('Failed to create your workspace. Please try again.');
       }
       createdOrgId = newOrg.id;
 

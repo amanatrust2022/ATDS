@@ -1,6 +1,7 @@
 'use client';
 import { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { createClient } from '@/lib/supabase';
+import { clearPersistedAuthState } from '@/lib/workspace';
 import { User, Session } from '@supabase/supabase-js';
 
 export type Profile = {
@@ -248,7 +249,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           console.warn('[AuthProvider] getSession error:', error.message);
           // Invalid refresh token — clear everything and force re-login
           if (error.message?.includes('Refresh Token') || (error as any).status === 400) {
-            localStorage.removeItem('amana_offline_session');
+            clearPersistedAuthState();
             await supabase.auth.signOut().catch(() => {});
             setSession(null); setUser(null); setProfile(null); setOrganization(null);
           }
@@ -315,7 +316,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const IS_LOCAL_MODE = getIsLocalMode();
           if (event === 'SIGNED_OUT') {
             if (!IS_LOCAL_MODE) {
-              localStorage.removeItem('amana_offline_session');
+              clearPersistedAuthState();
               resolvedFromCache.current = false;
               setProfile(null);
               setOrganization(null);
@@ -343,7 +344,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signOut = async () => {
-    localStorage.removeItem('amana_offline_session');
+    clearPersistedAuthState();
     resolvedFromCache.current = false;
     setUser(null);
     setProfile(null);
