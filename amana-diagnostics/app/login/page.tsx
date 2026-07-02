@@ -117,8 +117,10 @@ export default function LoginPage() {
           }
         }
 
-        // Reload for both modes — Supabase's own tokens are in its storage and will be picked up
-        window.location.reload();
+        // Reload for both modes — Supabase's own tokens are in its storage and will be picked up.
+        // Use a full navigation so the auth provider gets a fresh boot in cloud mode.
+        console.log('[LoginPage] sign-in succeeded, navigating to home');
+        window.location.assign('/');
 
         return;
       }

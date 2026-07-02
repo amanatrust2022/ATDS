@@ -72,7 +72,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const supabase = createClient();
 
   const fetchProfileAndOrg = async (userId: string) => {
-    console.log('[AuthProvider] fetchProfileAndOrg starting for:', userId);
+    console.log('[AuthProvider] fetchProfileAndOrg starting for:', userId, 'host=', typeof window !== 'undefined' ? window.location.hostname : 'server');
     const IS_LOCAL_MODE = getIsLocalMode();
     
     // Check localStorage directly to avoid stale React state closure issues
@@ -116,40 +116,68 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (IS_LOCAL_MODE && prof && !prof.organization_id) {
         try {
           console.log('[AuthProvider] fetchProfileAndOrg (Local Mode fallback) checking cloud profile...');
-          const { data } = await supabase
+          const { data, error } = await supabase
             .from('profiles')
-            .select('*, organizations(*)')
+            .select('id, full_name, role, organization_id, email')
             .eq('id', userId)
-            .single();
-          if (data?.organization_id) {
-            const { organizations, ...profileData } = data;
-            prof = profileData;
-            org = Array.isArray(organizations) ? organizations[0] : organizations;
+            .maybeSingle();
+          if (error) {
+            console.warn('[AuthProvider] cloud profile fallback query error:', error);
+          } else if (data?.organization_id) {
+            prof = data;
             fetchedFromCloud = true;
+            if (data.organization_id) {
+              const { data: orgData, error: orgError } = await supabase
+                .from('organizations')
+                .select('id, slug, name, plan_tier, address, phone, email, letterhead_line2, letterhead_html')
+                .eq('id', data.organization_id)
+                .maybeSingle();
+              if (orgError) {
+                console.warn('[AuthProvider] organization lookup error:', orgError);
+              } else {
+                org = orgData;
+              }
+            }
           }
         } catch (cloudErr) {
           console.log('[AuthProvider] Could not sync profile from cloud during refresh:', cloudErr);
         }
       }
 
-      // Cloud mode (Vercel) — single joined query, ~150-300ms
+      // Cloud mode (Vercel) — fallback to a simple profile query if the joined query fails
       if (!prof) {
         console.log('[AuthProvider] fetchProfileAndOrg querying cloud Supabase profiles...');
-        const { data, error } = await supabase
-          .from('profiles')
-          .select('*, organizations(*)')
-          .eq('id', userId)
-          .single();
-        if (error) throw error;
-        if (data) {
-          const { organizations, ...profileData } = data;
-          prof = profileData;
-          org = Array.isArray(organizations) ? organizations[0] : organizations;
+        try {
+          const { data, error } = await supabase
+            .from('profiles')
+            .select('id, full_name, role, organization_id, email')
+            .eq('id', userId)
+            .maybeSingle();
+
+          if (error) {
+            console.warn('[AuthProvider] profile query error:', error);
+          } else if (data) {
+            prof = data;
+            if (data.organization_id) {
+              const { data: orgData, error: orgError } = await supabase
+                .from('organizations')
+                .select('id, slug, name, plan_tier, address, phone, email, letterhead_line2, letterhead_html')
+                .eq('id', data.organization_id)
+                .maybeSingle();
+              if (orgError) {
+                console.warn('[AuthProvider] organization lookup error:', orgError);
+              } else {
+                org = orgData;
+              }
+            }
+          }
+          fetchedFromCloud = true;
+        } catch (cloudQueryErr) {
+          console.error('[AuthProvider] cloud profile query threw:', cloudQueryErr);
         }
-        fetchedFromCloud = true;
       }
 
-      console.log('[AuthProvider] fetchProfileAndOrg resolved:', { full_name: prof?.full_name, org_slug: org?.slug });
+      console.log('[AuthProvider] fetchProfileAndOrg resolved:', { full_name: prof?.full_name, org_slug: org?.slug, hasProfile: Boolean(prof) });
       setProfile(prof ?? null);
       setOrganization(org ?? null);
 
@@ -236,6 +264,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         // ── STEP 2: Validate real Supabase session ─────────────────────────
         const { data: { session }, error } = await supabase.auth.getSession();
+        console.log('[AuthProvider] initializeAuth getSession result:', {
+          hasSession: Boolean(session?.user),
+          userId: session?.user?.id || null,
+          errorMessage: error?.message || null,
+          errorStatus: (error as any)?.status || null,
+        });
 
         if (!mounted) return;
 
@@ -254,6 +288,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (session?.user) {
           setSession(session);
           setUser(session.user);
+          const { data: { user: verifiedUser }, error: userError } = await supabase.auth.getUser();
+          console.log('[AuthProvider] initializeAuth getUser result:', {
+            hasUser: Boolean(verifiedUser),
+            userId: verifiedUser?.id || null,
+            errorMessage: userError?.message || null,
+            errorStatus: (userError as any)?.status || null,
+          });
           void fetchProfileAndOrg(session.user.id);
         } else {
           const IS_LOCAL_MODE = getIsLocalMode();
@@ -309,8 +350,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
           } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
             if (session?.user) {
+              console.log('[AuthProvider] auth state change:', event, 'userId=', session.user.id);
               setSession(session);
               setUser(session.user);
+              const { data: { user: verifiedUser }, error: userError } = await supabase.auth.getUser();
+              console.log('[AuthProvider] auth state change getUser result:', {
+                hasUser: Boolean(verifiedUser),
+                userId: verifiedUser?.id || null,
+                errorMessage: userError?.message || null,
+                errorStatus: (userError as any)?.status || null,
+              });
               void fetchProfileAndOrg(session.user.id);
             }
           }
