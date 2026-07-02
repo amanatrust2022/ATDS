@@ -1,0 +1,9 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "amana-diagnostics",
+  "compatibility_date": "2026-07-02",
+  "workers_dev": true,
+  "compatibility_flags": [
+    "nodejs_compat"
+  ]
+}
