@@ -1,7 +1,6 @@
 'use client';
 import { useState } from 'react';
 import { createClient } from '@/lib/supabase';
-import { clearPersistedAuthState } from '@/lib/workspace';
 import { useRouter } from 'next/navigation';
 import { RiMicroscopeLine, RiLockPasswordLine, RiMailLine, RiEyeLine, RiEyeOffLine } from '@remixicon/react';
 
@@ -25,7 +24,7 @@ export default function LoginPage() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true); setError('');
-    clearPersistedAuthState();
+    localStorage.removeItem('amana_offline_session');
     setStatusText('Checking local database...');
 
     const isLocalMode = typeof window !== 'undefined'

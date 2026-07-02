@@ -199,14 +199,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let mounted = true;
+    let didResolveAuth = false;
 
-    // Safety net: unblock UI after 3s if Supabase never responds
+    // Safety net: unblock UI after 8s if Supabase is still slow
     const safetyNet = setTimeout(() => {
-      if (mounted && loading) {
-        console.warn('[AuthProvider] Safety net fired — Supabase did not respond in 3s');
+      if (mounted && !didResolveAuth) {
+        console.warn('[AuthProvider] Safety net fired — Supabase auth is still pending, allowing UI to render');
+        didResolveAuth = true;
         setLoading(false);
       }
-    }, 3000);
+    }, 8000);
 
     const initializeAuth = async () => {
       try {
@@ -224,9 +226,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 setProfile(cached.profile);
                 setOrganization(cached.organization ?? null);
                 setSession(cached.session ?? null);
-                setLoading(false);
                 resolvedFromCache.current = true;
-                clearTimeout(safetyNet);
               }
             }
           } catch {
@@ -235,43 +235,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
 
         // ── STEP 2: Validate real Supabase session ─────────────────────────
-        // Race: Supabase getSession vs 3s timeout
-        const { data: { session }, error } = await Promise.race([
-          supabase.auth.getSession(),
-          new Promise<{ data: { session: null }, error: null }>(res =>
-            setTimeout(() => res({ data: { session: null }, error: null }), 3000)
-          )
-        ]);
+        const { data: { session }, error } = await supabase.auth.getSession();
 
         if (!mounted) return;
 
         if (error) {
           console.warn('[AuthProvider] getSession error:', error.message);
-          // Invalid refresh token — clear everything and force re-login
           if (error.message?.includes('Refresh Token') || (error as any).status === 400) {
             clearPersistedAuthState();
             await supabase.auth.signOut().catch(() => {});
             setSession(null); setUser(null); setProfile(null); setOrganization(null);
           }
+          didResolveAuth = true;
           setLoading(false);
           return;
         }
 
         if (session?.user) {
-          // We have a real session — update state and fetch fresh profile
           setSession(session);
           setUser(session.user);
-          if (resolvedFromCache.current) {
-            // Background re-validation without blocking UI
-            fetchProfileAndOrg(session.user.id);
-          } else {
-            // First time load, block UI until profile/org resolved
-            await fetchProfileAndOrg(session.user.id);
-          }
+          void fetchProfileAndOrg(session.user.id);
         } else {
-          // No cloud session. 
-          // In Cloud Mode, this means the user is genuinely logged out (we clear cache instantly).
-          // In Local Mode, they can still be logged in locally via cache.
           const IS_LOCAL_MODE = getIsLocalMode();
           if (!IS_LOCAL_MODE) {
             localStorage.removeItem('amana_offline_session');
@@ -281,7 +265,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setUser(null);
             setSession(null);
           } else if (!resolvedFromCache.current) {
-            // Local Mode with no cache — user is genuinely logged out
             localStorage.removeItem('amana_offline_session');
             setProfile(null);
             setOrganization(null);
@@ -297,6 +280,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       } finally {
         if (mounted) {
+          didResolveAuth = true;
           setLoading(false);
           clearTimeout(safetyNet);
         }
@@ -327,7 +311,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             if (session?.user) {
               setSession(session);
               setUser(session.user);
-              await fetchProfileAndOrg(session.user.id);
+              void fetchProfileAndOrg(session.user.id);
             }
           }
         } catch (e) {
