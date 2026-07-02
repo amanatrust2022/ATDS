@@ -24,6 +24,7 @@ export default function OnboardingPage() {
   const [status, setStatus] = useState<Status>('loading');
   const [onboardingStatusText, setOnboardingStatusText] = useState('Loading your account...');
   const [error, setError] = useState('');
+  const [retryCount, setRetryCount] = useState(0);
 
   // Fallback manual form (when no localStorage/metadata data found)
   const [org, setOrg] = useState({ name: '', slug: '', address: '', phone: '', email: '', letterheadLine2: '' });
@@ -41,11 +42,18 @@ export default function OnboardingPage() {
     // Prevent executing onboarding/creation checks if we are already in the middle of creating or ready
     if (status === 'creating' || status === 'ready') return;
 
-    // If we have no profile AND no user, they are truly logged out.
+    // If we have no profile yet, give the auth provider a short chance to resolve it before giving up.
     if (!profile) {
-       setStatus('no_data'); 
-       setError('We could not load your user profile. Please contact support or try logging out and back in.');
-       return; 
+      if (retryCount < 3) {
+        const retryTimer = setTimeout(() => {
+          setRetryCount((value) => value + 1);
+        }, 1500);
+        return () => clearTimeout(retryTimer);
+      }
+
+      setStatus('no_data');
+      setError('We could not load your user profile yet. Please wait a moment and try again, or refresh the page.');
+      return;
     }
     
     // If the profile already has a linked organization, do NOT try to create it.
@@ -79,7 +87,7 @@ export default function OnboardingPage() {
         }
       }
     }
-  }, [loading, profile, organization, user, status]);
+  }, [loading, profile, organization, user, status, retryCount]);
 
   const createOrgFromData = async (data: any) => {
     setStatus('creating');
@@ -95,7 +103,7 @@ export default function OnboardingPage() {
       // 1. Create organization (falls back to direct insert if the RPC is unavailable)
       const { organization: createdOrg } = await withTimeout(
         createOrganizationWithFallback(supabase, data, { userId: user?.id }),
-        12000,
+        20000,
         () => setError('Slow network connection detected. Still creating workspace... please wait.')
       );
 
@@ -108,7 +116,7 @@ export default function OnboardingPage() {
       // 2. Refresh workspace context
       await withTimeout(
         refreshOrg(),
-        10000,
+        20000,
         () => setError('Slow network connection detected. Still refreshing your profile... please wait.')
       );
       
@@ -116,7 +124,7 @@ export default function OnboardingPage() {
     } catch (err: any) {
       clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4);
       setError(err.message || 'An unexpected error occurred.');
-      setStatus('no_data'); // Fall back to manual form
+      setStatus('no_data');
     }
   };
 
