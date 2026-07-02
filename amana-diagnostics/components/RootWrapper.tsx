@@ -20,6 +20,7 @@ export default function RootWrapper({ children }: { children: React.ReactNode })
   const { user, profile, organization, loading } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
+  const hasAuthResolved = !loading;
 
   useEffect(() => {
     if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
@@ -58,8 +59,11 @@ export default function RootWrapper({ children }: { children: React.ReactNode })
     if (loading) return;
     if (!pathname) return; // Prevent running redirect logic before Next.js hydration has resolved the pathname
 
+    // Only redirect when auth has actually resolved. This prevents the cloud-mode bounce between login/onboarding.
+    if (!hasAuthResolved) return;
+
     // Not logged in → redirect to login (except on public pages)
-    if (!user && !isPublic) { router.push('/login'); return; }
+    if (!user && !isPublic) { router.replace('/login'); return; }
 
     // Logged in but no profile or no organization linked yet → go to onboarding.
     // IMPORTANT: Exclude /login and /signup — in Cloud Mode, auth fires before profile is fetched,
@@ -74,14 +78,14 @@ export default function RootWrapper({ children }: { children: React.ReactNode })
       currentPath !== '/signup' &&
       !currentPath.startsWith('/invite/')
     ) {
-      router.push('/onboarding'); return;
+      router.replace('/onboarding'); return;
     }
 
     // Logged in with org → immediately redirect away from login/signup/landing to the role workspace
     if (user && organization && (currentPath === '/login' || currentPath === '/signup' || currentPath === '/' || currentPath === '/onboarding')) {
       router.replace(getRolePath(profile?.role, organization.slug)); return;
     }
-  }, [user, profile, organization, loading, currentPath]);
+  }, [user, profile, organization, loading, currentPath, hasAuthResolved]);
 
   if (loading) {
     return (

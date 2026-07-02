@@ -295,7 +295,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             errorMessage: userError?.message || null,
             errorStatus: (userError as any)?.status || null,
           });
-          void fetchProfileAndOrg(session.user.id);
+          await fetchProfileAndOrg(session.user.id);
         } else {
           const IS_LOCAL_MODE = getIsLocalMode();
           if (!IS_LOCAL_MODE) {
@@ -360,7 +360,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 errorMessage: userError?.message || null,
                 errorStatus: (userError as any)?.status || null,
               });
-              void fetchProfileAndOrg(session.user.id);
+              await fetchProfileAndOrg(session.user.id);
             }
           }
         } catch (e) {
