@@ -34,6 +34,7 @@ type AuthContextType = {
   organization: Organization | null;
   session: Session | null;
   loading: boolean;
+  authReady: boolean;
   signOut: () => Promise<void>;
   refreshOrg: () => Promise<void>;
 };
@@ -55,7 +56,7 @@ function getIsLocalMode(): boolean {
 
 const AuthContext = createContext<AuthContextType>({
   user: null, profile: null, organization: null,
-  session: null, loading: true,
+  session: null, loading: true, authReady: false,
   signOut: async () => {},
   refreshOrg: async () => {},
 });
@@ -66,6 +67,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [organization, setOrganization] = useState<Organization | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [authReady, setAuthReady] = useState(false);
   // Track whether we've already resolved from cache so we don't clobber it
   const resolvedFromCache = useRef(false);
 
@@ -281,6 +283,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setSession(null); setUser(null); setProfile(null); setOrganization(null);
           }
           didResolveAuth = true;
+          setAuthReady(true);
           setLoading(false);
           return;
         }
@@ -322,6 +325,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } finally {
         if (mounted) {
           didResolveAuth = true;
+          setAuthReady(true);
           setLoading(false);
           clearTimeout(safetyNet);
         }
@@ -351,6 +355,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
             if (session?.user) {
               console.log('[AuthProvider] auth state change:', event, 'userId=', session.user.id);
+              setAuthReady(true);
+              setAuthReady(true);
               setSession(session);
               setUser(session.user);
               const { data: { user: verifiedUser }, error: userError } = await supabase.auth.getUser();
@@ -387,7 +393,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, profile, organization, session, loading, signOut, refreshOrg }}>
+    <AuthContext.Provider value={{ user, profile, organization, session, loading, authReady, signOut, refreshOrg }}>
       {children}
     </AuthContext.Provider>
   );

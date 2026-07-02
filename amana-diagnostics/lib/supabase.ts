@@ -23,7 +23,15 @@ export function createClient() {
 
   const client = createBrowserClient(
     supabaseUrl,
-    supabaseAnonKey
+    supabaseAnonKey,
+    {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+        flowType: 'pkce',
+      },
+    }
   )
 
   if (typeof window !== 'undefined') {

@@ -17,10 +17,10 @@ const getRolePath = (role: string | undefined, slug: string) => {
 };
 
 export default function RootWrapper({ children }: { children: React.ReactNode }) {
-  const { user, profile, organization, loading } = useAuth();
+  const { user, profile, organization, loading, authReady } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
-  const hasAuthResolved = !loading;
+  const hasAuthResolved = authReady && !loading;
 
   useEffect(() => {
     if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {

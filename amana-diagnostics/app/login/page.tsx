@@ -82,10 +82,7 @@ export default function LoginPage() {
     try {
       let data, error;
       try {
-        const authPromise = supabase.auth.signInWithPassword({ email, password });
-        const res = await withTimeout(authPromise, 8000, () => {
-          setError('Slow network connection detected. Still attempting to sign in... please wait.');
-        });
+        const res = await supabase.auth.signInWithPassword({ email, password });
         data = res.data;
         error = res.error;
       } catch (err: any) {
