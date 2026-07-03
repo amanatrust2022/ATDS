@@ -40,19 +40,25 @@ type AuthContextType = {
   refreshOrg: () => Promise<void>;
 };
 
-// Computed once per page load, client-side only. Safe for cloud (Vercel).
+// Computed once per page load, client-side only. Safe for cloud (Vercel/Cloudflare).
+// IMPORTANT: Hostname is the ground truth — we never trust localStorage alone,
+// because a stale amana_local_mode=true from a local session can poison cloud deployments.
 function getIsLocalMode(): boolean {
   if (typeof window === 'undefined') return false; // SSR — never local
-  const stored = localStorage.getItem('amana_local_mode');
-  if (stored !== null) return stored === 'true';
   const h = window.location.hostname;
-  return (
+  const isLocalHostname = (
     h === 'localhost' ||
     h === '127.0.0.1' ||
     h.startsWith('192.168.') ||
     h.startsWith('10.') ||
     h.startsWith('172.')
   );
+  // On a cloud hostname, always return false regardless of localStorage
+  if (!isLocalHostname) return false;
+  // On a local hostname, respect the override if set
+  const stored = localStorage.getItem('amana_local_mode');
+  if (stored !== null) return stored === 'true';
+  return true;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -263,7 +269,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let mounted = true;
     let didResolveAuth = false;
 
-    // Safety net: unblock UI after 8s if Supabase is still slow
+    // Safety net: unblock UI after 15s if Supabase is still slow.
+    // 15s gives ample time for Supabase cold starts on Vercel/Cloudflare edge.
     const safetyNet = setTimeout(() => {
       if (mounted && !didResolveAuth) {
         console.warn('[AuthProvider] Safety net fired — Supabase auth is still pending, allowing UI to render');
@@ -272,10 +279,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setProfileReady(true);
         setLoading(false);
       }
-    }, 8000);
+    }, 15000);
 
     const initializeAuth = async () => {
       try {
+        // ── STEP 0: Clear stale local-mode flag on cloud hostnames ────────
+        // Prevents a leftover amana_local_mode=true (from local dev) from
+        // causing the AuthProvider to call /api/profiles (SQLite) on cloud.
+        if (typeof window !== 'undefined') {
+          const h = window.location.hostname;
+          const isLocalHostname = (
+            h === 'localhost' || h === '127.0.0.1' ||
+            h.startsWith('192.168.') || h.startsWith('10.') || h.startsWith('172.')
+          );
+          if (!isLocalHostname) {
+            const storedMode = localStorage.getItem('amana_local_mode');
+            if (storedMode === 'true') {
+              console.warn('[AuthProvider] Clearing stale amana_local_mode=true on cloud hostname');
+              localStorage.setItem('amana_local_mode', 'false');
+            }
+          }
+        }
+
         // ── STEP 1: Instant paint from SWR cache (~1ms) ───────────────────
         const cachedStr = typeof window !== 'undefined'
           ? localStorage.getItem('amana_offline_session')

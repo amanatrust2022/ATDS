@@ -1,4 +1,4 @@
-const CACHE_NAME = 'amana-diagnostics-v1';
+const CACHE_NAME = 'amana-diagnostics-v2';
 const ASSETS_TO_CACHE = [
   '/',
   '/login',
@@ -70,7 +70,13 @@ self.addEventListener('fetch', (event) => {
           }
           // If offline and request is for a page, return the cached root '/'
           if (event.request.mode === 'navigate') {
-            return caches.match('/');
+            return caches.match('/').then((rootCache) => {
+              return rootCache || new Response('Offline', {
+                status: 503,
+                statusText: 'Service Unavailable',
+                headers: new Headers({ 'Content-Type': 'text/plain' })
+              });
+            });
           }
           // Return a 503 response if the asset is not in cache and network is unavailable,
           // preventing the service worker from throwing "Failed to fetch" due to returning undefined.

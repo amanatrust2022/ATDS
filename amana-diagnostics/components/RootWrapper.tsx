@@ -34,6 +34,27 @@ export default function RootWrapper({ children }: { children: React.ReactNode })
     if (typeof window === 'undefined') return;
     const checkConfig = async () => {
       try {
+        const h = window.location.hostname;
+        const isLocalHostname = (
+          h === 'localhost' || h === '127.0.0.1' ||
+          h.startsWith('192.168.') || h.startsWith('10.') || h.startsWith('172.')
+        );
+
+        // On cloud hostnames, force local mode to false immediately
+        // — don't even wait for /api/config, prevents any state poisoning.
+        if (!isLocalHostname) {
+          const current = localStorage.getItem('amana_local_mode');
+          if (current !== 'false') {
+            localStorage.setItem('amana_local_mode', 'false');
+            if (current !== null) {
+              // Reload to ensure AuthProvider picks up the corrected mode
+              window.location.reload();
+            }
+          }
+          return;
+        }
+
+        // Local hostname — ask the server what mode we're in
         const res = await fetch('/api/config');
         if (res.ok) {
           const data = await res.json();

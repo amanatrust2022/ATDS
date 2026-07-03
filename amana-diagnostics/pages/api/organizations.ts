@@ -2,6 +2,14 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { getDb } from '../../lib/localDb';
 
 export default function handler(req: NextApiRequest, res: NextApiResponse) {
+  // This route only works in local/hub mode (SQLite). On cloud deployments, return 404.
+  const isLocalMode = process.env.NEXT_PUBLIC_LOCAL_SERVER_MODE === 'true' ||
+                      process.env.IS_LOCAL_HUB === 'true';
+  if (!isLocalMode) {
+    res.status(404).json({ error: 'Not available in cloud mode' });
+    return;
+  }
+
   try {
     const db = getDb();
 

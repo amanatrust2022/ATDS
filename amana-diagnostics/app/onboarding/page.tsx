@@ -42,17 +42,18 @@ export default function OnboardingPage() {
     // Prevent executing onboarding/creation checks if we are already in the middle of creating or ready
     if (status === 'creating' || status === 'ready') return;
 
-    // If we have no profile yet, give the auth provider a short chance to resolve it before giving up.
+    // If we have no profile yet, give the auth provider enough time to resolve it.
+    // Cloud cold starts (Supabase on Vercel/Cloudflare) can take up to 10s on first request.
     if (!profile) {
-      if (retryCount < 3) {
+      if (retryCount < 6) {
         const retryTimer = setTimeout(() => {
           setRetryCount((value) => value + 1);
-        }, 1500);
+        }, 2000);
         return () => clearTimeout(retryTimer);
       }
 
       setStatus('no_data');
-      setError('We could not load your user profile yet. Please wait a moment and try again, or refresh the page.');
+      setError('Your account details are taking longer than expected to load. Please refresh the page or try logging out and back in.');
       return;
     }
     
