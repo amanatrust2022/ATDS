@@ -187,28 +187,48 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
+      // Fallback: if no profile row found, try to create one from user_metadata.
+      // IMPORTANT: Only do this when a real authenticated session exists.
+      // If auth.uid() returns null (anon / session not yet restored), the RLS
+      // INSERT policy will silently block the write — we must guard against that.
       if (!prof && sourceUser?.id) {
         try {
-          const fallbackProfile = buildFallbackProfile(sourceUser, {
-            email: sourceUser.email || '',
-            full_name: sourceUser.user_metadata?.full_name || sourceUser.user_metadata?.name || '',
-            role: sourceUser.user_metadata?.role || 'reception',
-            organization_id: sourceUser.user_metadata?.organization_id || null,
-          });
+          // Verify session exists before writing to profiles (avoids anon upsert being blocked by RLS)
+          const { data: { session: liveSession } } = await supabase.auth.getSession();
+          if (!liveSession) {
+            console.warn('[AuthProvider] No live session — skipping profile upsert to avoid anon write blocked by RLS');
+          } else {
+            const fallbackProfile = buildFallbackProfile(sourceUser, {
+              email: sourceUser.email || '',
+              full_name: sourceUser.user_metadata?.full_name || sourceUser.user_metadata?.name || '',
+              role: sourceUser.user_metadata?.role || 'reception',
+              organization_id: sourceUser.user_metadata?.organization_id || null,
+            });
 
-          if (fallbackProfile) {
-            await upsertProfileForUser(supabase, sourceUser.id, fallbackProfile);
-            prof = fallbackProfile;
-          }
+            if (fallbackProfile) {
+              const { error: upsertError } = await supabase
+                .from('profiles')
+                .upsert(fallbackProfile, { onConflict: 'id' });
 
-          if (prof?.organization_id) {
-            const { data: orgData, error: orgError } = await supabase
-              .from('organizations')
-              .select('id, slug, name, plan_tier, address, phone, email, letterhead_line2, letterhead_html')
-              .eq('id', prof.organization_id)
-              .maybeSingle();
-            if (!orgError) {
-              org = orgData;
+              if (upsertError) {
+                console.error('[AuthProvider] profile upsert failed (RLS or DB error):', upsertError);
+              } else {
+                prof = fallbackProfile;
+                console.log('[AuthProvider] profile upserted from user_metadata fallback');
+              }
+            }
+
+            if (prof?.organization_id) {
+              const { data: orgData, error: orgError } = await supabase
+                .from('organizations')
+                .select('id, slug, name, plan_tier, address, phone, email, letterhead_line2, letterhead_html')
+                .eq('id', prof.organization_id)
+                .maybeSingle();
+              if (orgError) {
+                console.warn('[AuthProvider] org lookup after fallback upsert failed:', orgError);
+              } else {
+                org = orgData;
+              }
             }
           }
         } catch (profileSyncErr) {
