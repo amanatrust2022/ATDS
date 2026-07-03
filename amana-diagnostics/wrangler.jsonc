@@ -8,11 +8,3 @@
   ]
 }
 
-{
-  "main": ".open-next/worker.js",
-  "compatibility_date": "2026-07-02",
-  "assets": {
-    "directory": ".open-next/assets"
-  },
-  "name": "amana-diagnostics"
-}
