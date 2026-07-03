@@ -1,7 +1,7 @@
 'use client';
 import { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { createClient } from '@/lib/supabase';
-import { clearPersistedAuthState, upsertProfileForUser } from '@/lib/workspace';
+import { buildFallbackProfile, clearPersistedAuthState, upsertProfileForUser } from '@/lib/workspace';
 import { User, Session } from '@supabase/supabase-js';
 
 export type Profile = {
@@ -183,30 +183,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (!prof && sourceUser?.id) {
         try {
-          await upsertProfileForUser(supabase, sourceUser.id, {
+          const fallbackProfile = buildFallbackProfile(sourceUser, {
             email: sourceUser.email || '',
             full_name: sourceUser.user_metadata?.full_name || sourceUser.user_metadata?.name || '',
             role: sourceUser.user_metadata?.role || 'reception',
             organization_id: sourceUser.user_metadata?.organization_id || null,
           });
 
-          const { data: reloadedProfile, error: reloadError } = await supabase
-            .from('profiles')
-            .select('id, full_name, role, organization_id, email')
-            .eq('id', userId)
-            .maybeSingle();
+          if (fallbackProfile) {
+            await upsertProfileForUser(supabase, sourceUser.id, fallbackProfile);
+            prof = fallbackProfile;
+          }
 
-          if (!reloadError && reloadedProfile) {
-            prof = reloadedProfile;
-            if (reloadedProfile.organization_id) {
-              const { data: orgData, error: orgError } = await supabase
-                .from('organizations')
-                .select('id, slug, name, plan_tier, address, phone, email, letterhead_line2, letterhead_html')
-                .eq('id', reloadedProfile.organization_id)
-                .maybeSingle();
-              if (!orgError) {
-                org = orgData;
-              }
+          if (prof?.organization_id) {
+            const { data: orgData, error: orgError } = await supabase
+              .from('organizations')
+              .select('id, slug, name, plan_tier, address, phone, email, letterhead_line2, letterhead_html')
+              .eq('id', prof.organization_id)
+              .maybeSingle();
+            if (!orgError) {
+              org = orgData;
             }
           }
         } catch (profileSyncErr) {

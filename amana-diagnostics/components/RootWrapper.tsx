@@ -70,15 +70,17 @@ export default function RootWrapper({ children }: { children: React.ReactNode })
     // so redirecting from these paths would fire before the profile data arrives, causing a premature
     // redirect to /onboarding even for users with a valid organization.
     const hasNoOrg = !profile || !profile.organization_id;
-    if (
-      user &&
-      hasNoOrg &&
-      currentPath !== '/onboarding' &&
-      currentPath !== '/login' &&
-      currentPath !== '/signup' &&
-      !currentPath.startsWith('/invite/')
-    ) {
-      router.replace('/onboarding'); return;
+    const shouldGoToOnboarding = Boolean(user && hasNoOrg && currentPath !== '/onboarding' && currentPath !== '/login' && currentPath !== '/signup' && !currentPath.startsWith('/invite/'));
+
+    if (shouldGoToOnboarding) {
+      // Allow a signed-in user with a fallback profile to continue if the backend created the profile row.
+      const fallbackProfile = profile && profile.id && profile.full_name && profile.role;
+      if (fallbackProfile) {
+        router.replace(`/${organization?.slug || 'workspace'}/reception`);
+        return;
+      }
+      router.replace('/onboarding');
+      return;
     }
 
     // Logged in with org → immediately redirect away from login/signup/landing to the role workspace

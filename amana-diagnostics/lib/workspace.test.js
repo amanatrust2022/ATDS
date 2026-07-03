@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createOrganizationWithFallback, upsertProfileForUser } from './workspace.js';
+import { buildFallbackProfile, createOrganizationWithFallback, upsertProfileForUser } from './workspace.js';
 
 test('upserts a profile row for the authenticated user', async () => {
   const calls = [];
@@ -130,4 +130,24 @@ test('creates a new organization when no matching slug exists', async () => {
   assert.equal(result.organization.id, 'org-456');
   assert.equal(result.created, true);
   assert.deepEqual(calls, ['rpc', 'select:organizations', 'insert:organizations', 'update:profiles']);
+});
+
+test('builds a fallback profile payload from auth metadata when no profile row exists', () => {
+  const profile = buildFallbackProfile({
+    id: 'user-1',
+    email: 'ada@example.com',
+    user_metadata: {
+      full_name: 'Ada Lovelace',
+      role: 'admin',
+      organization_id: 'org-1',
+    },
+  });
+
+  assert.deepEqual(profile, {
+    id: 'user-1',
+    email: 'ada@example.com',
+    full_name: 'Ada Lovelace',
+    role: 'admin',
+    organization_id: 'org-1',
+  });
 });

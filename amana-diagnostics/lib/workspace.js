@@ -11,6 +11,18 @@ function normalizeOrganizationData(data) {
   };
 }
 
+export function buildFallbackProfile(user, profileData = {}) {
+  if (!user?.id) return null;
+
+  return {
+    id: user.id,
+    email: profileData.email || user.email || null,
+    full_name: profileData.full_name || user.user_metadata?.full_name || user.user_metadata?.name || null,
+    role: profileData.role || user.user_metadata?.role || 'reception',
+    organization_id: profileData.organization_id ?? user.user_metadata?.organization_id ?? null,
+  };
+}
+
 export function clearPersistedAuthState() {
   if (typeof window === 'undefined') return;
 
