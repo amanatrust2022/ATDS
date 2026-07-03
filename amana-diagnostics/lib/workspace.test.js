@@ -151,3 +151,42 @@ test('builds a fallback profile payload from auth metadata when no profile row e
     organization_id: 'org-1',
   });
 });
+
+test('falls back to the server profile endpoint when direct Supabase upsert is blocked', async () => {
+  const originalWindow = globalThis.window;
+  globalThis.window = {};
+  const calls = [];
+
+  globalThis.fetch = async (url, options) => {
+    calls.push({ url, options });
+    return {
+      ok: true,
+      json: async () => ({ success: true, data: { id: 'user-2' } }),
+    };
+  };
+
+  const supabase = {
+    from: () => ({
+      upsert: () => {
+        throw new Error('RLS denied');
+      },
+    }),
+  };
+
+  const result = await upsertProfileForUser(supabase, 'user-2', {
+    full_name: 'Grace Hopper',
+    role: 'admin',
+    organization_id: 'org-2',
+    email: 'grace@example.com',
+  });
+
+  assert.deepEqual(result, { id: 'user-2' });
+  assert.equal(calls.length, 1);
+  assert.match(calls[0].url, /\/api\/auth\/profile$/);
+
+  if (originalWindow === undefined) {
+    delete globalThis.window;
+  } else {
+    globalThis.window = originalWindow;
+  }
+});

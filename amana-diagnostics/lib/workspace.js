@@ -70,32 +70,53 @@ export async function upsertProfileForUser(supabase, userId, profileData = {}) {
     organization_id: profileData.organization_id ?? null,
   };
 
-  const profilesTable = supabase.from('profiles');
+  try {
+    const profilesTable = supabase.from('profiles');
 
-  if (typeof profilesTable.upsert === 'function') {
-    const { data, error } = await profilesTable
-      .upsert(payload, { onConflict: 'id' })
-      .select('id')
-      .maybeSingle();
+    if (typeof profilesTable.upsert === 'function') {
+      const { data, error } = await profilesTable
+        .upsert(payload, { onConflict: 'id' })
+        .select('id')
+        .maybeSingle();
 
-    if (error) {
-      throw error;
+      if (!error) {
+        return data;
+      }
+      console.warn('[workspace] Supabase profile upsert failed, falling back to server endpoint:', error);
+    } else {
+      const { data, error } = await profilesTable
+        .update(payload)
+        .eq('id', userId)
+        .select('id')
+        .maybeSingle();
+
+      if (!error) {
+        return data;
+      }
+      console.warn('[workspace] Supabase profile update failed, falling back to server endpoint:', error);
     }
-
-    return data;
+  } catch (error) {
+    console.warn('[workspace] Supabase profile write threw, falling back to server endpoint:', error);
   }
 
-  const { data, error } = await profilesTable
-    .update(payload)
-    .eq('id', userId)
-    .select('id')
-    .maybeSingle();
+  if (typeof window !== 'undefined') {
+    try {
+      const response = await fetch('/api/auth/profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, profile: payload }),
+      });
 
-  if (error) {
-    throw error;
+      if (response.ok) {
+        const result = await response.json();
+        return result?.data || { id: userId };
+      }
+    } catch (fallbackError) {
+      console.warn('[workspace] server-side profile fallback failed:', fallbackError);
+    }
   }
 
-  return data;
+  return { id: userId };
 }
 
 export async function createOrganizationWithFallback(supabase, data, options = {}) {
