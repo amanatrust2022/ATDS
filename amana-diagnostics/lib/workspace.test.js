@@ -1,6 +1,39 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createOrganizationWithFallback } from './workspace.js';
+import { createOrganizationWithFallback, upsertProfileForUser } from './workspace.js';
+
+test('upserts a profile row for the authenticated user', async () => {
+  const calls = [];
+  const supabase = {
+    from: (table) => {
+      if (table !== 'profiles') {
+        throw new Error(`Unexpected table ${table}`);
+      }
+
+      return {
+        upsert: (payload, options) => {
+          calls.push({ table, payload, options });
+          return {
+            select: () => ({
+              maybeSingle: async () => ({ data: { id: payload.id }, error: null }),
+            }),
+          };
+        },
+      };
+    },
+  };
+
+  await upsertProfileForUser(supabase, 'user-1', {
+    full_name: 'Ada Lovelace',
+    role: 'admin',
+    organization_id: 'org-1',
+    email: 'ada@example.com',
+  });
+
+  assert.equal(calls[0].payload.id, 'user-1');
+  assert.equal(calls[0].options.onConflict, 'id');
+  assert.equal(calls[0].payload.organization_id, 'org-1');
+});
 
 test('reuses an existing organization when the slug already exists', async () => {
   const calls = [];

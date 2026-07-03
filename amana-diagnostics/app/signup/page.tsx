@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { createClient } from '@/lib/supabase';
-import { createOrganizationWithFallback } from '@/lib/workspace';
+import { createOrganizationWithFallback, upsertProfileForUser } from '@/lib/workspace';
 import { useRouter } from 'next/navigation';
 import { RiMicroscopeLine, RiArrowLeftLine, RiCheckLine, RiMailLine, RiEyeLine, RiEyeOffLine } from '@remixicon/react';
 
@@ -136,6 +136,19 @@ export default function SignupPage() {
       }
 
       clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4);
+
+      if (data.user) {
+        try {
+          await upsertProfileForUser(supabase, data.user.id, {
+            full_name: admin.fullName,
+            role: 'admin',
+            organization_id: createdOrgId,
+            email: admin.email,
+          });
+        } catch (profileErr) {
+          console.warn('[signup] failed to upsert profile after sign-up', profileErr);
+        }
+      }
 
       if (data.session) {
         router.push('/onboarding?new=1');

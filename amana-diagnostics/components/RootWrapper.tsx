@@ -17,10 +17,10 @@ const getRolePath = (role: string | undefined, slug: string) => {
 };
 
 export default function RootWrapper({ children }: { children: React.ReactNode }) {
-  const { user, profile, organization, loading, authReady } = useAuth();
+  const { user, profile, organization, loading, authReady, profileReady } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
-  const hasAuthResolved = authReady && !loading;
+  const hasAuthResolved = authReady && profileReady && !loading;
 
   useEffect(() => {
     if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
@@ -87,7 +87,7 @@ export default function RootWrapper({ children }: { children: React.ReactNode })
     }
   }, [user, profile, organization, loading, currentPath, hasAuthResolved]);
 
-  if (loading) {
+  if (loading || !authReady || !profileReady) {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0f1628' }}>
         <div style={{ textAlign: 'center' }}>

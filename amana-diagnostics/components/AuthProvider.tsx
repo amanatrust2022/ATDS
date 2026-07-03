@@ -1,7 +1,7 @@
 'use client';
 import { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { createClient } from '@/lib/supabase';
-import { clearPersistedAuthState } from '@/lib/workspace';
+import { clearPersistedAuthState, upsertProfileForUser } from '@/lib/workspace';
 import { User, Session } from '@supabase/supabase-js';
 
 export type Profile = {
@@ -35,6 +35,7 @@ type AuthContextType = {
   session: Session | null;
   loading: boolean;
   authReady: boolean;
+  profileReady: boolean;
   signOut: () => Promise<void>;
   refreshOrg: () => Promise<void>;
 };
@@ -56,7 +57,7 @@ function getIsLocalMode(): boolean {
 
 const AuthContext = createContext<AuthContextType>({
   user: null, profile: null, organization: null,
-  session: null, loading: true, authReady: false,
+  session: null, loading: true, authReady: false, profileReady: false,
   signOut: async () => {},
   refreshOrg: async () => {},
 });
@@ -68,12 +69,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [authReady, setAuthReady] = useState(false);
+  const [profileReady, setProfileReady] = useState(false);
   // Track whether we've already resolved from cache so we don't clobber it
   const resolvedFromCache = useRef(false);
 
   const supabase = createClient();
 
-  const fetchProfileAndOrg = async (userId: string) => {
+  const fetchProfileAndOrg = async (userId: string, sourceUser?: User | null) => {
     console.log('[AuthProvider] fetchProfileAndOrg starting for:', userId, 'host=', typeof window !== 'undefined' ? window.location.hostname : 'server');
     const IS_LOCAL_MODE = getIsLocalMode();
     
@@ -179,6 +181,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
+      if (!prof && sourceUser?.id) {
+        try {
+          await upsertProfileForUser(supabase, sourceUser.id, {
+            email: sourceUser.email || '',
+            full_name: sourceUser.user_metadata?.full_name || sourceUser.user_metadata?.name || '',
+            role: sourceUser.user_metadata?.role || 'reception',
+            organization_id: sourceUser.user_metadata?.organization_id || null,
+          });
+
+          const { data: reloadedProfile, error: reloadError } = await supabase
+            .from('profiles')
+            .select('id, full_name, role, organization_id, email')
+            .eq('id', userId)
+            .maybeSingle();
+
+          if (!reloadError && reloadedProfile) {
+            prof = reloadedProfile;
+            if (reloadedProfile.organization_id) {
+              const { data: orgData, error: orgError } = await supabase
+                .from('organizations')
+                .select('id, slug, name, plan_tier, address, phone, email, letterhead_line2, letterhead_html')
+                .eq('id', reloadedProfile.organization_id)
+                .maybeSingle();
+              if (!orgError) {
+                org = orgData;
+              }
+            }
+          }
+        } catch (profileSyncErr) {
+          console.warn('[AuthProvider] failed to create or refresh cloud profile:', profileSyncErr);
+        }
+      }
+
       console.log('[AuthProvider] fetchProfileAndOrg resolved:', { full_name: prof?.full_name, org_slug: org?.slug, hasProfile: Boolean(prof) });
       setProfile(prof ?? null);
       setOrganization(org ?? null);
@@ -219,6 +254,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setProfile(null);
       setOrganization(null);
     } finally {
+      setProfileReady(true);
       console.log('[AuthProvider] fetchProfileAndOrg completed');
     }
   };
@@ -236,6 +272,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (mounted && !didResolveAuth) {
         console.warn('[AuthProvider] Safety net fired — Supabase auth is still pending, allowing UI to render');
         didResolveAuth = true;
+        setAuthReady(true);
+        setProfileReady(true);
         setLoading(false);
       }
     }, 8000);
@@ -256,6 +294,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 setProfile(cached.profile);
                 setOrganization(cached.organization ?? null);
                 setSession(cached.session ?? null);
+                setProfileReady(true);
                 resolvedFromCache.current = true;
               }
             }
@@ -298,7 +337,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             errorMessage: userError?.message || null,
             errorStatus: (userError as any)?.status || null,
           });
-          await fetchProfileAndOrg(session.user.id);
+          await fetchProfileAndOrg(session.user.id, session.user);
         } else {
           const IS_LOCAL_MODE = getIsLocalMode();
           if (!IS_LOCAL_MODE) {
@@ -308,19 +347,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setOrganization(null);
             setUser(null);
             setSession(null);
+            setProfileReady(true);
           } else if (!resolvedFromCache.current) {
             localStorage.removeItem('amana_offline_session');
             setProfile(null);
             setOrganization(null);
             setUser(null);
             setSession(null);
+            setProfileReady(true);
           }
         }
 
       } catch (e) {
         console.error('[AuthProvider] initializeAuth error:', e);
         if (mounted && !resolvedFromCache.current) {
-          setProfile(null); setOrganization(null); setUser(null); setSession(null);
+          setProfile(null); setOrganization(null); setUser(null); setSession(null); setProfileReady(true);
         }
       } finally {
         if (mounted) {
@@ -366,7 +407,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 errorMessage: userError?.message || null,
                 errorStatus: (userError as any)?.status || null,
               });
-              await fetchProfileAndOrg(session.user.id);
+              await fetchProfileAndOrg(session.user.id, session.user);
             }
           }
         } catch (e) {
@@ -389,11 +430,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setProfile(null);
     setOrganization(null);
     setSession(null);
+    setProfileReady(false);
     supabase.auth.signOut().catch((e: unknown) => console.warn('[AuthProvider] signOut error:', e));
   };
 
   return (
-    <AuthContext.Provider value={{ user, profile, organization, session, loading, authReady, signOut, refreshOrg }}>
+    <AuthContext.Provider value={{ user, profile, organization, session, loading, authReady, profileReady, signOut, refreshOrg }}>
       {children}
     </AuthContext.Provider>
   );

@@ -47,6 +47,45 @@ export function clearPersistedAuthState() {
   }
 }
 
+export async function upsertProfileForUser(supabase, userId, profileData = {}) {
+  if (!userId) return null;
+
+  const payload = {
+    id: userId,
+    email: profileData.email || null,
+    full_name: profileData.full_name || profileData.fullName || null,
+    role: profileData.role || 'reception',
+    organization_id: profileData.organization_id ?? null,
+  };
+
+  const profilesTable = supabase.from('profiles');
+
+  if (typeof profilesTable.upsert === 'function') {
+    const { data, error } = await profilesTable
+      .upsert(payload, { onConflict: 'id' })
+      .select('id')
+      .maybeSingle();
+
+    if (error) {
+      throw error;
+    }
+
+    return data;
+  }
+
+  const { data, error } = await profilesTable
+    .update(payload)
+    .eq('id', userId)
+    .select('id')
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+}
+
 export async function createOrganizationWithFallback(supabase, data, options = {}) {
   const payload = normalizeOrganizationData(data);
   if (!payload.slug) {
@@ -98,10 +137,12 @@ export async function createOrganizationWithFallback(supabase, data, options = {
 
   if (options?.userId) {
     try {
-      await supabase
-        .from('profiles')
-        .update({ organization_id: organization.id })
-        .eq('id', options.userId);
+      await upsertProfileForUser(supabase, options.userId, {
+        organization_id: organization.id,
+        email: options.email || null,
+        full_name: options.fullName || null,
+        role: options.role || 'admin',
+      });
     } catch (profileError) {
       console.warn('[workspace] failed to link profile to organization', profileError);
     }
