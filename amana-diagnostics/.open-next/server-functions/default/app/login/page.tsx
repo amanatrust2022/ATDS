@@ -1,0 +1,285 @@
+'use client';
+import { useState } from 'react';
+import { createClient } from '@/lib/supabase';
+import { useRouter } from 'next/navigation';
+import { RiMicroscopeLine, RiLockPasswordLine, RiMailLine, RiEyeLine, RiEyeOffLine } from '@remixicon/react';
+
+function withTimeout(promise: Promise<any>, ms: number, onWarning: () => void): Promise<any> {
+  const timer = setTimeout(onWarning, ms);
+  return promise.finally(() => clearTimeout(timer));
+}
+
+export default function LoginPage() {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [statusText, setStatusText] = useState('Signing in...');
+  const [error, setError] = useState('');
+  const [resetMode, setResetMode] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
+  const supabase = createClient();
+  const router = useRouter();
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true); setError('');
+    localStorage.removeItem('amana_offline_session');
+    setStatusText('Checking local database...');
+
+    const isLocalMode = typeof window !== 'undefined'
+      ? (localStorage.getItem('amana_local_mode') === null
+          ? (window.location.hostname === 'localhost' || 
+             window.location.hostname === '127.0.0.1' || 
+             window.location.hostname.startsWith('192.168.') || 
+             window.location.hostname.startsWith('10.') || 
+             window.location.hostname.startsWith('172.'))
+          : localStorage.getItem('amana_local_mode') === 'true')
+      : (process.env.NEXT_PUBLIC_LOCAL_SERVER_MODE === 'true');
+
+    // 1. In Local Mode, prioritize local sqlite verification first (takes ~10ms)
+    if (isLocalMode) {
+      try {
+        const localRes = await fetch('/api/auth/local-login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+        
+        if (localRes.ok) {
+          const localSession = await localRes.json();
+          localStorage.setItem('amana_offline_session', JSON.stringify({
+            user: localSession.user,
+            profile: localSession.profile,
+            organization: localSession.organization,
+            session: null
+          }));
+          
+          // Asynchronously perform background cloud login check to cache/sync session
+          supabase.auth.signInWithPassword({ email, password }).then((res: any) => {
+            if (res && !res.error && res.data?.user) {
+              fetch('/api/auth/save-credentials', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password, userId: res.data.user.id })
+              }).catch(console.error);
+            }
+          }).catch(console.error);
+
+          window.location.reload();
+          return;
+        }
+      } catch (localLoginErr) {
+        console.warn('Local check failed or local server not running, falling back to cloud login:', localLoginErr);
+      }
+    }
+
+    // 2. Cloud login - with responsive progress steps to keep UI feeling instantaneous and alive
+    setStatusText('Connecting to cloud server...');
+    const timer1 = setTimeout(() => setStatusText('Verifying credentials on cloud...'), 1200);
+    const timer2 = setTimeout(() => setStatusText('Syncing clinical workspace...'), 3200);
+
+    try {
+      let data, error;
+      try {
+        const res = await supabase.auth.signInWithPassword({ email, password });
+        data = res.data;
+        error = res.error;
+      } catch (err: any) {
+        error = { message: err.message || 'Connection failed.', status: 0 };
+      }
+      
+      clearTimeout(timer1);
+      clearTimeout(timer2);
+
+      if (!error && data?.user) {
+        // Success — clear stale cache first (prevents old profile from showing during reload)
+        // then do a full page reload so AuthProvider starts fresh with the new Supabase tokens.
+        //
+        // WHY reload instead of relying on onAuthStateChange:
+        //   Supabase's SDK may NOT fire SIGNED_IN if the browser already has an active session
+        //   (e.g. on 2nd+ logins in the same browser). Reloading always gives us a clean boot.
+        localStorage.removeItem('amana_offline_session');
+
+        if (isLocalMode) {
+          // Local Mode: also save credentials to local SQLite for offline auth
+          try {
+            await fetch('/api/auth/save-credentials', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ email, password, userId: data.user.id })
+            });
+          } catch (saveErr) {
+            console.error('Failed to save credentials locally:', saveErr);
+          }
+        }
+
+        // Reload for both modes — Supabase's own tokens are in its storage and will be picked up.
+        // Use a full navigation so the auth provider gets a fresh boot in cloud mode.
+        console.log('[LoginPage] sign-in succeeded, navigating to home');
+        window.location.assign('/');
+
+        return;
+      }
+
+      const isNetworkError = error?.message?.includes('fetch') || 
+                             error?.message?.includes('network') || 
+                             error?.message?.includes('timed out') || 
+                             error?.status === 0 || 
+                             (error && typeof window !== 'undefined' && !window.navigator.onLine);
+
+      if (isLocalMode && isNetworkError) {
+        try {
+          const localRes = await fetch('/api/auth/local-login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password })
+          });
+          
+          if (localRes.ok) {
+            const localSession = await localRes.json();
+            localStorage.setItem('amana_offline_session', JSON.stringify({
+              user: localSession.user,
+              profile: localSession.profile,
+              organization: localSession.organization,
+              session: null
+            }));
+            
+            window.location.reload();
+            return;
+          } else {
+            const localErr = await localRes.json();
+            setError(localErr.error || 'Invalid credentials');
+            setLoading(false);
+            return;
+          }
+        } catch (localLoginErr) {
+          console.error('Local login execution failed:', localLoginErr);
+        }
+      }
+
+      setError(error ? error.message : 'Login failed');
+      setLoading(false);
+    } catch (err: any) {
+      clearTimeout(timer1);
+      clearTimeout(timer2);
+      setError(err.message || 'An unexpected error occurred');
+      setLoading(false);
+    }
+  };
+
+  const handleReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true); setError('');
+    try {
+      const resetPromise = supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/update-password`,
+      });
+      const { error } = await withTimeout(
+        resetPromise,
+        10000,
+        () => setError('Slow network connection detected. Still sending password reset email... please wait.')
+      );
+      if (error) setError(error.message);
+      else setResetSent(true);
+    } catch (err: any) {
+      setError(err.message || 'Connection timed out. Please try again.');
+    }
+    setLoading(false);
+  };
+
+  const inp: React.CSSProperties = { width: '100%', padding: '0.75rem 0.9rem 0.75rem 2.8rem', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 8, color: 'white', fontSize: '0.9rem', outline: 'none' };
+
+  return (
+    <div style={{ minHeight: '100vh', background: '#0a0f1e', display: 'flex', fontFamily: 'var(--font-body)' }}>
+      <style>{`input::placeholder { color: rgba(255,255,255,0.2); } input:focus { border-color: #4472c4 !important; }`}</style>
+
+      {/* Left panel - branding */}
+      <div style={{ flex: 1, background: 'linear-gradient(135deg, #111c3d 0%, #0a0f1e 100%)', padding: '3rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', borderRight: '1px solid rgba(255,255,255,0.06)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+          <div style={{ background: '#4472c4', borderRadius: 8, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <RiMicroscopeLine size={18} color="white" />
+          </div>
+          <span style={{ color: 'white', fontWeight: 700, fontSize: '1rem' }}>DiagnosticOS</span>
+        </div>
+        <div>
+          <p style={{ color: 'rgba(255,255,255,0.2)', fontSize: '0.78rem', fontStyle: 'italic' }}>
+            "We cut patient wait time by 40% in the first month."
+          </p>
+          <p style={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.72rem', marginTop: '0.5rem' }}>— Admin, Northside Diagnostics</p>
+        </div>
+      </div>
+
+      {/* Right panel - form */}
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
+        <div style={{ width: '100%', maxWidth: 420 }}>
+          {resetSent ? (
+            <div style={{ textAlign: 'center', color: 'white' }}>
+              <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>✉️</div>
+              <h2 style={{ fontWeight: 700, marginBottom: '0.5rem' }}>Check your email</h2>
+              <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.85rem', marginBottom: '1.5rem' }}>we sent a password reset link to {email}</p>
+              <button onClick={() => { setResetMode(false); setResetSent(false); }} style={{ background: 'none', border: '1px solid rgba(255,255,255,0.2)', color: 'white', padding: '0.6rem 1.5rem', borderRadius: 8, cursor: 'pointer', fontSize: '0.85rem' }}>Back to sign in</button>
+            </div>
+          ) : (
+            <>
+              <h2 style={{ color: 'white', fontSize: '1.6rem', fontWeight: 700, marginBottom: '0.4rem' }}>
+                {resetMode ? 'Reset password' : 'Sign in to your workspace'}
+              </h2>
+              <p style={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.85rem', marginBottom: '2rem' }}>
+                {resetMode ? 'Enter your email to receive a reset link.' : 'Enter your credentials to continue.'}
+              </p>
+              <form onSubmit={resetMode ? handleReset : handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                <div style={{ position: 'relative' }}>
+                  <RiMailLine size={16} color="rgba(255,255,255,0.25)" style={{ position: 'absolute', left: '0.9rem', top: '50%', transform: 'translateY(-50%)' }} />
+                  <input type="email" value={email} onChange={e => setEmail(e.target.value)} required placeholder="Email address" style={inp} />
+                </div>
+                {!resetMode && (
+                  <div style={{ position: 'relative' }}>
+                    <RiLockPasswordLine size={16} color="rgba(255,255,255,0.25)" style={{ position: 'absolute', left: '0.9rem', top: '50%', transform: 'translateY(-50%)' }} />
+                    <input 
+                      type={showPassword ? "text" : "password"} 
+                      value={password} 
+                      onChange={e => setPassword(e.target.value)} 
+                      required 
+                      placeholder="Password" 
+                      style={{ ...inp, paddingRight: '2.8rem' }} 
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      style={{
+                        position: 'absolute',
+                        right: '0.9rem',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        background: 'none',
+                        border: 'none',
+                        color: 'rgba(255,255,255,0.25)',
+                        cursor: 'pointer',
+                        padding: 0,
+                        display: 'flex',
+                        alignItems: 'center'
+                      }}
+                    >
+                      {showPassword ? <RiEyeOffLine size={16} /> : <RiEyeLine size={16} />}
+                    </button>
+                  </div>
+                )}
+                {error && <p style={{ color: '#f87171', fontSize: '0.82rem', background: 'rgba(248,113,113,0.1)', padding: '0.6rem 0.9rem', borderRadius: 6 }}>{error}</p>}
+                <button type="submit" disabled={loading} style={{ background: loading ? '#2a4a8a' : '#4472c4', border: 'none', color: 'white', padding: '0.8rem', borderRadius: 8, fontWeight: 700, fontSize: '0.95rem', cursor: loading ? 'not-allowed' : 'pointer', marginTop: '0.25rem' }}>
+                  {loading ? (resetMode ? 'Sending...' : statusText) : (resetMode ? 'Send reset link' : 'Sign in')}
+                </button>
+              </form>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1.5rem' }}>
+                <button onClick={() => { setResetMode(!resetMode); setError(''); }} style={{ background: 'none', border: 'none', color: '#7fa3e0', cursor: 'pointer', fontSize: '0.8rem', padding: 0 }}>
+                  {resetMode ? '← Back to sign in' : 'Forgot password?'}
+                </button>
+                <a href="/signup" style={{ color: '#7fa3e0', textDecoration: 'none', fontSize: '0.8rem', fontWeight: 600 }}>Create workspace →</a>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
