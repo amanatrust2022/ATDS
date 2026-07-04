@@ -8,7 +8,10 @@
     "build": "next build",
     "start": "next start",
     "build:standalone": "next build",
-    "dist:package": "node package-dist.js"
+    "dist:package": "node package-dist.js",
+    "tauri": "cargo tauri dev",
+    "tauri:dev": "cargo tauri dev",
+    "build:tauri": "next build && node scripts/prepare-tauri-bundle.js && cargo tauri build"
   },
   "dependencies": {
     "@remixicon/react": "^4.9.0",

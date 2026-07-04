@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DiagnosticOS — Setup</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --green-700: #047857;
+      --green-500: #10b981;
+      --green-400: #34d399;
+      --green-300: #6ee7b7;
+      --teal-600:  #0d9488;
+      --slate-900: #0f172a;
+      --slate-800: #1e293b;
+      --slate-700: #334155;
+      --slate-600: #475569;
+      --slate-400: #94a3b8;
+      --slate-200: #e2e8f0;
+      --red-400:   #f87171;
+      --white:     #ffffff;
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--slate-900);
+      color: var(--white);
+      font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+      overflow: hidden;
+    }
+
+    .bg-glow {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      background:
+        radial-gradient(ellipse 70% 50% at 50% -15%, rgba(16,185,129,0.15) 0%, transparent 70%),
+        var(--slate-900);
+    }
+
+    /* ── Layout ─────────────────────────────────────────────────────────── */
+    .screen {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 2rem 1.5rem;
+      gap: 0;
+    }
+
+    /* ── Card ───────────────────────────────────────────────────────────── */
+    .card {
+      width: 100%;
+      max-width: 480px;
+      background: rgba(30,41,59,0.8);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 20px;
+      padding: 2.5rem 2rem;
+      box-shadow:
+        0 0 0 1px rgba(16,185,129,0.08),
+        0 24px 64px rgba(0,0,0,0.5);
+      backdrop-filter: blur(16px);
+      animation: slideUp 0.5s ease both;
+    }
+
+    /* ── Header ─────────────────────────────────────────────────────────── */
+    .header {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 2rem;
+      text-align: center;
+    }
+
+    .logo-ring {
+      width: 72px;
+      height: 72px;
+      border-radius: 20px;
+      background: linear-gradient(135deg, var(--green-700) 0%, var(--teal-600) 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 0 30px rgba(16,185,129,0.3);
+    }
+
+    .logo-ring svg {
+      width: 38px;
+      height: 38px;
+    }
+
+    .header h1 {
+      font-size: 1.5rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      background: linear-gradient(135deg, var(--white) 30%, var(--green-300));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .header .subtitle {
+      font-size: 0.875rem;
+      color: var(--slate-400);
+      line-height: 1.6;
+      max-width: 340px;
+    }
+
+    /* ── Step indicator ─────────────────────────────────────────────────── */
+    .steps {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      margin-bottom: 2rem;
+      justify-content: center;
+    }
+
+    .step {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.4rem;
+      flex: 1;
+      position: relative;
+    }
+
+    .step-dot {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      border: 2px solid var(--slate-600);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: var(--slate-400);
+      transition: all 0.3s;
+      background: var(--slate-800);
+      position: relative;
+      z-index: 1;
+    }
+
+    .step.active .step-dot {
+      border-color: var(--green-500);
+      color: var(--green-400);
+      background: rgba(16,185,129,0.1);
+      box-shadow: 0 0 0 4px rgba(16,185,129,0.1);
+    }
+
+    .step.done .step-dot {
+      border-color: var(--green-500);
+      background: var(--green-700);
+      color: var(--white);
+    }
+
+    .step-label {
+      font-size: 0.68rem;
+      font-weight: 600;
+      color: var(--slate-600);
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .step.active .step-label { color: var(--green-400); }
+    .step.done .step-label   { color: var(--slate-400); }
+
+    .step-line {
+      flex: 1;
+      height: 2px;
+      background: var(--slate-700);
+      margin-bottom: 1.2rem;
+      transition: background 0.3s;
+    }
+
+    .step-line.done { background: var(--green-700); }
+
+    /* ── Form ───────────────────────────────────────────────────────────── */
+    .field { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1.25rem; }
+
+    label {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--slate-200);
+      letter-spacing: 0.02em;
+    }
+
+    input[type="text"],
+    input[type="password"] {
+      background: var(--slate-800);
+      border: 1.5px solid var(--slate-600);
+      border-radius: 10px;
+      padding: 0.75rem 1rem;
+      color: var(--white);
+      font-size: 1rem;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+      width: 100%;
+    }
+
+    input[type="text"]:focus,
+    input[type="password"]:focus {
+      border-color: var(--green-500);
+      box-shadow: 0 0 0 3px rgba(16,185,129,0.15);
+    }
+
+    input[type="text"]::placeholder,
+    input[type="password"]::placeholder {
+      color: var(--slate-600);
+    }
+
+    .field-hint {
+      font-size: 0.75rem;
+      color: var(--slate-400);
+      line-height: 1.5;
+    }
+
+    /* ── Button ─────────────────────────────────────────────────────────── */
+    .btn {
+      width: 100%;
+      padding: 0.85rem 1.5rem;
+      border: none;
+      border-radius: 10px;
+      font-size: 0.95rem;
+      font-weight: 700;
+      font-family: inherit;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--green-700) 0%, var(--teal-600) 100%);
+      color: var(--white);
+      box-shadow: 0 4px 20px rgba(16,185,129,0.3);
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 28px rgba(16,185,129,0.4);
+    }
+
+    .btn-primary:active:not(:disabled) {
+      transform: translateY(0);
+    }
+
+    .btn-primary:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    /* ── Error / info banners ────────────────────────────────────────────── */
+    .banner {
+      border-radius: 10px;
+      padding: 0.85rem 1rem;
+      font-size: 0.82rem;
+      line-height: 1.5;
+      margin-bottom: 1.25rem;
+      display: none;
+    }
+
+    .banner.error {
+      background: rgba(248,113,113,0.1);
+      border: 1px solid rgba(248,113,113,0.3);
+      color: var(--red-400);
+    }
+
+    .banner.success {
+      background: rgba(16,185,129,0.1);
+      border: 1px solid rgba(16,185,129,0.3);
+      color: var(--green-300);
+    }
+
+    .banner.show { display: block; }
+
+    /* ── Org info card (shown after validation) ─────────────────────────── */
+    .org-card {
+      background: rgba(16,185,129,0.06);
+      border: 1px solid rgba(16,185,129,0.2);
+      border-radius: 12px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 1.25rem;
+      display: none;
+    }
+
+    .org-card.show { display: block; }
+
+    .org-card .org-name {
+      font-weight: 700;
+      font-size: 1rem;
+      color: var(--green-300);
+      margin-bottom: 0.25rem;
+    }
+
+    .org-card .org-id {
+      font-size: 0.72rem;
+      color: var(--slate-400);
+      font-family: monospace;
+    }
+
+    /* ── Spinner (inline) ───────────────────────────────────────────────── */
+    .spin {
+      width: 18px;
+      height: 18px;
+      border: 2.5px solid rgba(255,255,255,0.3);
+      border-top-color: var(--white);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      display: none;
+    }
+
+    .btn.loading .spin  { display: block; }
+    .btn.loading .label { display: none; }
+
+    /* ── Screens ────────────────────────────────────────────────────────── */
+    .pane { display: none; }
+    .pane.active { display: block; }
+
+    /* ── Animations ─────────────────────────────────────────────────────── */
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(24px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="bg-glow"></div>
+
+  <div class="screen">
+    <div class="card">
+
+      <!-- Header -->
+      <div class="header">
+        <div class="logo-ring">
+          <svg viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <rect x="21" y="4"  width="10" height="44" rx="5" fill="white" fill-opacity="0.95"/>
+            <rect x="4"  y="21" width="44" height="10" rx="5" fill="white" fill-opacity="0.95"/>
+            <circle cx="26" cy="26" r="6" fill="white" fill-opacity="0.4"/>
+          </svg>
+        </div>
+        <div>
+          <h1>Welcome to DiagnosticOS</h1>
+          <p class="subtitle">
+            Enter your clinic's invite code to link this hub to your organisation.
+            You only need to do this once.
+          </p>
+        </div>
+      </div>
+
+      <!-- Step indicator -->
+      <div class="steps" role="list" aria-label="Setup progress">
+        <div class="step active" id="step-1" role="listitem">
+          <div class="step-dot">1</div>
+          <span class="step-label">Invite Code</span>
+        </div>
+        <div class="step-line" id="line-1"></div>
+        <div class="step" id="step-2" role="listitem">
+          <div class="step-dot">2</div>
+          <span class="step-label">Confirm</span>
+        </div>
+        <div class="step-line" id="line-2"></div>
+        <div class="step" id="step-3" role="listitem">
+          <div class="step-dot">3</div>
+          <span class="step-label">Launching</span>
+        </div>
+      </div>
+
+      <!-- ── Pane 1: Enter invite code ─────────────────────────────── -->
+      <div class="pane active" id="pane-code">
+        <div class="banner error" id="err-code" role="alert"></div>
+
+        <div class="field">
+          <label for="invite-code">Org Invite Code</label>
+          <input
+            type="text"
+            id="invite-code"
+            placeholder="e.g. AMANA-XXXX-XXXX"
+            autocomplete="off"
+            spellcheck="false"
+            autofocus
+          />
+          <p class="field-hint">
+            Your invite code was provided by the DiagnosticOS team when your
+            organisation was set up. Contact support if you don't have one.
+          </p>
+        </div>
+
+        <button class="btn btn-primary" id="btn-validate">
+          <span class="label">Validate Code →</span>
+          <div class="spin" aria-hidden="true"></div>
+        </button>
+      </div>
+
+      <!-- ── Pane 2: Confirm org ────────────────────────────────────── -->
+      <div class="pane" id="pane-confirm">
+        <div class="banner success show" id="msg-validated">
+          ✓ Invite code validated successfully.
+        </div>
+
+        <div class="org-card show" id="org-card">
+          <div class="org-name" id="org-name">—</div>
+          <div class="org-id" id="org-id">—</div>
+        </div>
+
+        <p class="field-hint" style="margin-bottom:1.25rem;line-height:1.6">
+          This hub will be linked to the organisation above. All patient data
+          will be stored locally and synced securely to your cloud account.
+        </p>
+
+        <div class="banner error" id="err-save" role="alert"></div>
+
+        <button class="btn btn-primary" id="btn-save">
+          <span class="label">Confirm &amp; Launch →</span>
+          <div class="spin" aria-hidden="true"></div>
+        </button>
+      </div>
+
+      <!-- ── Pane 3: Launching ──────────────────────────────────────── -->
+      <div class="pane" id="pane-launching">
+        <div style="text-align:center;padding:1.5rem 0">
+          <div style="margin:0 auto 1.25rem;width:48px;height:48px;border:3px solid rgba(16,185,129,0.2);border-top-color:#34d399;border-radius:50%;animation:spin 0.9s linear infinite"></div>
+          <p style="font-size:1rem;font-weight:600;color:#6ee7b7;margin-bottom:0.5rem">Starting local server…</p>
+          <p style="font-size:0.82rem;color:#94a3b8;line-height:1.6">
+            DiagnosticOS is starting for the first time.<br>
+            This may take up to 30 seconds.
+          </p>
+        </div>
+      </div>
+
+    </div><!-- .card -->
+  </div><!-- .screen -->
+
+  <script>
+    // ── State ─────────────────────────────────────────────────────────────────
+    let validatedConfig = null;
+
+    // ── Tauri IPC ─────────────────────────────────────────────────────────────
+    // Tauri v2 with withGlobalTauri:true exposes window.__TAURI__.core.invoke
+    function invoke(cmd, args) {
+      if (window.__TAURI__ && window.__TAURI__.core) {
+        return window.__TAURI__.core.invoke(cmd, args);
+      }
+      // Fallback: internal IPC bridge (always present in Tauri webview)
+      if (window.__TAURI_INTERNALS__) {
+        return window.__TAURI_INTERNALS__.invoke(cmd, args);
+      }
+      return Promise.reject(new Error('Tauri IPC not available'));
+    }
+
+    // ── UI Helpers ────────────────────────────────────────────────────────────
+    function showPane(id) {
+      document.querySelectorAll('.pane').forEach(p => p.classList.remove('active'));
+      document.getElementById(id).classList.add('active');
+    }
+
+    function setStepState(stepEl, state) {
+      const el = document.getElementById(stepEl);
+      el.className = 'step ' + state;
+    }
+
+    function showError(id, msg) {
+      const el = document.getElementById(id);
+      el.textContent = msg;
+      el.classList.add('show');
+    }
+
+    function hideError(id) {
+      const el = document.getElementById(id);
+      el.textContent = '';
+      el.classList.remove('show');
+    }
+
+    function setLoading(btn, loading) {
+      btn.disabled = loading;
+      btn.classList.toggle('loading', loading);
+    }
+
+    // ── Step 1: Validate invite code ──────────────────────────────────────────
+    document.getElementById('btn-validate').addEventListener('click', async () => {
+      const code = document.getElementById('invite-code').value.trim();
+      if (!code) {
+        showError('err-code', 'Please enter your invite code.');
+        return;
+      }
+
+      hideError('err-code');
+      const btn = document.getElementById('btn-validate');
+      setLoading(btn, true);
+
+      try {
+        const config = await invoke('validate_invite_code', { code });
+        validatedConfig = config;
+
+        // Populate confirm pane
+        document.getElementById('org-name').textContent =
+          config.org_name || 'Your Organisation';
+        document.getElementById('org-id').textContent =
+          'Org ID: ' + config.org_id;
+
+        // Advance steps
+        setStepState('step-1', 'done');
+        document.getElementById('line-1').classList.add('done');
+        setStepState('step-2', 'active');
+        showPane('pane-confirm');
+
+      } catch (err) {
+        showError('err-code', String(err));
+      } finally {
+        setLoading(btn, false);
+      }
+    });
+
+    // Allow Enter key on invite code input
+    document.getElementById('invite-code').addEventListener('keydown', e => {
+      if (e.key === 'Enter') document.getElementById('btn-validate').click();
+    });
+
+    // ── Step 2: Save config & finish ──────────────────────────────────────────
+    document.getElementById('btn-save').addEventListener('click', async () => {
+      if (!validatedConfig) return;
+
+      hideError('err-save');
+      const btn = document.getElementById('btn-save');
+      setLoading(btn, true);
+
+      try {
+        // Write config.json
+        await invoke('save_config', { config: validatedConfig });
+
+        // Advance steps
+        setStepState('step-2', 'done');
+        document.getElementById('line-2').classList.add('done');
+        setStepState('step-3', 'active');
+        showPane('pane-launching');
+
+        // Tell Rust: wizard done — start the server and navigate
+        await invoke('finish_wizard');
+
+      } catch (err) {
+        showError('err-save', String(err));
+        setLoading(btn, false);
+      }
+    });
+  </script>
+</body>
+</html>
