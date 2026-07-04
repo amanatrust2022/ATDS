@@ -158,6 +158,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!prof) {
         console.log('[AuthProvider] fetchProfileAndOrg querying cloud Supabase profiles (client-side)...');
         try {
+          // Fix 1: Ensure session is explicitly set in client instance to avoid RLS race conditions
+          const { data: { session: currentSession } } = await supabase.auth.getSession();
+          if (currentSession) {
+            await supabase.auth.setSession({
+              access_token: currentSession.access_token,
+              refresh_token: currentSession.refresh_token,
+            });
+          }
+
           const { data, error } = await supabase
             .from('profiles')
             .select('id, full_name, role, organization_id, email')
