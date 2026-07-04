@@ -306,7 +306,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // This is the ONLY place auth state is read. We no longer call getSession()
     // manually and then also listen — that was the source of double-resolution.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
+      async (event: any, session: any) => {
         if (!mounted) return;
         console.log('[AuthProvider] auth event:', event, 'user:', session?.user?.id ?? 'none');
 
