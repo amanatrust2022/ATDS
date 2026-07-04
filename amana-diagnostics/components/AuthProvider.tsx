@@ -340,6 +340,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           // INITIAL_SESSION with no session = user is logged out
           if (event === 'INITIAL_SESSION') {
             setAuthReady(true);
+            setProfileReady(true);
             setLoading(false);
           }
         }
