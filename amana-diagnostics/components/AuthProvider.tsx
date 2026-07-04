@@ -154,9 +154,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
-      // Cloud mode (Vercel) — fallback to a simple profile query if the joined query fails
+      // Cloud mode — try client-side Supabase query first (fast path)
       if (!prof) {
-        console.log('[AuthProvider] fetchProfileAndOrg querying cloud Supabase profiles...');
+        console.log('[AuthProvider] fetchProfileAndOrg querying cloud Supabase profiles (client-side)...');
         try {
           const { data, error } = await supabase
             .from('profiles')
@@ -165,7 +165,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             .maybeSingle();
 
           if (error) {
-            console.warn('[AuthProvider] profile query error:', error);
+            console.warn('[AuthProvider] profile query error:', JSON.stringify(error));
           } else if (data) {
             prof = data;
             if (data.organization_id) {
@@ -180,12 +180,47 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 org = orgData;
               }
             }
+          } else {
+            // data is null — RLS filtered the row OR session wasn't sent correctly
+            console.warn('[AuthProvider] client-side profile query returned null — trying server-side fallback');
           }
           fetchedFromCloud = true;
         } catch (cloudQueryErr) {
           console.error('[AuthProvider] cloud profile query threw:', cloudQueryErr);
         }
       }
+
+      // Server-side fallback: if client-side query returned null (JWT timing issue / RLS),
+      // call /api/profile which verifies the token and fetches via service role.
+      // This is the definitive fix for "profile null on cloud" regardless of root cause.
+      if (!prof && typeof window !== 'undefined') {
+        try {
+          console.log('[AuthProvider] Trying server-side /api/profile fallback...');
+          const { data: { session: accessSession } } = await supabase.auth.getSession();
+          const token = accessSession?.access_token;
+          if (token) {
+            const res = await fetch('/api/profile', {
+              headers: { 'Authorization': `Bearer ${token}` },
+            });
+            if (res.ok) {
+              const payload = await res.json();
+              if (payload.profile) {
+                prof = payload.profile;
+                org = payload.organization ?? null;
+                console.log('[AuthProvider] Server-side profile fallback succeeded:', prof?.role, 'org:', org?.slug);
+              }
+            } else {
+              const errBody = await res.text();
+              console.error('[AuthProvider] /api/profile returned', res.status, errBody);
+            }
+          } else {
+            console.warn('[AuthProvider] No access token available for server-side fallback');
+          }
+        } catch (serverFallbackErr) {
+          console.warn('[AuthProvider] Server-side profile fallback threw:', serverFallbackErr);
+        }
+      }
+
 
       // Fallback: if no profile row found, try to create one from user_metadata.
       // IMPORTANT: Only do this when a real authenticated session exists.
