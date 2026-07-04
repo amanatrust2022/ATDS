@@ -379,7 +379,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             errorStatus: (userError as any)?.status || null,
           });
           await fetchProfileAndOrg(session.user.id, session.user);
+          // Mark resolved so the finally block and INITIAL_SESSION handler both know
+          // this path handled auth. Also mark profile as loaded.
+          didResolveAuth = true;
+          if (mounted) setProfileReady(true);
         } else {
+          // getSession() returned null — two possible reasons:
+          //   a) User is genuinely not logged in.
+          //   b) PKCE code exchange is still in progress (e.g. email confirmation redirect).
+          // We CANNOT tell the difference here. So we clear stale state but leave
+          // loading=true and authReady=false. The onAuthStateChange(INITIAL_SESSION)
+          // handler below will fire next and act as the single arbiter:
+          //   — if the PKCE exchange completed, it arrives with a real session.
+          //   — if the user is truly logged out, it arrives with session=null.
+          // DO NOT set didResolveAuth = true here.
           const IS_LOCAL_MODE = getIsLocalMode();
           if (!IS_LOCAL_MODE) {
             localStorage.removeItem('amana_offline_session');
@@ -388,25 +401,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setOrganization(null);
             setUser(null);
             setSession(null);
-            setProfileReady(true);
           } else if (!resolvedFromCache.current) {
             localStorage.removeItem('amana_offline_session');
             setProfile(null);
             setOrganization(null);
             setUser(null);
             setSession(null);
-            setProfileReady(true);
           }
+          console.log('[AuthProvider] getSession returned null — deferring to INITIAL_SESSION event');
+          // Return without resolving — INITIAL_SESSION will finish this.
+          return;
         }
 
       } catch (e) {
         console.error('[AuthProvider] initializeAuth error:', e);
         if (mounted && !resolvedFromCache.current) {
-          setProfile(null); setOrganization(null); setUser(null); setSession(null); setProfileReady(true);
+          setProfile(null); setOrganization(null); setUser(null); setSession(null);
         }
-      } finally {
+        // On error, resolve so the UI doesn't hang forever
         if (mounted) {
           didResolveAuth = true;
+          setProfileReady(true);
+          setAuthReady(true);
+          setLoading(false);
+          clearTimeout(safetyNet);
+        }
+      } finally {
+        // Only resolve auth here when we successfully found AND processed a session.
+        // If we hit the early return (no session path), didResolveAuth is still false
+        // and INITIAL_SESSION will call setLoading(false) / setAuthReady(true).
+        if (mounted && didResolveAuth) {
           setAuthReady(true);
           setLoading(false);
           clearTimeout(safetyNet);
@@ -420,9 +444,50 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event: string, session: Session | null) => {
         if (!mounted) return;
-        // Skip INITIAL_SESSION — we handle it in initializeAuth
-        if (event === 'INITIAL_SESSION') return;
 
+        // ── INITIAL_SESSION ───────────────────────────────────────────────────
+        // This event fires once when the listener is first registered.
+        // It carries the result of the PKCE code exchange if the user came from
+        // an email confirmation / magic link redirect (i.e. ?code=... in URL).
+        // If initializeAuth already resolved auth via a cached localStorage session,
+        // didResolveAuth will be true and we skip this. Otherwise, this is where
+        // auth resolution happens for PKCE and "no-session" cases.
+        if (event === 'INITIAL_SESSION') {
+          if (didResolveAuth) {
+            // initializeAuth already handled a session — nothing to do
+            return;
+          }
+          console.log('[AuthProvider] INITIAL_SESSION fired, session=', Boolean(session?.user));
+          try {
+            if (session?.user) {
+              // PKCE exchange completed — we now have a real session
+              setSession(session);
+              setUser(session.user);
+              await fetchProfileAndOrg(session.user.id, session.user);
+            } else {
+              // Confirmed: no session. User is not logged in.
+              if (!resolvedFromCache.current) {
+                setProfile(null);
+                setOrganization(null);
+                setUser(null);
+                setSession(null);
+              }
+            }
+          } catch (e) {
+            console.warn('[AuthProvider] INITIAL_SESSION handler error:', e);
+          } finally {
+            if (mounted) {
+              didResolveAuth = true;
+              clearTimeout(safetyNet);
+              setProfileReady(true);
+              setAuthReady(true);
+              setLoading(false);
+            }
+          }
+          return;
+        }
+
+        // ── Subsequent auth events ────────────────────────────────────────────
         try {
           const IS_LOCAL_MODE = getIsLocalMode();
           if (event === 'SIGNED_OUT') {
@@ -437,7 +502,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
             if (session?.user) {
               console.log('[AuthProvider] auth state change:', event, 'userId=', session.user.id);
-              setAuthReady(true);
               setAuthReady(true);
               setSession(session);
               setUser(session.user);
