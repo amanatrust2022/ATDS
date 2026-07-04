@@ -534,6 +534,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               setSession(null);
               setUser(null);
             }
+            if (mounted) {
+              didResolveAuth = true;
+              clearTimeout(safetyNet);
+              setProfileReady(true);
+              setAuthReady(true);
+              setLoading(false);
+            }
           } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
             if (session?.user) {
               console.log('[AuthProvider] auth state change:', event, 'userId=', session.user.id);
@@ -548,6 +555,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 errorStatus: (userError as any)?.status || null,
               });
               await fetchProfileAndOrg(session.user.id, session.user);
+              if (mounted) {
+                didResolveAuth = true;
+                clearTimeout(safetyNet);
+                setProfileReady(true);
+                setAuthReady(true);
+                setLoading(false);
+              }
             }
           }
         } catch (e) {
