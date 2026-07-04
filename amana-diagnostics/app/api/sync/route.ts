@@ -25,6 +25,56 @@ function getSyncSupabaseClient(accessToken?: string | null) {
   return createSupabaseClient(url, key, options);
 }
 
+async function fetchAllRemoteRows(
+  supabase: any,
+  tableName: string,
+  organizationId: string,
+  lastPull: string,
+  filterCol: string = 'updated_at'
+) {
+  let allRows: any[] = [];
+  let from = 0;
+  const limit = 1000;
+
+  while (true) {
+    let query = supabase.from(tableName).select('*');
+
+    if (tableName === 'organizations') {
+      query = query.eq('id', organizationId);
+    } else {
+      query = query.eq('organization_id', organizationId);
+    }
+
+    if (tableName !== 'organizations' && tableName !== 'profiles' && tableName !== 'test_prices') {
+      query = query.gt(filterCol, lastPull);
+    }
+
+    let orderCol = 'id';
+    if (tableName === 'test_prices') {
+      orderCol = 'test_id';
+    }
+
+    const { data, error } = await query
+      .order(orderCol, { ascending: true })
+      .range(from, from + limit - 1);
+
+    if (error) {
+      throw error;
+    }
+
+    if (!data || data.length === 0) {
+      break;
+    }
+
+    allRows = allRows.concat(data);
+    if (data.length < limit) {
+      break;
+    }
+    from += limit;
+  }
+  return allRows;
+}
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -41,8 +91,9 @@ export async function GET(request: Request) {
     const pendingCount = outboxCountRow.count;
 
     // Get last pull timestamp
-    const metaStmt = db.prepare(`SELECT value FROM sync_metadata WHERE key = 'last_pull_timestamp'`);
-    const metaRow = metaStmt.get() as { value: string } | undefined;
+    const lastPullKey = `last_pull_timestamp:${orgId}`;
+    const metaStmt = db.prepare(`SELECT value FROM sync_metadata WHERE key = ?`);
+    const metaRow = metaStmt.get(lastPullKey) as { value: string } | undefined;
     const lastPull = metaRow ? metaRow.value : 'Never';
 
     return NextResponse.json({
@@ -206,8 +257,9 @@ export async function POST(request: Request) {
     }
 
     // 3. PULL SYNC: Retrieve remote changes since last pull timestamp
-    const metaStmt = db.prepare(`SELECT value FROM sync_metadata WHERE key = 'last_pull_timestamp'`);
-    const metaRow = metaStmt.get() as { value: string } | undefined;
+    const lastPullKey = `last_pull_timestamp:${organizationId}`;
+    const metaStmt = db.prepare(`SELECT value FROM sync_metadata WHERE key = ?`);
+    const metaRow = metaStmt.get(lastPullKey) as { value: string } | undefined;
     const lastPull = metaRow ? metaRow.value : '1970-01-01T00:00:00.000Z';
     const nowStr = new Date().toISOString();
 
@@ -240,11 +292,11 @@ export async function POST(request: Request) {
     }
 
     // Pull Profiles
-    const { data: profilesData } = await supabase.from('profiles').select('*').eq('organization_id', organizationId);
+    const profilesData = await fetchAllRemoteRows(supabase, 'profiles', organizationId, lastPull);
     if (profilesData && profilesData.length > 0) {
       const insertProfile = db.prepare(`
-        INSERT INTO profiles (id, full_name, title, first_name, surname, last_name, signature_url, role, organization_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO profiles (id, full_name, title, first_name, surname, last_name, signature_url, role, organization_id, email)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
           full_name = excluded.full_name,
           title = excluded.title,
@@ -253,7 +305,8 @@ export async function POST(request: Request) {
           last_name = excluded.last_name,
           signature_url = excluded.signature_url,
           role = excluded.role,
-          organization_id = excluded.organization_id
+          organization_id = excluded.organization_id,
+          email = excluded.email
       `);
       profilesData.forEach((p) => {
         insertProfile.run(
@@ -265,13 +318,14 @@ export async function POST(request: Request) {
           p.last_name || null,
           p.signature_url || null,
           p.role,
-          p.organization_id || null
+          p.organization_id || null,
+          p.email || null
         );
       });
     }
 
     // Pull Referring Facilities
-    const { data: facs } = await supabase.from('referring_facilities').select('*').eq('organization_id', organizationId).gt('updated_at', lastPull);
+    const facs = await fetchAllRemoteRows(supabase, 'referring_facilities', organizationId, lastPull);
     if (facs && facs.length > 0) {
       const insertFac = db.prepare(`
         INSERT INTO referring_facilities (id, organization_id, name, address, phone, email, commission_type, commission_value, is_active, created_at, updated_at)
@@ -292,7 +346,7 @@ export async function POST(request: Request) {
     }
 
     // Pull Referring Doctors
-    const { data: docs } = await supabase.from('referring_doctors').select('*').eq('organization_id', organizationId).gt('updated_at', lastPull);
+    const docs = await fetchAllRemoteRows(supabase, 'referring_doctors', organizationId, lastPull);
     if (docs && docs.length > 0) {
       const insertDoc = db.prepare(`
         INSERT INTO referring_doctors (id, organization_id, facility_id, name, phone, email, commission_type, commission_value, is_active, created_at, updated_at)
@@ -313,7 +367,7 @@ export async function POST(request: Request) {
     }
 
     // Pull Test Prices (Note: pull all as it is very small)
-    const { data: prices } = await supabase.from('test_prices').select('*').eq('organization_id', organizationId);
+    const prices = await fetchAllRemoteRows(supabase, 'test_prices', organizationId, lastPull);
     if (prices && prices.length > 0) {
       const insertPrice = db.prepare(`
         INSERT INTO test_prices (organization_id, test_id, test_name, price, commission_type, commission_value)
@@ -329,7 +383,7 @@ export async function POST(request: Request) {
     }
 
     // Pull Custom Tests
-    const { data: cTests } = await supabase.from('custom_tests').select('*').eq('organization_id', organizationId).gt('updated_at', lastPull);
+    const cTests = await fetchAllRemoteRows(supabase, 'custom_tests', organizationId, lastPull);
     if (cTests && cTests.length > 0) {
       const insertCTest = db.prepare(`
         INSERT INTO custom_tests (id, organization_id, name, department, category, specimen, parameters, is_active, updated_at)
@@ -359,7 +413,7 @@ export async function POST(request: Request) {
     }
 
     // Pull Radiology Templates
-    const { data: templates } = await supabase.from('radiology_templates').select('*').eq('organization_id', organizationId).gt('updated_at', lastPull);
+    const templates = await fetchAllRemoteRows(supabase, 'radiology_templates', organizationId, lastPull);
     if (templates && templates.length > 0) {
       const insertTemplate = db.prepare(`
         INSERT INTO radiology_templates (id, organization_id, key, name, findings, impression, created_at, created_by, updated_at)
@@ -377,7 +431,7 @@ export async function POST(request: Request) {
     }
 
     // Pull Patient Profiles
-    const { data: patientProfiles } = await supabase.from('patient_profiles').select('*').eq('organization_id', organizationId).gt('updated_at', lastPull);
+    const patientProfiles = await fetchAllRemoteRows(supabase, 'patient_profiles', organizationId, lastPull);
     if (patientProfiles && patientProfiles.length > 0) {
       const insertProfile = db.prepare(`
         INSERT INTO patient_profiles (
@@ -401,7 +455,7 @@ export async function POST(request: Request) {
     }
 
     // Pull Patients
-    const { data: patients } = await supabase.from('patients').select('*').eq('organization_id', organizationId).gt('updated_at', lastPull);
+    const patients = await fetchAllRemoteRows(supabase, 'patients', organizationId, lastPull);
     if (patients && patients.length > 0) {
       const insertPatient = db.prepare(`
         INSERT INTO patients (
@@ -456,7 +510,7 @@ export async function POST(request: Request) {
     }
 
     // Pull Patient Tests
-    const { data: patientTests } = await supabase.from('patient_tests').select('*').eq('organization_id', organizationId).gt('updated_at', lastPull);
+    const patientTests = await fetchAllRemoteRows(supabase, 'patient_tests', organizationId, lastPull);
     if (patientTests && patientTests.length > 0) {
       const insertTest = db.prepare(`
         INSERT INTO patient_tests (
@@ -496,7 +550,7 @@ export async function POST(request: Request) {
 
     // Pull Billing Accounts (Safe Try-Catch)
     try {
-      const { data: accounts } = await supabase.from('billing_accounts').select('*').eq('organization_id', organizationId).gt('updated_at', lastPull);
+      const accounts = await fetchAllRemoteRows(supabase, 'billing_accounts', organizationId, lastPull);
       if (accounts && accounts.length > 0) {
         const insertAcc = db.prepare(`
           INSERT INTO billing_accounts (id, organization_id, name, owner_patient_id, balance, credit_limit, type, created_at, updated_at)
@@ -519,7 +573,7 @@ export async function POST(request: Request) {
 
     // Pull Billing Ledger Transactions (Safe Try-Catch)
     try {
-      const { data: txs } = await supabase.from('billing_ledger_transactions').select('*').eq('organization_id', organizationId).gt('created_at', lastPull);
+      const txs = await fetchAllRemoteRows(supabase, 'billing_ledger_transactions', organizationId, lastPull, 'created_at');
       if (txs && txs.length > 0) {
         const insertTx = db.prepare(`
           INSERT INTO billing_ledger_transactions (id, organization_id, billing_account_id, patient_id, type, amount, description, reference_id, payment_method, created_by, created_at)
@@ -543,7 +597,7 @@ export async function POST(request: Request) {
 
     // Pull External Department Charges (Safe Try-Catch)
     try {
-      const { data: charges } = await supabase.from('external_department_charges').select('*').eq('organization_id', organizationId).gt('created_at', lastPull);
+      const charges = await fetchAllRemoteRows(supabase, 'external_department_charges', organizationId, lastPull, 'created_at');
       if (charges && charges.length > 0) {
         const insertCharge = db.prepare(`
           INSERT INTO external_department_charges (id, organization_id, patient_id, billing_account_id, department, receipt_number, amount, payment_method, status, description, created_by, created_at)
@@ -570,9 +624,9 @@ export async function POST(request: Request) {
     // Update metadata last pull timestamp
     db.prepare(`
       INSERT INTO sync_metadata (key, value)
-      VALUES ('last_pull_timestamp', ?)
+      VALUES (?, ?)
       ON CONFLICT(key) DO UPDATE SET value = excluded.value
-    `).run(nowStr);
+    `).run(lastPullKey, nowStr);
 
     return NextResponse.json({
       status: 'synced',
