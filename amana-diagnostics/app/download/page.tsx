@@ -2,7 +2,7 @@
 import { useRouter } from 'next/navigation';
 import { RiMicroscopeLine, RiDownloadLine, RiCheckLine, RiArrowLeftLine, RiRefreshLine, RiShieldCheckLine, RiWifiOffLine, RiComputerLine, RiGithubLine, RiInformationLine } from '@remixicon/react';
 
-const CURRENT_VERSION = '1.2.5';
+const CURRENT_VERSION = '1.2.6';
 
 // Retrieve Supabase URL dynamically from environment (fallback to Kano project URL)
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://okjwqvdvrqqhvvmvkikc.supabase.co';
