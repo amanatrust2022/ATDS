@@ -53,9 +53,8 @@ jobs:
         working-directory: amana-diagnostics
         run: npm run build
         env:
-          # Prevent Next.js from treating Supabase URLs as required at build time
-          NEXT_PUBLIC_SUPABASE_URL: "https://placeholder.supabase.co"
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: "placeholder"
+          NEXT_PUBLIC_SUPABASE_URL: "https://okjwqvdvrqqhvvmvkikc.supabase.co"
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9randxdmR2cnFxaHZ2bXZraWtjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc3NTc5ODksImV4cCI6MjA5MzMzMzk4OX0.iI29dydtOzCJWEiz58gIcsaZiDnyqOA4zEVm3MX8FOY"
 
       # ── Download Node.js 22 Windows x64 binary (sidecar) ──────────────────
       - name: Download Node.js sidecar binary

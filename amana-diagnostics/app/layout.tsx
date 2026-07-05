@@ -11,8 +11,8 @@ import { AuthProvider } from '@/components/AuthProvider'
 import RootWrapper from '@/components/RootWrapper'
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+  const supabaseUrl = process.env['NEXT_PUBLIC_SUPABASE_URL'] || '';
+  const supabaseAnonKey = process.env['NEXT_PUBLIC_SUPABASE_ANON_KEY'] || '';
 
   return (
     <html lang="en" suppressHydrationWarning>
