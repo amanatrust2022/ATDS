@@ -370,7 +370,7 @@ pub(crate) fn build_tray_menu<R: Runtime>(
 
 /// Build and register the system tray icon with the initial placeholder menu.
 fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
-    let icon = tauri::image::Image::from_bytes(include_bytes!("../../icons/32x32.png"))
+    let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/32x32.png"))
         .expect("Failed to decode tray icon — run `cargo tauri icon` to generate icons first");
 
     let initial_menu = build_tray_menu(app, "detecting…", 3000)?;
@@ -465,7 +465,8 @@ async fn restart_server(app: &AppHandle) {
 
     let port = {
         let state = app.state::<SidecarState>();
-        *state.port.lock().unwrap()
+        let p = *state.port.lock().unwrap();
+        p
     };
 
     // Navigate back to splash while server restarts

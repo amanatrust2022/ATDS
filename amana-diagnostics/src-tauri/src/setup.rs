@@ -6,7 +6,7 @@
 
 use std::{fs, time::Duration};
 
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 
 use crate::{
     amana_dir, build_tray_menu, find_free_port, is_server_ready, navigate_to_app,
