@@ -2,11 +2,12 @@
 import { useRouter } from 'next/navigation';
 import { RiMicroscopeLine, RiDownloadLine, RiCheckLine, RiArrowLeftLine, RiRefreshLine, RiShieldCheckLine, RiWifiOffLine, RiComputerLine, RiGithubLine, RiInformationLine } from '@remixicon/react';
 
-const CURRENT_VERSION = '1.0.0';
+const CURRENT_VERSION = '1.2.2';
 
 // Retrieve Supabase URL dynamically from environment (fallback to Kano project URL)
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://okjwqvdvrqqhvvmvkikc.supabase.co';
-const DOWNLOAD_URL = 'https://raw.githubusercontent.com/amanatrust2022/amana-releases/main/amana-hub-portable.zip';
+const DOWNLOAD_URL = `https://github.com/amanatrust2022/amana-releases/releases/download/v${CURRENT_VERSION}/DiagnosticOS_${CURRENT_VERSION}_x64-setup.exe`;
+const DOWNLOAD_URL_MSI = `https://github.com/amanatrust2022/amana-releases/releases/download/v${CURRENT_VERSION}/DiagnosticOS_${CURRENT_VERSION}_x64_en-US.msi`;
 const RELEASE_LIVE = true;
 
 export default function DownloadPage() {
@@ -150,12 +151,17 @@ export default function DownloadPage() {
             </div>
           )}
 
-          <div className="a5" style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+          <div className="a5" style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', alignItems: 'center' }}>
             {RELEASE_LIVE ? (
-              <button id="main-download-btn" onClick={handleDownload} className="btn-p" style={{ padding: '1rem 2.5rem', fontSize: '1.05rem' }}>
-                <RiDownloadLine size={22} />
-                Download Portable Local Hub (.zip)
-              </button>
+              <>
+                <button id="main-download-btn" onClick={handleDownload} className="btn-p" style={{ padding: '1rem 2.5rem', fontSize: '1.05rem' }}>
+                  <RiDownloadLine size={22} />
+                  Download Local Hub Installer (.exe)
+                </button>
+                <a href={DOWNLOAD_URL_MSI} style={{ color: '#7fa3e0', fontSize: '0.82rem', textDecoration: 'underline', marginTop: '0.25rem' }}>
+                  Alternative: Download MSI Installer (.msi)
+                </a>
+              </>
             ) : (
               <button id="main-download-btn" onClick={handleDownload} className="btn-g" style={{ padding: '1rem 2rem', fontSize: '.95rem', border: '1px solid rgba(245,158,11,.3)', color: '#fbbf24' }}>
                 <RiGithubLine size={20} />
@@ -273,12 +279,17 @@ export default function DownloadPage() {
       </section>
 
       {/* BOTTOM CTA */}
-      <section style={{ padding: '3rem 2rem 5rem', maxWidth: 600, margin: '0 auto', textAlign: 'center' }}>
+      <section style={{ padding: '3rem 2rem 5rem', maxWidth: 600, margin: '0 auto', textAlign: 'center', display: 'flex', flexDirection: 'column', gap: '0.75rem', alignItems: 'center' }}>
         {RELEASE_LIVE ? (
-          <button id="bottom-download-btn" onClick={handleDownload} className="btn-p" style={{ padding: '1rem 2.5rem', fontSize: '1.05rem', width: '100%', justifyContent: 'center' }}>
-            <RiDownloadLine size={22} />
-            Download Portable Local Hub v{CURRENT_VERSION} (.zip)
-          </button>
+          <>
+            <button id="bottom-download-btn" onClick={handleDownload} className="btn-p" style={{ padding: '1rem 2.5rem', fontSize: '1.05rem', width: '100%', justifyContent: 'center' }}>
+              <RiDownloadLine size={22} />
+              Download Local Hub Installer v{CURRENT_VERSION} (.exe)
+            </button>
+            <a href={DOWNLOAD_URL_MSI} style={{ color: '#7fa3e0', fontSize: '0.82rem', textDecoration: 'underline' }}>
+              Alternative: Download MSI Installer (.msi)
+            </a>
+          </>
         ) : (
           <button id="bottom-download-btn" onClick={handleDownload} className="btn-g" style={{ padding: '1rem 2rem', fontSize: '.95rem', width: '100%', justifyContent: 'center', border: '1px solid rgba(245,158,11,.28)', color: '#fbbf24' }}>
             <RiGithubLine size={20} />
