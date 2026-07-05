@@ -18,7 +18,7 @@
       "identifier": "shell:allow-spawn",
       "allow": [
         {
-          "name": "binaries/node",
+          "name": "node",
           "sidecar": true,
           "args": true
         }

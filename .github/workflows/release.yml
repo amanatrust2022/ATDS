@@ -64,10 +64,9 @@ jobs:
         run: |
           $nodeVersion = "22.17.0"
           $url = "https://nodejs.org/dist/v${nodeVersion}/win-x64/node.exe"
-          New-Item -ItemType Directory -Force src-tauri/binaries | Out-Null
           Write-Host "Downloading Node.js v${nodeVersion} from $url ..."
-          Invoke-WebRequest -Uri $url -OutFile "src-tauri/binaries/node-x86_64-pc-windows-msvc.exe"
-          $size = (Get-Item "src-tauri/binaries/node-x86_64-pc-windows-msvc.exe").Length / 1MB
+          Invoke-WebRequest -Uri $url -OutFile "src-tauri/node-x86_64-pc-windows-msvc.exe"
+          $size = (Get-Item "src-tauri/node-x86_64-pc-windows-msvc.exe").Length / 1MB
           Write-Host "Downloaded: $([math]::Round($size, 1)) MB"
 
       # ── Prepare Next.js bundle for Tauri resources ─────────────────────────

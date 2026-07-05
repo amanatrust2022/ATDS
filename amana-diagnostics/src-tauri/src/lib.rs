@@ -246,7 +246,7 @@ pub fn spawn_nextjs(app: &AppHandle, port: u16) -> Result<(), String> {
 
     let (rx, child) = app
         .shell()
-        .sidecar("binaries/node")
+        .sidecar("node")
         .map_err(|e| format!("Sidecar lookup failed: {e}"))?
         .args([server_js.to_string_lossy().as_ref()])
         .current_dir(&nextjs_dir)
