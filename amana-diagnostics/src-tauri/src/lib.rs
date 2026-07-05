@@ -190,10 +190,16 @@ fn read_supabase_config() -> (Option<String>, Option<String>) {
 ///
 /// Environment variables are injected before spawning.
 pub fn spawn_nextjs(app: &AppHandle, port: u16) -> Result<(), String> {
-    let resource_dir = app
+    let mut resource_dir = app
         .path()
         .resource_dir()
         .map_err(|e| format!("resource_dir error: {e}"))?;
+
+    // Strip Windows UNC prefix (\\?\) if present, as it causes process spawning to fail
+    let resource_str = resource_dir.to_string_lossy();
+    if resource_str.starts_with(r"\\?\") {
+        resource_dir = PathBuf::from(&resource_str[4..]);
+    }
 
     let nextjs_dir = resource_dir.join("nextjs");
     let server_js = nextjs_dir.join("server.js");
