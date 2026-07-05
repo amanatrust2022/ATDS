@@ -163,17 +163,20 @@ pub(crate) fn is_server_ready(port: u16) -> bool {
 /// Returns (supabase_url, supabase_anon_key) — either may be None.
 fn read_supabase_config() -> (Option<String>, Option<String>) {
     let config_path = amana_dir().join("config.json");
+    let default_url = Some("https://okjwqvdvrqqhvvmvkikc.supabase.co".to_string());
+    let default_key = Some("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9randxdmR2cnFxaHZ2bXZraWtjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc3NTc5ODksImV4cCI6MjA5MzMzMzk4OX0.iI29dydtOzCJWEiz58gIcsaZiDnyqOA4zEVm3MX8FOY".to_string());
+
     if !config_path.exists() {
-        return (None, None);
+        return (default_url, default_key);
     }
     let Ok(content) = fs::read_to_string(&config_path) else {
-        return (None, None);
+        return (default_url, default_key);
     };
     let Ok(v) = serde_json::from_str::<serde_json::Value>(&content) else {
-        return (None, None);
+        return (default_url, default_key);
     };
-    let url = v["supabase_url"].as_str().map(str::to_string);
-    let key = v["supabase_anon_key"].as_str().map(str::to_string);
+    let url = v["supabase_url"].as_str().map(str::to_string).or(default_url);
+    let key = v["supabase_anon_key"].as_str().map(str::to_string).or(default_key);
     (url, key)
 }
 
@@ -649,23 +652,10 @@ pub(crate) async fn start_server_and_navigate(app: AppHandle, port: u16) {
 }
 
 /// Top-level startup sequence:
-///   1. Check for config.json — if missing, show setup wizard and return.
-///   2. Find a free port.
-///   3. Spawn Next.js and navigate once ready.
+///   1. Find a free port.
+///   2. Spawn Next.js and navigate once ready.
 async fn run_startup_flow(app: AppHandle) {
     write_log("[STARTUP] DiagnosticOS starting.");
-
-    let config_path = amana_dir().join("config.json");
-
-    if !config_path.exists() {
-        // First launch — show the setup wizard
-        write_log("[STARTUP] No config.json — showing setup wizard.");
-        if let Some(window) = app.get_webview_window("main") {
-            let _ = window.eval("window.location.href = 'tauri://localhost/setup.html'");
-        }
-        // The wizard calls the `finish_wizard` command when done.
-        return;
-    }
 
     let port = find_free_port(3000);
     {
