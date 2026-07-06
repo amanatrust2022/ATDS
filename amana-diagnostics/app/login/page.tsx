@@ -10,18 +10,6 @@ function withTimeout(promise: Promise<any>, ms: number, onWarning: () => void): 
 }
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [statusText, setStatusText] = useState('Signing in...');
-  const [error, setError] = useState('');
-  const [resetMode, setResetMode] = useState(false);
-  const [resetSent, setResetSent] = useState(false);
-  const [showLanGuide, setShowLanGuide] = useState(false);
-  const supabase = createClient();
-  const router = useRouter();
-
   const isLocalMode = typeof window !== 'undefined'
     ? (localStorage.getItem('amana_local_mode') === null
         ? (window.location.hostname === 'localhost' || 
@@ -31,6 +19,30 @@ export default function LoginPage() {
            window.location.hostname.startsWith('172.'))
         : localStorage.getItem('amana_local_mode') === 'true')
     : (process.env.NEXT_PUBLIC_LOCAL_SERVER_MODE === 'true');
+
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [statusText, setStatusText] = useState('Signing in...');
+  const [error, setError] = useState('');
+  const [resetMode, setResetMode] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
+  const [showLanGuide, setShowLanGuide] = useState(false);
+  const [serverIp, setServerIp] = useState('127.0.0.1:3000');
+  const supabase = createClient();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (isLocalMode) {
+      fetch('/api/config')
+        .then(res => res.json())
+        .then(data => {
+          if (data.serverIp) setServerIp(data.serverIp);
+        })
+        .catch(err => console.error('Failed to load server IP:', err));
+    }
+  }, [isLocalMode]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -202,6 +214,7 @@ export default function LoginPage() {
             <RiMicroscopeLine size={18} color="white" />
           </div>
           <span style={{ color: 'white', fontWeight: 700, fontSize: '1rem' }}>DiagnosticOS</span>
+          <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.72rem', background: 'rgba(255,255,255,0.06)', padding: '0.15rem 0.4rem', borderRadius: 4, fontFamily: 'monospace' }}>v1.2.17</span>
         </div>
         <div>
           <p style={{ color: 'rgba(255,255,255,0.2)', fontSize: '0.78rem', fontStyle: 'italic' }}>
@@ -306,7 +319,7 @@ export default function LoginPage() {
                         <li>Connect the other device (laptop, tablet, or phone) to the <strong>same Wi-Fi or LAN network</strong> as this computer.</li>
                         <li>Open the web browser (e.g. Chrome) on that device and type:
                           <div style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', padding: '0.4rem 0.6rem', borderRadius: 4, fontFamily: 'monospace', color: '#7fa3e0', marginTop: '0.3rem', userSelect: 'all', textAlign: 'center' }}>
-                            http://{typeof window !== 'undefined' ? window.location.host : 'localhost:3000'}
+                            http://{serverIp}
                           </div>
                         </li>
                         <li>Bookmark the address on that device for easy, single-click access every day!</li>

@@ -37,6 +37,20 @@ export default function Header({ title, subtitle, icon = <RiMicroscopeLine size=
   const [installPrompt, setInstallPrompt] = useState<any>(null);
   const [showInstallBtn, setShowInstallBtn] = useState(false);
   const [showInstructionsModal, setShowInstructionsModal] = useState(false);
+  const [serverIp, setServerIp] = useState('127.0.0.1:3000');
+
+  const isTauri = typeof window !== 'undefined' && ((window as any).__TAURI_INTERNALS__ !== undefined || (window as any).__TAURI__ !== undefined);
+
+  useEffect(() => {
+    if (isLocalMode) {
+      fetch('/api/config')
+        .then(res => res.json())
+        .then(data => {
+          if (data.serverIp) setServerIp(data.serverIp);
+        })
+        .catch(err => console.error('Failed to load server IP:', err));
+    }
+  }, [isLocalMode]);
 
 
   const now = new Date();
@@ -216,7 +230,7 @@ export default function Header({ title, subtitle, icon = <RiMicroscopeLine size=
           </div>
         )}
 
-        {/* PWA Install Button */}
+        {/* PWA Install or Clinic LAN Setup Button */}
         <button
           onClick={handleInstallClick}
           style={{
@@ -235,9 +249,9 @@ export default function Header({ title, subtitle, icon = <RiMicroscopeLine size=
           }}
           onMouseOver={(e) => { e.currentTarget.style.backgroundColor = 'var(--teal-700)'; e.currentTarget.style.borderColor = 'var(--teal-700)'; }}
           onMouseOut={(e) => { e.currentTarget.style.backgroundColor = 'var(--teal-600)'; e.currentTarget.style.borderColor = 'var(--teal-600)'; }}
-          title={installPrompt ? "Install App natively on your Desktop/Laptop" : "How to install this app locally"}
+          title={isTauri ? "How to connect other clinic devices on LAN" : (installPrompt ? "Install App natively on your Desktop/Laptop" : "How to install this app locally")}
         >
-          <span>Install App</span>
+          <span>{isTauri ? "Connect Devices" : "Install App"}</span>
         </button>
 
         {/* Sync Status Indicator */}
@@ -406,58 +420,97 @@ export default function Header({ title, subtitle, icon = <RiMicroscopeLine size=
               ×
             </button>
             <h3 style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '1.1rem', marginBottom: '1rem', color: 'var(--gray-900)' }}>
-              Install DiagnosticOS App
+              {isTauri ? "Clinic LAN Server Setup" : "Install DiagnosticOS App"}
             </h3>
             
             <p style={{ fontSize: '0.82rem', color: 'var(--gray-600)', marginBottom: '1rem', lineHeight: '1.4' }}>
-              Since you are connecting to a local LAN Server PC over HTTP, browsers disable the default install prompt for security. You can install it manually in 5 seconds using your browser's options:
+              {isTauri 
+                ? "Since this is the host server, other computers in the clinic (reception, lab, radiology) can connect to it over your local Wi-Fi or LAN."
+                : "Since you are connecting to a local LAN Server PC over HTTP, browsers disable the default install prompt for security. You can install it manually in 5 seconds using your browser's options:"
+              }
             </p>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', textAlign: 'left' }}>
-              <div style={{ borderBottom: '1px solid var(--gray-200)', paddingBottom: '0.75rem' }}>
-                <h4 style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--teal-700)', marginBottom: '0.25rem' }}>
-                  Google Chrome
-                </h4>
-                <p style={{ fontSize: '0.8rem', color: 'var(--gray-700)', margin: 0 }}>
-                  1. Click the <strong>three vertical dots menu (...)</strong> in the top-right corner.<br />
-                  2. Select <strong>Save and share</strong>.<br />
-                  3. Click <strong>Install page as app...</strong>.
-                </p>
-              </div>
+              {isTauri ? (
+                <>
+                  <div style={{ borderBottom: '1px solid var(--gray-200)', paddingBottom: '0.75rem' }}>
+                    <h4 style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--teal-700)', marginBottom: '0.25rem' }}>
+                      1. Connect to Same Network
+                    </h4>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--gray-700)', margin: 0 }}>
+                      Make sure the other department computers (Reception, Lab, Radiology, etc.) are connected to the <strong>same Wi-Fi router or LAN network</strong> as this host PC.
+                    </p>
+                  </div>
 
-              <div style={{ borderBottom: '1px solid var(--gray-200)', paddingBottom: '0.75rem' }}>
-                <h4 style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--teal-700)', marginBottom: '0.25rem' }}>
-                  Microsoft Edge
-                </h4>
-                <p style={{ fontSize: '0.8rem', color: 'var(--gray-700)', margin: 0 }}>
-                  1. Click the <strong>three horizontal dots menu (...)</strong> in the top-right corner.<br />
-                  2. Hover over <strong>Apps</strong>.<br />
-                  3. Click <strong>Install this site as an app</strong>.
-                </p>
-              </div>
+                  <div style={{ borderBottom: '1px solid var(--gray-200)', paddingBottom: '0.75rem' }}>
+                    <h4 style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--teal-700)', marginBottom: '0.25rem' }}>
+                      2. Open Web Browser
+                    </h4>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--gray-700)', margin: 0 }}>
+                      On the other computer/tablet, open Google Chrome or Microsoft Edge and type this address:
+                      <code style={{ background: '#f1f5f9', padding: '4px 8px', fontSize: '0.85rem', display: 'block', margin: '6px 0', fontFamily: 'monospace', color: 'var(--teal-700)', fontWeight: 600, wordBreak: 'break-all', textAlign: 'center' }}>
+                        http://{serverIp}
+                      </code>
+                    </p>
+                  </div>
 
-              <div style={{ borderBottom: '1px solid var(--gray-200)', paddingBottom: '0.75rem' }}>
-                <h4 style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--teal-700)', marginBottom: '0.25rem' }}>
-                  Apple Safari (Mac)
-                </h4>
-                <p style={{ fontSize: '0.8rem', color: 'var(--gray-700)', margin: 0 }}>
-                  1. Click the <strong>Share button</strong> in the toolbar.<br />
-                  2. Select <strong>Add to Dock</strong>.
-                </p>
-              </div>
+                  <div>
+                    <h4 style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--teal-700)', marginBottom: '0.25rem' }}>
+                      3. Bookmark address
+                    </h4>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--gray-700)', margin: 0 }}>
+                      Bookmark the address on that device for quick, single-click access every morning!
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div style={{ borderBottom: '1px solid var(--gray-200)', paddingBottom: '0.75rem' }}>
+                    <h4 style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--teal-700)', marginBottom: '0.25rem' }}>
+                      Google Chrome
+                    </h4>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--gray-700)', margin: 0 }}>
+                      1. Click the <strong>three vertical dots menu (...)</strong> in the top-right corner.<br />
+                      2. Select <strong>Save and share</strong>.<br />
+                      3. Click <strong>Install page as app...</strong>.
+                    </p>
+                  </div>
 
-              <div>
-                <h4 style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--teal-700)', marginBottom: '0.25rem' }}>
-                  Enable Native PWA Install over Local Wi-Fi (Advanced)
-                </h4>
-                <p style={{ fontSize: '0.8rem', color: 'var(--gray-700)', margin: 0 }}>
-                  To make Chrome show the native "Install App" prompt on insecure local network IPs, copy/paste this URL in a new tab:<br />
-                  <code style={{ background: '#f1f5f9', padding: '2px 4px', fontSize: '0.75rem', display: 'block', margin: '4px 0', wordBreak: 'break-all' }}>
-                    chrome://flags/#unsafely-treat-insecure-origin-as-secure
-                  </code>
-                  Paste <code style={{ background: '#f1f5f9', padding: '2px 4px', fontSize: '0.75rem' }}>{typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.host}` : 'http://your-server-ip:3000'}</code> into the text area, select "Enabled" from the dropdown, and click "Relaunch".
-                </p>
-              </div>
+                  <div style={{ borderBottom: '1px solid var(--gray-200)', paddingBottom: '0.75rem' }}>
+                    <h4 style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--teal-700)', marginBottom: '0.25rem' }}>
+                      Microsoft Edge
+                    </h4>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--gray-700)', margin: 0 }}>
+                      1. Click the <strong>three horizontal dots menu (...)</strong> in the top-right corner.<br />
+                      2. Hover over <strong>Apps</strong>.<br />
+                      3. Click <strong>Install this site as an app</strong>.
+                    </p>
+                  </div>
+
+                  <div style={{ borderBottom: '1px solid var(--gray-200)', paddingBottom: '0.75rem' }}>
+                    <h4 style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--teal-700)', marginBottom: '0.25rem' }}>
+                      Apple Safari (Mac)
+                    </h4>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--gray-700)', margin: 0 }}>
+                      1. Click the <strong>Share button</strong> in the toolbar.<br />
+                      2. Select <strong>Add to Dock</strong>.
+                    </p>
+                  </div>
+
+                  <div>
+                    <h4 style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--teal-700)', marginBottom: '0.25rem' }}>
+                      Enable Native PWA Install over Local Wi-Fi (Advanced)
+                    </h4>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--gray-700)', margin: 0 }}>
+                      To make Chrome show the native "Install App" prompt on insecure local network IPs, copy/paste this URL in a new tab:<br />
+                      <code style={{ background: '#f1f5f9', padding: '2px 4px', fontSize: '0.75rem', display: 'block', margin: '4px 0', wordBreak: 'break-all' }}>
+                        chrome://flags/#unsafely-treat-insecure-origin-as-secure
+                      </code>
+                      Paste <code style={{ background: '#f1f5f9', padding: '2px 4px', fontSize: '0.75rem' }}>{`http://${serverIp}`}</code> into the text area, select "Enabled" from the dropdown, and click "Relaunch".
+                    </p>
+                  </div>
+                </>
+              )}
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
