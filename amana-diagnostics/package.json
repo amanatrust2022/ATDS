@@ -1,6 +1,6 @@
 {
   "name": "amana-diagnostics",
-  "version": "1.2.19",
+  "version": "1.2.20",
   "description": "Amana Diagnostics Hub — offline-first LIS for African diagnostic centres",
   "author": "Amana Diagnostics",
   "scripts": {

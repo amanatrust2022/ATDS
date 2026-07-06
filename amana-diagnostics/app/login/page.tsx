@@ -214,7 +214,7 @@ export default function LoginPage() {
             <RiMicroscopeLine size={18} color="white" />
           </div>
           <span style={{ color: 'white', fontWeight: 700, fontSize: '1rem' }}>DiagnosticOS</span>
-          <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.72rem', background: 'rgba(255,255,255,0.06)', padding: '0.15rem 0.4rem', borderRadius: 4, fontFamily: 'monospace' }}>v1.2.19</span>
+          <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.72rem', background: 'rgba(255,255,255,0.06)', padding: '0.15rem 0.4rem', borderRadius: 4, fontFamily: 'monospace' }}>v1.2.20</span>
         </div>
         <div>
           <p style={{ color: 'rgba(255,255,255,0.2)', fontSize: '0.78rem', fontStyle: 'italic' }}>

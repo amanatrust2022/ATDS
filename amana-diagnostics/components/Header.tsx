@@ -5,7 +5,7 @@ import {
   RiMicroscopeLine, RiArrowLeftLine, RiUserLine, RiSettings3Line, 
   RiTeamLine, RiLogoutCircleLine, RiDashboardLine,
   RiCloudLine, RiCloudOffLine, RiRefreshLine,
-  RiHospitalLine, RiTestTubeLine, RiRadarLine
+  RiHospitalLine, RiTestTubeLine, RiRadarLine, RiDownloadLine
 } from '@remixicon/react';
 import { useAuth } from '@/components/AuthProvider';
 
