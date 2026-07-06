@@ -15,11 +15,41 @@ export default function LandingPage() {
   const [scrolled, setScrolled] = useState(false);
   const statsRef = useRef<HTMLElement>(null);
 
+  const isLocalMode = typeof window !== 'undefined'
+    ? (localStorage.getItem('amana_local_mode') === null
+        ? (window.location.hostname === 'localhost' || 
+           window.location.hostname === '127.0.0.1' || 
+           window.location.hostname.startsWith('192.168.') || 
+           window.location.hostname.startsWith('10.') || 
+           window.location.hostname.startsWith('172.'))
+        : localStorage.getItem('amana_local_mode') === 'true')
+    : (process.env.NEXT_PUBLIC_LOCAL_SERVER_MODE === 'true');
+
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 30);
     window.addEventListener('scroll', onScroll);
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
+
+  useEffect(() => {
+    if (isLocalMode && !loading) {
+      if (user) {
+        router.replace(getDashboardUrl());
+      } else {
+        router.replace('/login');
+      }
+    }
+  }, [user, loading, isLocalMode]);
+
+  if (isLocalMode) {
+    return (
+      <div style={{ minHeight: '100vh', background: '#07090f', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ color: '#7fa3e0', fontSize: '1.2rem', fontFamily: 'sans-serif' }}>
+          Redirecting to clinic portal...
+        </div>
+      </div>
+    );
+  }
 
   const getDashboardUrl = () => {
     if (!organization) return '/onboarding';

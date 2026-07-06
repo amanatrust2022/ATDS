@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { createClient } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
-import { RiMicroscopeLine, RiLockPasswordLine, RiMailLine, RiEyeLine, RiEyeOffLine } from '@remixicon/react';
+import { RiMicroscopeLine, RiLockPasswordLine, RiMailLine, RiEyeLine, RiEyeOffLine, RiComputerLine } from '@remixicon/react';
 
 function withTimeout(promise: Promise<any>, ms: number, onWarning: () => void): Promise<any> {
   const timer = setTimeout(onWarning, ms);
@@ -18,24 +18,25 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [resetMode, setResetMode] = useState(false);
   const [resetSent, setResetSent] = useState(false);
+  const [showLanGuide, setShowLanGuide] = useState(false);
   const supabase = createClient();
   const router = useRouter();
+
+  const isLocalMode = typeof window !== 'undefined'
+    ? (localStorage.getItem('amana_local_mode') === null
+        ? (window.location.hostname === 'localhost' || 
+           window.location.hostname === '127.0.0.1' || 
+           window.location.hostname.startsWith('192.168.') || 
+           window.location.hostname.startsWith('10.') || 
+           window.location.hostname.startsWith('172.'))
+        : localStorage.getItem('amana_local_mode') === 'true')
+    : (process.env.NEXT_PUBLIC_LOCAL_SERVER_MODE === 'true');
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true); setError('');
     localStorage.removeItem('amana_offline_session');
     setStatusText('Checking local database...');
-
-    const isLocalMode = typeof window !== 'undefined'
-      ? (localStorage.getItem('amana_local_mode') === null
-          ? (window.location.hostname === 'localhost' || 
-             window.location.hostname === '127.0.0.1' || 
-             window.location.hostname.startsWith('192.168.') || 
-             window.location.hostname.startsWith('10.') || 
-             window.location.hostname.startsWith('172.'))
-          : localStorage.getItem('amana_local_mode') === 'true')
-      : (process.env.NEXT_PUBLIC_LOCAL_SERVER_MODE === 'true');
 
     // 1. In Local Mode, prioritize local sqlite verification first (takes ~10ms)
     if (isLocalMode) {
@@ -276,6 +277,45 @@ export default function LoginPage() {
                 </button>
                 <a href="/signup" style={{ color: '#7fa3e0', textDecoration: 'none', fontSize: '0.8rem', fontWeight: 600 }}>Create workspace →</a>
               </div>
+              {isLocalMode && (
+                <div style={{ marginTop: '2.5rem', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '1.5rem' }}>
+                  <button 
+                    onClick={() => setShowLanGuide(!showLanGuide)} 
+                    style={{ 
+                      background: 'rgba(255,255,255,0.04)', 
+                      border: '1px solid rgba(255,255,255,0.08)', 
+                      color: 'rgba(255,255,255,0.6)', 
+                      padding: '0.6rem 1rem', 
+                      borderRadius: 8, 
+                      cursor: 'pointer', 
+                      fontSize: '0.8rem',
+                      width: '100%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '0.5rem'
+                    }}
+                  >
+                    <RiComputerLine size={14} />
+                    {showLanGuide ? 'Hide Clinic Setup Guide' : 'Connect Other Clinic Devices'}
+                  </button>
+                  {showLanGuide && (
+                    <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.04)', borderRadius: 8, padding: '1rem', marginTop: '0.75rem', fontSize: '0.8rem', color: 'rgba(255,255,255,0.55)', lineHeight: '1.4' }}>
+                      <p style={{ fontWeight: 600, color: 'white', marginBottom: '0.5rem' }}>How to connect other departments (Reception, Lab, etc.):</p>
+                      <ol style={{ paddingLeft: '1.1rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                        <li>Connect the other device (laptop, tablet, or phone) to the <strong>same Wi-Fi or LAN network</strong> as this computer.</li>
+                        <li>Open the web browser (e.g. Chrome) on that device and type:
+                          <div style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', padding: '0.4rem 0.6rem', borderRadius: 4, fontFamily: 'monospace', color: '#7fa3e0', marginTop: '0.3rem', userSelect: 'all', textAlign: 'center' }}>
+                            http://{typeof window !== 'undefined' ? window.location.host : 'localhost:3000'}
+                          </div>
+                        </li>
+                        <li>Bookmark the address on that device for easy, single-click access every day!</li>
+                      </ol>
+                      <p style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.3)', marginTop: '0.8rem', fontStyle: 'italic' }}>Note: This host computer must remain turned on and the DiagnosticOS app running for other devices to connect.</p>
+                    </div>
+                  )}
+                </div>
+              )}
             </>
           )}
         </div>

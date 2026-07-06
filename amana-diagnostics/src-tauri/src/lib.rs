@@ -557,15 +557,26 @@ pub(crate) async fn check_for_updates(app: AppHandle) {
             log::info!("[UPDATER] Update available: v{version}");
             write_log(&format!("[UPDATER] v{version} available."));
 
-            let confirmed = app
-                .dialog()
-                .message(format!(
-                    "A new version of DiagnosticOS (v{version}) is available.\n\
-                     Install now? The app will restart automatically."
-                ))
-                .title("Update Available")
-                .buttons(MessageDialogButtons::OkCancel)
-                .blocking_show();
+            let confirmed = if let Some(window) = app.get_webview_window("main") {
+                app.dialog()
+                    .message(format!(
+                        "A new version of DiagnosticOS (v{version}) is available.\n\
+                         Install now? The app will restart automatically."
+                    ))
+                    .title("Update Available")
+                    .buttons(MessageDialogButtons::OkCancel)
+                    .parent(&window)
+                    .blocking_show()
+            } else {
+                app.dialog()
+                    .message(format!(
+                        "A new version of DiagnosticOS (v{version}) is available.\n\
+                         Install now? The app will restart automatically."
+                    ))
+                    .title("Update Available")
+                    .buttons(MessageDialogButtons::OkCancel)
+                    .blocking_show()
+            };
 
             if confirmed {
                 write_log(&format!("[UPDATER] User accepted — downloading v{version}…"));
