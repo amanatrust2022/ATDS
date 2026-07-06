@@ -18,7 +18,7 @@ import {
   updatePatientBillingAccount, registerPatientAndGetId,
   PatientProfile, fetchPatientProfiles
 } from '@/lib/store';
-import { getResultTemplate, getSlipTemplate, getInvoiceTemplate, getLedgerStatementTemplate } from '@/lib/templates';
+import { getResultTemplate, getSlipTemplate, getInvoiceTemplate, getLedgerStatementTemplate, printHtml } from '@/lib/templates';
 import { useAuth } from '@/components/AuthProvider';
 import { RiLogoutCircleLine } from '@remixicon/react';
 
@@ -511,14 +511,7 @@ export default function ReceptionPage() {
   const handlePrintStatement = (account: BillingAccount) => {
     const members = patients.filter(p => p.billingAccountId === account.id);
     const html = getLedgerStatementTemplate(account, billingTransactions, members, organization as any);
-    const win = window.open('', '_blank');
-    if (win) {
-      win.document.write(html);
-      win.document.close();
-      win.onload = () => {
-        win.print();
-      };
-    }
+    printHtml(html);
   };
 
   // Load referral databases
@@ -2955,18 +2948,10 @@ function SlipModal({ patient, onClose, org }: { patient: Patient; onClose: () =>
   const orgPhone = org?.phone || '';
 
   const handlePrint = () => {
-    const win = window.open('', '_blank');
-    if (!win) return;
-    if (modalTab === 'slip') {
-      win.document.write(getSlipTemplate(patient, org));
-    } else {
-      win.document.write(getInvoiceTemplate(patient, org));
-    }
-    win.document.close();
-    setTimeout(() => {
-      win.focus();
-      win.print();
-    }, 500);
+    const html = modalTab === 'slip'
+      ? getSlipTemplate(patient, org)
+      : getInvoiceTemplate(patient, org);
+    printHtml(html);
   };
 
   // Shared styles for the preview widget
@@ -3227,11 +3212,8 @@ function ResultModal({ patient, onClose, org }: { patient: Patient; onClose: () 
       alert('Please select at least one test to print.');
       return;
     }
-    const win = window.open('', '_blank');
-    if (!win) return;
-    win.document.write(getResultTemplate(patient, testsToPrint, org));
-    win.document.close();
-    setTimeout(() => { win.focus(); win.print(); }, 500);
+    const html = getResultTemplate(patient, testsToPrint, org);
+    printHtml(html);
   };
 
   const handleEmail = async () => {

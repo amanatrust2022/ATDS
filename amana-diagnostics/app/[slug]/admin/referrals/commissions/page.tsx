@@ -8,7 +8,7 @@ import {
   RiUserHeartLine, RiHospitalLine, RiCalendarLine, RiCheckLine,
   RiCloseLine, RiPrinterLine, RiArrowDownSLine, RiArrowRightSLine,
   RiTimeLine
-} from '@remixicon/react';
+} from '@remixicon/react';import { printHtml } from '@/lib/templates';
 
 export default function CommissionsPage() {
   const { organization } = useAuth();
@@ -139,9 +139,6 @@ export default function CommissionsPage() {
 
   // Print Statement Function
   const printStatement = (referrerName?: string) => {
-    const win = window.open('', '_blank');
-    if (!win) return;
-
     let targetEntries = filtered;
     let title = 'ALL REFERRAL COMMISSIONS STATEMENT';
     if (referrerName) {
@@ -166,7 +163,7 @@ export default function CommissionsPage() {
       </tr>
     `).join('');
 
-    win.document.write(`
+    const htmlContent = `
       <!DOCTYPE html><html><head><title>Commission Statement</title>
       <style>
         body { font-family: sans-serif; padding: 20px; color: #333; }
@@ -222,9 +219,8 @@ export default function CommissionsPage() {
         </div>
       </div>
       </body></html>
-    `);
-    win.document.close();
-    setTimeout(() => { win.print(); }, 500);
+    `;
+    printHtml(htmlContent);
   };
 
   const exportCsv = () => {

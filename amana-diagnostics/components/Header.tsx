@@ -464,52 +464,35 @@ export default function Header({ title, subtitle, icon = <RiMicroscopeLine size=
                   </div>
                 </>
               ) : (
-                <>
-                  <div style={{ borderBottom: '1px solid var(--gray-200)', paddingBottom: '0.75rem' }}>
-                    <h4 style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--teal-700)', marginBottom: '0.25rem' }}>
-                      Google Chrome
-                    </h4>
-                    <p style={{ fontSize: '0.8rem', color: 'var(--gray-700)', margin: 0 }}>
-                      1. Click the <strong>three vertical dots menu (...)</strong> in the top-right corner.<br />
-                      2. Select <strong>Save and share</strong>.<br />
-                      3. Click <strong>Install page as app...</strong>.
-                    </p>
-                  </div>
-
-                  <div style={{ borderBottom: '1px solid var(--gray-200)', paddingBottom: '0.75rem' }}>
-                    <h4 style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--teal-700)', marginBottom: '0.25rem' }}>
-                      Microsoft Edge
-                    </h4>
-                    <p style={{ fontSize: '0.8rem', color: 'var(--gray-700)', margin: 0 }}>
-                      1. Click the <strong>three horizontal dots menu (...)</strong> in the top-right corner.<br />
-                      2. Hover over <strong>Apps</strong>.<br />
-                      3. Click <strong>Install this site as an app</strong>.
-                    </p>
-                  </div>
-
-                  <div style={{ borderBottom: '1px solid var(--gray-200)', paddingBottom: '0.75rem' }}>
-                    <h4 style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--teal-700)', marginBottom: '0.25rem' }}>
-                      Apple Safari (Mac)
-                    </h4>
-                    <p style={{ fontSize: '0.8rem', color: 'var(--gray-700)', margin: 0 }}>
-                      1. Click the <strong>Share button</strong> in the toolbar.<br />
-                      2. Select <strong>Add to Dock</strong>.
-                    </p>
-                  </div>
-
-                  <div>
-                    <h4 style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--teal-700)', marginBottom: '0.25rem' }}>
-                      Enable Native PWA Install over Local Wi-Fi (Advanced)
-                    </h4>
-                    <p style={{ fontSize: '0.8rem', color: 'var(--gray-700)', margin: 0 }}>
-                      To make Chrome show the native "Install App" prompt on insecure local network IPs, copy/paste this URL in a new tab:<br />
-                      <code style={{ background: '#f1f5f9', padding: '2px 4px', fontSize: '0.75rem', display: 'block', margin: '4px 0', wordBreak: 'break-all' }}>
-                        chrome://flags/#unsafely-treat-insecure-origin-as-secure
-                      </code>
-                      Paste <code style={{ background: '#f1f5f9', padding: '2px 4px', fontSize: '0.75rem' }}>{`http://${serverIp}`}</code> into the text area, select "Enabled" from the dropdown, and click "Relaunch".
-                    </p>
-                  </div>
-                </>
+                <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, padding: '1.25rem' }}>
+                  <h4 style={{ fontSize: '0.88rem', fontWeight: 700, color: '#166534', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <RiDownloadLine size={18} /> Recommended: Native Tauri Desktop App
+                  </h4>
+                  <p style={{ fontSize: '0.8rem', color: '#1e3a1e', marginBottom: '1.25rem', lineHeight: '1.4' }}>
+                    For the best clinic experience, including offline capabilities, automatic updates, local database sync, and native printing, please run the desktop app.
+                  </p>
+                  <button
+                    onClick={() => { setShowInstructionsModal(false); router.push('/download'); }}
+                    style={{
+                      backgroundColor: 'var(--teal-600)',
+                      color: 'white',
+                      border: 'none',
+                      padding: '0.6rem 1.25rem',
+                      fontWeight: 600,
+                      fontSize: '0.82rem',
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.4rem',
+                      borderRadius: 4,
+                      transition: 'background-color 0.15s',
+                    }}
+                    onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--teal-700)'}
+                    onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'var(--teal-600)'}
+                  >
+                    Go to Downloads Page
+                  </button>
+                </div>
               )}
             </div>
 

@@ -24,6 +24,7 @@ import {
   RiDownload2Line
 } from '@remixicon/react';
 import { useParams } from 'next/navigation';
+import { printHtml } from '@/lib/templates';
 
 export default function StaffManagement() {
   const { profile, organization } = useAuth();
@@ -924,10 +925,7 @@ export default function StaffManagement() {
 
               // Export print frame
               const handleExportReport = () => {
-                const printWindow = window.open('', '_blank');
-                if (!printWindow) return;
-                
-                printWindow.document.write(`
+                const htmlContent = `
                   <html>
                     <head>
                       <title>EHR Auditor Module: Staff Workloads & Financial Performance Report</title>
@@ -1006,16 +1004,10 @@ export default function StaffManagement() {
                       <div class="footer">
                         Amana EHR Compliance and Auditing Service • Confidential Record • System Generated Document
                       </div>
-                      <script>
-                        window.onload = function() {
-                          window.print();
-                          window.close();
-                        }
-                      </script>
                     </body>
                   </html>
-                `);
-                printWindow.document.close();
+                `;
+                printHtml(htmlContent);
               };
 
               return (

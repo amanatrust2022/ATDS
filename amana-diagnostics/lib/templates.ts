@@ -815,3 +815,42 @@ export const getLedgerStatementTemplate = (
   `;
 };
 
+/**
+ * Renders HTML inside a hidden iframe and triggers the system print dialog.
+ * This is robust on all browsers and avoids window.open() blocks in Tauri/WebView2.
+ */
+export const printHtml = (htmlContent: string) => {
+  if (typeof window === 'undefined') return;
+  const iframe = document.createElement('iframe');
+  iframe.style.position = 'fixed';
+  iframe.style.right = '0';
+  iframe.style.bottom = '0';
+  iframe.style.width = '0';
+  iframe.style.height = '0';
+  iframe.style.border = '0';
+  iframe.style.visibility = 'hidden';
+  document.body.appendChild(iframe);
+
+  const doc = iframe.contentWindow?.document || iframe.contentDocument;
+  if (!doc) {
+    console.error('[Print] Could not acquire iframe document handle');
+    return;
+  }
+
+  doc.write(htmlContent);
+  doc.close();
+
+  // Wait for fonts and styling to apply, then print
+  setTimeout(() => {
+    try {
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+    } catch (err) {
+      console.error('[Print] Error triggering print dialog:', err);
+    }
+    setTimeout(() => {
+      document.body.removeChild(iframe);
+    }, 1000);
+  }, 500);
+};
+
