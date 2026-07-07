@@ -1119,6 +1119,30 @@ export const addPatientWithReferral = async (
     if (profError) throw profError;
   }
 
+  if (patient.paymentMethod === 'wallet' && patient.billingAccountId) {
+    const { data: acc, error: accErr } = await supabase
+      .from('billing_accounts')
+      .select('balance, credit_limit, name')
+      .eq('id', patient.billingAccountId)
+      .single();
+    if (accErr) throw accErr;
+    
+    const currentBalance = acc.balance || 0;
+    const creditLimit = acc.credit_limit || 0;
+    const netAmount = patient.netAmount || 0;
+    
+    if (currentBalance + creditLimit < netAmount) {
+      throw new Error(`Insufficient wallet balance on "${acc.name}". Available: ₦${(currentBalance + creditLimit).toLocaleString('en-NG')}`);
+    }
+    
+    const newBalance = currentBalance - netAmount;
+    const { error: upErr } = await supabase
+      .from('billing_accounts')
+      .update({ balance: newBalance, updated_at: new Date().toISOString() })
+      .eq('id', patient.billingAccountId);
+    if (upErr) throw upErr;
+  }
+
   const { error: pError } = await supabase
     .from('patients')
     .insert([{
@@ -1155,6 +1179,24 @@ export const addPatientWithReferral = async (
     }]);
   if (pError) throw pError;
 
+  if (patient.paymentMethod === 'wallet' && patient.billingAccountId) {
+    const txId = crypto.randomUUID();
+    const { error: txError } = await supabase.from('billing_ledger_transactions').insert([{
+      id: txId,
+      organization_id: organizationId,
+      billing_account_id: patient.billingAccountId,
+      patient_id: generatedPatientId,
+      type: 'charge',
+      amount: -(patient.netAmount || 0),
+      description: `Diagnostics Charge - Slip: ${patient.slipNumber}`,
+      reference_id: patient.slipNumber,
+      payment_method: 'wallet',
+      created_by: 'Reception Desk',
+      created_at: new Date().toISOString()
+    }]);
+    if (txError) throw txError;
+  }
+
   const testsToInsert = tests.map(t => ({
     patient_id: generatedPatientId,
     test_id: t.testId,
@@ -1170,6 +1212,7 @@ export const addPatientWithReferral = async (
   }));
   const { error: tError } = await supabase.from('patient_tests').insert(testsToInsert);
   if (tError) throw tError;
+
 };
 
 export const updatePatient = async (id: number | string, updates: Partial<Patient>): Promise<void> => {

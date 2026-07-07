@@ -613,11 +613,11 @@ export default function ReceptionPage() {
     if (!form.surname.trim()) e.surname = 'Surname is required';
     if (!form.age.trim()) e.age = 'Age is required';
     if (!form.phone.trim()) e.phone = 'Phone number is required';
-    if (!selectedDoctorId && !form.referredBy.trim()) {
-      e.referredBy = 'Referring doctor is required';
-    }
-    if (!selectedFacilityId && !form.referringFacility.trim()) {
-      e.referringFacility = 'Referring facility is required';
+    const hasDoctor = !!selectedDoctorId || !!form.referredBy.trim();
+    const hasFacility = !!selectedFacilityId || !!form.referringFacility.trim();
+    if (!hasDoctor && !hasFacility) {
+      e.referredBy = 'Either Referring doctor or facility is required';
+      e.referringFacility = 'Either Referring doctor or facility is required';
     }
     if (selectedTests.length === 0) e.tests = 'Select at least one test';
     return e;
@@ -989,11 +989,15 @@ export default function ReceptionPage() {
                           <div
                             key={p.id}
                             onClick={() => {
+                              const latestVisitForAge = patients
+                                .filter(v => v.patientProfileId === p.id)
+                                .sort((a, b) => new Date(b.registeredAt).getTime() - new Date(a.registeredAt).getTime())[0];
+
                               setForm({
                                 firstName: p.firstName || '',
                                 surname: p.surname || '',
                                 middleName: p.middleName || '',
-                                age: '',
+                                age: latestVisitForAge?.age || '',
                                 sex: p.sex || 'Male',
                                 phone: p.phone || '',
                                 email: p.email || '',
@@ -2272,9 +2276,9 @@ export default function ReceptionPage() {
             </div>
 
             {/* Modal Workspace Body (Dual Column Grid) */}
-            <div style={{ display: 'grid', gridTemplateColumns: '4fr 6fr', maxHeight: '75vh', minHeight: '500px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '4fr 6fr', maxHeight: '90vh', minHeight: '650px' }}>
               {/* Left Column: Account Details, Deposits & Dept Charges Forms */}
-              <div style={{ padding: '1.25rem', background: '#f8fafc', overflowY: 'auto', borderRight: '1px solid var(--gray-200)', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div style={{ padding: '1.25rem', paddingBottom: '2.5rem', background: '#f8fafc', overflowY: 'auto', borderRight: '1px solid var(--gray-200)', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 {/* Balance Card */}
                 <div style={{ background: 'white', border: '1px solid var(--gray-200)', borderRadius: 6, padding: '1rem' }}>
                   <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--gray-500)', textTransform: 'uppercase' }}>Current Balance</div>

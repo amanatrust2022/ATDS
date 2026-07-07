@@ -556,12 +556,12 @@ export async function POST(request: Request) {
           INSERT INTO billing_accounts (id, organization_id, name, owner_patient_id, balance, credit_limit, type, created_at, updated_at)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(id) DO UPDATE SET
-            name = excluded.name,
-            owner_patient_id = excluded.owner_patient_id,
-            balance = excluded.balance,
-            credit_limit = excluded.credit_limit,
-            type = excluded.type,
-            updated_at = excluded.updated_at
+            name = CASE WHEN excluded.updated_at >= billing_accounts.updated_at THEN excluded.name ELSE billing_accounts.name END,
+            owner_patient_id = CASE WHEN excluded.updated_at >= billing_accounts.updated_at THEN excluded.owner_patient_id ELSE billing_accounts.owner_patient_id END,
+            balance = CASE WHEN excluded.updated_at >= billing_accounts.updated_at THEN excluded.balance ELSE billing_accounts.balance END,
+            credit_limit = CASE WHEN excluded.updated_at >= billing_accounts.updated_at THEN excluded.credit_limit ELSE billing_accounts.credit_limit END,
+            type = CASE WHEN excluded.updated_at >= billing_accounts.updated_at THEN excluded.type ELSE billing_accounts.type END,
+            updated_at = CASE WHEN excluded.updated_at >= billing_accounts.updated_at THEN excluded.updated_at ELSE billing_accounts.updated_at END
         `);
         accounts.forEach((a: any) => {
           insertAcc.run(a.id, a.organization_id, a.name, a.owner_patient_id, a.balance, a.credit_limit, a.type, a.created_at, a.updated_at);
