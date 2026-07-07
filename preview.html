@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Logo Sharp Miter Shield Preview</title>
+    <style>
+        body {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f3f4f6;
+        }
+        .container {
+            background-color: white;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h3>Sharp Pointy Miter Shield</h3>
+        <svg xmlns="http://www.w3.org/2000/svg" width="300" height="300" viewBox="0 0 400 400">
+            <defs>
+                <linearGradient id="shield-gradient" x1="0" y1="0" x2="400" y2="0" gradientUnits="userSpaceOnUse">
+                    <stop offset="50%" stop-color="#113557" />
+                    <stop offset="50%" stop-color="#3b8256" />
+                </linearGradient>
+            </defs>
+
+            <!-- Cross Elements -->
+            <g>
+                <path fill="#113557" stroke="none" d="M 240 160 L 240 60 L 160 60 L 160 160 L 60 160 L 60 240 L 160 240 L 160 340 L 240 340 L 240 240 L 240 216 L 216 216 L 216 316 L 184 316 L 184 216 L 84 216 L 84 184 L 184 184 L 184 84 L 216 84 L 216 184 L 240 184 Z" />
+                <path fill="#3b8256" stroke="none" d="M 240 160 L 340 160 L 340 240 L 240 240 L 240 216 L 316 216 L 316 184 L 240 184 Z" />
+            </g>
+
+            <!-- Top Shield Elements -->
+            <g>
+                <path fill="#113557" stroke="none" d="M 144 60 L 60 76 L 60 144 L 84 144 L 84 100 L 144 84 Z" />
+                <path fill="#3b8256" stroke="none" d="M 256 60 L 340 76 L 340 144 L 316 144 L 316 100 L 256 84 Z" />
+            </g>
+
+            <!-- Bottom Shield (Single path with miter joint and split gradient) -->
+            <path d="M 72 256 L 72 280 C 72 340, 150 370, 200 420 C 250 370, 328 340, 328 280 L 328 256" 
+                  stroke="url(#shield-gradient)" stroke-width="24" stroke-linecap="butt" stroke-linejoin="miter" fill="none" />
+        </svg>
+    </div>
+
+</body>
+</html>

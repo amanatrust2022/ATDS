@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import AmanaLogo from '@/components/AmanaLogo';
 
 interface PatientRecord {
   id: string;
@@ -149,10 +150,7 @@ export default function PortalDashboard() {
       <header style={styles.header}>
         <div style={styles.headerInner}>
           <div style={styles.headerBrand}>
-            <svg width="28" height="28" viewBox="0 0 32 32" fill="none">
-              <circle cx="16" cy="16" r="16" fill="#0563c1" />
-              <path d="M16 8v16M8 16h16" stroke="white" strokeWidth="2.5" strokeLinecap="round" />
-            </svg>
+            <AmanaLogo size={32} inverted={true} />
             <div>
               <span style={styles.headerOrgName}>Amana Trust Diagnostics</span>
               <span style={styles.headerPortalLabel}>Patient Portal</span>

@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import AmanaLogo from '@/components/AmanaLogo';
 
 export default function PortalLoginPage() {
   const router = useRouter();
@@ -75,10 +76,7 @@ export default function PortalLoginPage() {
         {/* Logo / Branding */}
         <div style={styles.logoArea}>
           <div style={styles.logoIcon}>
-            <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
-              <circle cx="16" cy="16" r="16" fill="#0563c1" />
-              <path d="M16 8v16M8 16h16" stroke="white" strokeWidth="2.5" strokeLinecap="round" />
-            </svg>
+            <AmanaLogo size={36} inverted={true} />
           </div>
           <div>
             <h1 style={styles.orgName}>Amana Trust Diagnostics</h1>

@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
+import AmanaLogo from '@/components/AmanaLogo';
 
 export default function PortalResultsPage() {
   const router = useRouter();
@@ -117,10 +118,7 @@ export default function PortalResultsPage() {
             <span>Back to Dashboard</span>
           </button>
           <div style={styles.headerBrand}>
-            <svg width="22" height="22" viewBox="0 0 32 32" fill="none">
-              <circle cx="16" cy="16" r="16" fill="#0563c1" />
-              <path d="M16 8v16M8 16h16" stroke="white" strokeWidth="2.5" strokeLinecap="round" />
-            </svg>
+            <AmanaLogo size={24} inverted={true} />
             <span style={styles.headerOrgName}>Patient Portal</span>
           </div>
           <div style={styles.headerActions}>
