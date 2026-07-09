@@ -74,6 +74,21 @@ CREATE POLICY "invitations_update_authenticated"
   USING (true)
   WITH CHECK (true);
 
+DROP POLICY IF EXISTS "invitations_read_anon" ON public.invitations;
+DROP POLICY IF EXISTS "invitations_delete_authenticated" ON public.invitations;
+
+CREATE POLICY "invitations_read_anon"
+  ON public.invitations
+  FOR SELECT
+  TO anon
+  USING (true);
+
+CREATE POLICY "invitations_delete_authenticated"
+  ON public.invitations
+  FOR DELETE
+  TO authenticated
+  USING (true);
+
 -- Billing Accounts
 ALTER TABLE public.billing_accounts ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "billing_accounts_read" ON public.billing_accounts;

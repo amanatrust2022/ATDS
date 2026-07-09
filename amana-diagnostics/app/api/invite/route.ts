@@ -75,11 +75,11 @@ export async function POST(request: Request) {
       </html>
     `;
 
-    await sendEmail({
+    sendEmail({
       to: email,
       subject: `Invitation to join ${organizationName}`,
       htmlContent
-    });
+    }).catch(err => console.warn('Failed to send invite email:', err.message));
 
     return NextResponse.json({ success: true });
   } catch (error: any) {

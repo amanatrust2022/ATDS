@@ -211,7 +211,11 @@ export default function StaffManagement() {
     }
 
     // 2. Send Email via Brevo
-    const link = `${window.location.origin}/invite/${token}`;
+    let origin = window.location.origin;
+    if (origin.includes('tauri://') || origin.includes('localhost:1420')) {
+      origin = 'https://amanadiagnostics.com'; // Fallback to cloud URL for emails
+    }
+    const link = `${origin}/invite/${token}`;
     try {
       const emailRes = await fetch('/api/invite', {
         method: 'POST',
