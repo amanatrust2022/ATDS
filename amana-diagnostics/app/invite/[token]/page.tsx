@@ -4,9 +4,9 @@ import { useParams, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
 import { RiMicroscopeLine, RiCheckLine, RiShieldCheckLine, RiUploadCloud2Line, RiEyeLine, RiEyeOffLine } from '@remixicon/react';
 
-function withTimeout(promise: Promise<any>, ms: number, onWarning: () => void): Promise<any> {
+function withTimeout(promise: any, ms: number, onWarning: () => void): Promise<any> {
   const timer = setTimeout(onWarning, ms);
-  return promise.finally(() => clearTimeout(timer));
+  return Promise.resolve(promise).finally(() => clearTimeout(timer));
 }
 
 export default function InviteAcceptPage() {
