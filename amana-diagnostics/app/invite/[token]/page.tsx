@@ -86,30 +86,33 @@ export default function InviteAcceptPage() {
     e.preventDefault();
     if (form.password !== form.confirm) { setError('Passwords do not match.'); return; }
     if (form.password.length < 8) { setError('Password must be at least 8 characters.'); return; }
-    if (!signatureFile) { setError('Please upload your signature.'); return; }
-    
     setSubmitting(true); setError('');
 
     try {
-      // 1. Upload Signature
-      const fileExt = signatureFile.name.split('.').pop();
-      const fileName = `${invite.id}-${Math.random()}.${fileExt}`;
-      
-      const uploadPromise = supabase.storage
-        .from('signatures')
-        .upload(fileName, signatureFile);
+      // 1. Upload Signature (Optional)
+      let publicUrl = null;
+      if (signatureFile) {
+        const fileExt = signatureFile.name.split('.').pop();
+        const fileName = `${invite.id}-${Math.random()}.${fileExt}`;
+        
+        const uploadPromise = supabase.storage
+          .from('signatures')
+          .upload(fileName, signatureFile);
 
-      const { data: uploadData, error: uploadError } = await withTimeout(
-        uploadPromise,
-        15000,
-        () => setError('Slow network connection detected. Still uploading your signature image... please wait.')
-      );
+        const { data: uploadData, error: uploadError } = await withTimeout(
+          uploadPromise,
+          15000,
+          () => setError('Slow network connection detected. Still uploading your signature image... please wait.')
+        );
 
-      if (uploadError) throw uploadError;
+        if (uploadError) throw uploadError;
 
-      const { data: { publicUrl } } = supabase.storage
-        .from('signatures')
-        .getPublicUrl(fileName);
+        const { data } = supabase.storage
+          .from('signatures')
+          .getPublicUrl(fileName);
+        
+        publicUrl = data.publicUrl;
+      }
 
       // 2. Format Full Name
       const fullName = `${form.title} ${form.firstName} ${form.lastName ? form.lastName + ' ' : ''}${form.surname}`.trim();
@@ -221,7 +224,7 @@ export default function InviteAcceptPage() {
           
           <div style={{ display: 'grid', gridTemplateColumns: '100px 1fr', gap: '1rem' }}>
             <div>
-              <label style={lbl}>Title *</label>
+              <label style={lbl}>Title <span style={{ color: '#f87171' }}>*</span></label>
               <select style={inp} value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} required>
                 <option value="Mr.">Mr.</option>
                 <option value="Ms.">Ms.</option>
@@ -233,14 +236,14 @@ export default function InviteAcceptPage() {
               </select>
             </div>
             <div>
-              <label style={lbl}>Surname *</label>
+              <label style={lbl}>Surname <span style={{ color: '#f87171' }}>*</span></label>
               <input style={inp} value={form.surname} onChange={e => setForm({ ...form, surname: e.target.value })} placeholder="e.g. Doe" required />
             </div>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
             <div>
-              <label style={lbl}>First Name *</label>
+              <label style={lbl}>First Name <span style={{ color: '#f87171' }}>*</span></label>
               <input style={inp} value={form.firstName} onChange={e => setForm({ ...form, firstName: e.target.value })} placeholder="e.g. John" required />
             </div>
             <div>
@@ -250,7 +253,7 @@ export default function InviteAcceptPage() {
           </div>
 
           <div>
-            <label style={lbl}>Digital Signature *</label>
+            <label style={lbl}>Digital Signature (Optional)</label>
             <div style={{ 
               border: '1px dashed rgba(255,255,255,0.2)', borderRadius: 8, padding: '1rem', 
               display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem',
@@ -268,7 +271,7 @@ export default function InviteAcceptPage() {
                 <label style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer', gap: '0.5rem' }}>
                   <RiUploadCloud2Line size={24} color="rgba(255,255,255,0.4)" />
                   <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.85rem' }}>Upload Signature Image</span>
-                  <input type="file" accept="image/*" onChange={handleFileChange} style={{ display: 'none' }} required />
+                  <input type="file" accept="image/*" onChange={handleFileChange} style={{ display: 'none' }} />
                 </label>
               )}
             </div>
@@ -276,7 +279,7 @@ export default function InviteAcceptPage() {
 
           <div style={{ background: 'rgba(255,255,255,0.03)', padding: '1.25rem', borderRadius: 8, display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <div>
-              <label style={lbl}>Create Password *</label>
+              <label style={lbl}>Create Password <span style={{ color: '#f87171' }}>*</span></label>
               <div style={{ position: 'relative' }}>
                 <input 
                   type={showPassword ? "text" : "password"} 
@@ -308,7 +311,7 @@ export default function InviteAcceptPage() {
               </div>
             </div>
             <div>
-              <label style={lbl}>Confirm Password *</label>
+              <label style={lbl}>Confirm Password <span style={{ color: '#f87171' }}>*</span></label>
               <div style={{ position: 'relative' }}>
                 <input 
                   type={showConfirm ? "text" : "password"} 
