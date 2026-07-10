@@ -4,9 +4,13 @@ import { createClient } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import { RiMicroscopeLine, RiLockPasswordLine, RiMailLine, RiEyeLine, RiEyeOffLine, RiComputerLine } from '@remixicon/react';
 
-function withTimeout(promise: Promise<any>, ms: number, onWarning: () => void): Promise<any> {
+async function withTimeout(promise: any, ms: number, onWarning: () => void): Promise<any> {
   const timer = setTimeout(onWarning, ms);
-  return promise.finally(() => clearTimeout(timer));
+  try {
+    return await promise;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export default function LoginPage() {

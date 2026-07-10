@@ -8,9 +8,13 @@ import { RiMicroscopeLine, RiArrowLeftLine, RiCheckLine, RiMailLine, RiEyeLine, 
 const slugify = (text: string) =>
   text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
-function withTimeout(promise: Promise<any>, ms: number, onWarning: () => void): Promise<any> {
+async function withTimeout(promise: any, ms: number, onWarning: () => void): Promise<any> {
   const timer = setTimeout(onWarning, ms);
-  return promise.finally(() => clearTimeout(timer));
+  try {
+    return await promise;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 type Step = 1 | 2 | 'confirm';

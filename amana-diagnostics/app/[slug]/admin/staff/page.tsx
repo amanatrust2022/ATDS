@@ -26,6 +26,15 @@ import {
 import { useParams } from 'next/navigation';
 import { printHtml } from '@/lib/templates';
 
+async function withTimeout(promise: any, ms: number, onWarning: () => void): Promise<any> {
+  const timer = setTimeout(onWarning, ms);
+  try {
+    return await promise;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export default function StaffManagement() {
   const { profile, organization } = useAuth();
   const params = useParams();
