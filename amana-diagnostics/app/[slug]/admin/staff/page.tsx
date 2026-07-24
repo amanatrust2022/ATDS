@@ -255,11 +255,12 @@ export default function StaffManagement() {
 
   const updateRole = async (id: string, role: string) => {
     try {
-      await supabase.from('profiles').update({ role }).eq('id', id);
+      const { error } = await supabase.from('profiles').update({ role }).eq('id', id);
+      if (error) throw error;
       showToast('Staff role updated successfully!');
-    } catch (err) {
+    } catch (err: any) {
       console.warn('Failed to update role in Supabase:', err);
-      showToast('Failed to update role in cloud.', 'error');
+      showToast(err.message || 'Failed to update role in cloud.', 'error');
     }
 
     if (isLocalMode) {
@@ -283,11 +284,12 @@ export default function StaffManagement() {
   const revokeInvite = async (id: string) => {
     if (!confirm('Revoke this pending invitation?')) return;
     try {
-      await supabase.from('invitations').delete().eq('id', id);
+      const { error } = await supabase.from('invitations').delete().eq('id', id);
+      if (error) throw error;
       showToast('Invitation revoked successfully!');
-    } catch (err) {
+    } catch (err: any) {
       console.warn('Failed to revoke invite in Supabase:', err);
-      showToast('Failed to revoke invitation.', 'error');
+      showToast(err.message || 'Failed to revoke invitation.', 'error');
     }
     fetchData(true);
   };
@@ -296,11 +298,12 @@ export default function StaffManagement() {
     if (!confirm(`Remove ${s.full_name || 'this staff member'} from the workspace?`)) return;
 
     try {
-      await supabase.from('profiles').update({ organization_id: null, role: 'reception' }).eq('id', s.id);
+      const { error } = await supabase.from('profiles').update({ organization_id: null, role: 'reception' }).eq('id', s.id);
+      if (error) throw error;
       showToast('Staff removed from workspace.');
-    } catch (err) {
+    } catch (err: any) {
       console.warn('Failed to remove staff from Supabase:', err);
-      showToast('Failed to remove staff from cloud.', 'error');
+      showToast(err.message || 'Failed to remove staff from cloud.', 'error');
     }
 
     if (isLocalMode) {
