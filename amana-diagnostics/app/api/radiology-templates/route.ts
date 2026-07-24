@@ -83,22 +83,23 @@ export async function POST(request: Request) {
       const { id, updates } = body;
 
       const stmt = db.prepare(`
-        UPDATE radiology_templates SET
-          key = ?,
-          name = ?,
-          findings = ?,
-          impression = ?,
-          updated_at = ?
-        WHERE id = ?
+        INSERT INTO radiology_templates (id, key, name, findings, impression, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          key = excluded.key,
+          name = excluded.name,
+          findings = excluded.findings,
+          impression = excluded.impression,
+          updated_at = excluded.updated_at
       `);
 
       stmt.run(
+        id,
         updates.key,
         updates.name,
         updates.findings,
         updates.impression,
-        nowStr,
-        id
+        nowStr
       );
 
       // Log update in outbox

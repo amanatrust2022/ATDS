@@ -1497,9 +1497,7 @@ export const updateCustomTest = async (id: string, updates: Partial<Test>, organ
   }
   const { error } = await supabase
     .from('custom_tests')
-    .update(payload)
-    .eq('organization_id', organizationId)
-    .eq('id', id);
+    .upsert({ ...payload, id, organization_id: organizationId });
   if (error) throw error;
 };
 
