@@ -180,7 +180,7 @@ export async function POST(request: Request) {
       }
 
       const staffName = addedBy?.name || 'Staff member';
-      const staffRole = addedBy?.role === 'lab' ? 'Lab Scientist' : addedBy?.role === 'radiology' ? 'Radiologist' : addedBy?.role || 'Staff';
+      const staffRole = addedBy?.role === 'lab' ? 'Lab Scientist' : addedBy?.role === 'lab_tech' ? 'Lab Technician' : addedBy?.role === 'radiology' ? 'Radiologist' : addedBy?.role || 'Staff';
       
       const host = request.headers.get('host') || 'localhost:3000';
       const protocol = host.startsWith('localhost') || host.startsWith('127.0.0.1') ? 'http' : 'https';

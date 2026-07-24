@@ -8,6 +8,7 @@ const PUBLIC_PATHS = ['/', '/login', '/signup', '/update-password', '/download']
 const getRolePath = (role: string | undefined, slug: string) => {
   switch (role) {
     case 'lab': return `/${slug}/lab`;
+    case 'lab_tech': return `/${slug}/lab`;
     case 'radiology': return `/${slug}/radiology`;
     case 'admin': return `/${slug}/admin`;
     case 'reception': return `/${slug}/reception`;

@@ -398,6 +398,7 @@ export default function StaffManagement() {
     admin: { bg: 'rgba(239, 68, 68, 0.08)', color: '#ef4444', label: 'Administrator', desc: 'Full administrative access to all settings, billing, records, and personnel controls.' },
     reception: { bg: 'rgba(59, 130, 246, 0.08)', color: '#3b82f6', label: 'Receptionist', desc: 'Manage patient registrations, check-ins, slip generation, and basic queue management.' },
     lab: { bg: 'rgba(16, 185, 129, 0.08)', color: '#10b981', label: 'Lab Scientist', desc: 'Process lab test specimens, enter parameters values, and sign off lab diagnostic reports.' },
+    lab_tech: { bg: 'rgba(52, 211, 153, 0.08)', color: '#34d399', label: 'Lab Technician', desc: 'Process lab test specimens and enter parameter values (replica of Lab Scientist).' },
     radiology: { bg: 'rgba(139, 92, 246, 0.08)', color: '#8b5cf6', label: 'Radiologist', desc: 'Manage radiological imaging, document findings, impressions, and sign off scan results.' },
   };
 
@@ -565,6 +566,7 @@ export default function StaffManagement() {
                       <select style={inp} value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}>
                         <option value="reception">Receptionist</option>
                         <option value="lab">Lab Scientist</option>
+                        <option value="lab_tech">Lab Technician</option>
                         <option value="radiology">Radiologist</option>
                         <option value="admin">Administrator</option>
                       </select>
@@ -677,6 +679,7 @@ export default function StaffManagement() {
                             >
                               <option value="reception">Receptionist</option>
                               <option value="lab">Lab Scientist</option>
+                              <option value="lab_tech">Lab Technician</option>
                               <option value="radiology">Radiologist</option>
                               <option value="admin">Administrator</option>
                             </select>

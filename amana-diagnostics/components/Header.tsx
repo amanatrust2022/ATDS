@@ -145,7 +145,7 @@ export default function Header({ title, subtitle, icon = <RiMicroscopeLine size=
   const getWorkspacePath = () => {
     if (!organization || !profile) return '/';
     if (profile.role === 'admin') return `/${organization.slug}/admin`;
-    if (profile.role === 'lab') return `/${organization.slug}/lab`;
+    if (profile.role === 'lab' || profile.role === 'lab_tech') return `/${organization.slug}/lab`;
     if (profile.role === 'radiology') return `/${organization.slug}/radiology`;
     return `/${organization.slug}/reception`;
   };

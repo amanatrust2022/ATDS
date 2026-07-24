@@ -12,7 +12,7 @@ export type Profile = {
   surname?: string;
   last_name?: string;
   signature_url?: string;
-  role: 'reception' | 'lab' | 'radiology' | 'admin';
+  role: 'reception' | 'lab' | 'lab_tech' | 'radiology' | 'admin';
   organization_id: string | null;
 };
 
