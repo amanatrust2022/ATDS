@@ -58,8 +58,16 @@ export async function POST(request: Request) {
     // 2. Check if user already exists in auth.users by email
     const { data: { users }, error: listErr } = await supabaseAdmin.auth.admin.listUsers();
     if (listErr) {
+      let jwtRole = 'unknown';
+      try {
+        const payload = JSON.parse(Buffer.from(key.split('.')[1], 'base64').toString());
+        jwtRole = payload.role;
+      } catch (e) {}
+
       console.error('listUsers error:', listErr);
-      return NextResponse.json({ error: `Failed to query users: ${listErr.message || JSON.stringify(listErr)}` }, { status: 500 });
+      return NextResponse.json({ 
+        error: `Failed to query users: ${listErr.message || JSON.stringify(listErr)}. Diagnosed Key Role: ${jwtRole}` 
+      }, { status: 500 });
     }
 
     const existingUser = users.find(u => u.email === invite.email);
