@@ -59,7 +59,8 @@ export default function LandingPage() {
   const getDashboardUrl = () => {
     if (!organization) return '/onboarding';
     switch (profile?.role) {
-      case 'lab': return `/${organization.slug}/lab`;
+      case 'lab': 
+      case 'lab_tech': return `/${organization.slug}/lab`;
       case 'radiology': return `/${organization.slug}/radiology`;
       case 'admin': return `/${organization.slug}/admin`;
       default: return `/${organization.slug}/reception`;
