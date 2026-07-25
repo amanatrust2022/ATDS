@@ -277,11 +277,24 @@ export default function StaffManagement() {
 
   const updateRole = async (id: string, role: string) => {
     try {
-      const { error } = await supabase.from('profiles').update({ role }).eq('id', id);
-      if (error) throw error;
+      const apiEndpoint = typeof window !== 'undefined' && window.location.origin.includes('localhost:1420') 
+        ? 'https://amanadiagnostics.com/api/staff/update' 
+        : '/api/staff/update';
+        
+      const res = await fetch(apiEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'update_role', staffId: id, role })
+      });
+      
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Failed to update role');
+      }
+      
       showToast('Staff role updated successfully!');
     } catch (err: any) {
-      console.warn('Failed to update role in Supabase:', err);
+      console.warn('Failed to update role:', err);
       showToast(err.message || 'Failed to update role in cloud.', 'error');
     }
 
@@ -320,12 +333,25 @@ export default function StaffManagement() {
     if (!confirm(`Remove ${s.full_name || 'this staff member'} from the workspace?`)) return;
 
     try {
-      const { error } = await supabase.from('profiles').update({ organization_id: null, role: 'reception' }).eq('id', s.id);
-      if (error) throw error;
+      const apiEndpoint = typeof window !== 'undefined' && window.location.origin.includes('localhost:1420') 
+        ? 'https://amanadiagnostics.com/api/staff/update' 
+        : '/api/staff/update';
+        
+      const res = await fetch(apiEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'remove_staff', staffId: s.id })
+      });
+      
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Failed to remove staff');
+      }
+      
       showToast('Staff removed from workspace.');
     } catch (err: any) {
-      console.warn('Failed to remove staff from Supabase:', err);
-      showToast(err.message || 'Failed to remove staff from cloud.', 'error');
+      console.warn('Failed to remove staff:', err);
+      showToast(err.message || 'Failed to remove staff in cloud.', 'error');
     }
 
     if (isLocalMode) {

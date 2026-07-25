@@ -117,43 +117,43 @@ export default function InviteAcceptPage() {
       // 2. Format Full Name
       const fullName = `${form.title} ${form.firstName} ${form.lastName ? form.lastName + ' ' : ''}${form.surname}`.trim();
 
-      // 3. Create auth user
-      const signUpPromise = supabase.auth.signUp({
-        email: invite.email,
-        password: form.password,
-        options: {
-          data: {
-            full_name: fullName,
-            title: form.title,
-            first_name: form.firstName,
-            surname: form.surname,
-            last_name: form.lastName,
-            signature_url: publicUrl,
-            role: invite.role,
-            organization_id: invite.organization_id,
-          }
-        }
+      // 3. Call server-side invite acceptance API
+      const apiEndpoint = typeof window !== 'undefined' && window.location.origin.includes('localhost:1420') 
+        ? 'https://amanadiagnostics.com/api/invite/accept' 
+        : '/api/invite/accept';
+        
+      const res = await fetch(apiEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token,
+          password: form.password,
+          title: form.title,
+          firstName: form.firstName,
+          lastName: form.lastName,
+          surname: form.surname,
+          publicUrl
+        })
       });
 
-      const { data: authData, error: signUpErr } = await withTimeout(
-        signUpPromise,
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || 'Failed to accept invitation');
+      }
+
+      // 4. Log the user in seamlessly
+      const signInPromise = supabase.auth.signInWithPassword({
+        email: invite.email,
+        password: form.password
+      });
+
+      const { error: signInErr } = await withTimeout(
+        signInPromise,
         15000,
-        () => setError('Slow network connection detected. Still creating your account credentials... please wait.')
+        () => setError('Network is slow. Your account was created, but login timed out. Try signing in manually.')
       );
 
-      if (signUpErr) throw signUpErr;
-
-      // 4. Mark invite as accepted
-      const markInvitePromise = supabase
-        .from('invitations')
-        .update({ accepted_at: new Date().toISOString() })
-        .eq('token', token);
-
-      await withTimeout(
-        markInvitePromise,
-        10000,
-        () => setError('Slow network connection detected. Still finalizing invitation status... please wait.')
-      );
+      if (signInErr) throw signInErr;
 
       // 5. Redirect directly to workspace
       router.push('/');
