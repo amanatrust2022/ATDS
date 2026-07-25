@@ -157,11 +157,6 @@ export default function RootWrapper({ children }: { children: React.ReactNode })
     );
 
     if (shouldGoToOnboarding) {
-      const fallbackProfile = profile && profile.id && profile.full_name && profile.role;
-      if (fallbackProfile) {
-        router.replace(`/${organization?.slug || 'workspace'}/reception`);
-        return;
-      }
       router.replace('/onboarding');
       return;
     }
