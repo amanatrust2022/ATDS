@@ -58,7 +58,8 @@ export async function POST(request: Request) {
     // 2. Check if user already exists in auth.users by email
     const { data: { users }, error: listErr } = await supabaseAdmin.auth.admin.listUsers();
     if (listErr) {
-      return NextResponse.json({ error: 'Failed to query users' }, { status: 500 });
+      console.error('listUsers error:', listErr);
+      return NextResponse.json({ error: `Failed to query users: ${listErr.message || JSON.stringify(listErr)}` }, { status: 500 });
     }
 
     const existingUser = users.find(u => u.email === invite.email);
