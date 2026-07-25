@@ -184,6 +184,17 @@ export default function StaffManagement() {
     }
 
     fetchData(true);
+
+    const subscription = supabase
+      .channel('invitations_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'invitations', filter: `organization_id=eq.${organization.id}` }, () => {
+        fetchData(true);
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(subscription);
+    };
   }, [organization]);
 
   useEffect(() => {
@@ -193,6 +204,13 @@ export default function StaffManagement() {
   }, [activeTab, organization]);
 
   const [sendingEmail, setSendingEmail] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const handleCopyLink = (link: string, id: string = 'main') => {
+    navigator.clipboard.writeText(link);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
 
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -225,8 +243,17 @@ export default function StaffManagement() {
       origin = 'https://amanadiagnostics.com'; // Fallback to cloud URL for emails
     }
     const link = `${origin}/invite/${token}`;
+    // Update UI immediately since DB insert was successful
+    setInviteLink(link);
+    setForm({ email: '', role: 'reception' });
+    fetchData(true);
+
     try {
-      const emailRes = await fetch('/api/invite', {
+      const apiEndpoint = origin.includes('tauri://') || origin.includes('localhost:1420') 
+        ? 'https://amanadiagnostics.com/api/invite' 
+        : '/api/invite';
+
+      const emailRes = await fetch(apiEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -238,14 +265,9 @@ export default function StaffManagement() {
       });
 
       if (!emailRes.ok) throw new Error('Failed to send email');
-      
-      setInviteLink(link);
-      setForm({ email: '', role: 'reception' });
-      fetchData(true);
       showToast('Invitation email sent successfully!');
     } catch (err: any) {
       console.error('Email send error:', err);
-      setInviteLink(link); // Still show link as fallback
       showToast('Invitation created, but email failed. Copy the link manually.', 'error');
     } finally {
       setSubmitting(false);
@@ -583,8 +605,8 @@ export default function StaffManagement() {
                       </p>
                       <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: '0.5rem' }}>
                         <input readOnly value={inviteLink} style={{ ...inp, fontSize: '0.75rem', flex: 1, background: 'white', border: '1px solid var(--teal-200)', padding: '0.5rem' }} onClick={e => (e.target as HTMLInputElement).select()} />
-                        <button onClick={() => { navigator.clipboard.writeText(inviteLink); showToast('Link copied!'); }} style={{ background: 'var(--teal-700)', color: 'white', border: 'none', padding: '0.5rem 0.85rem', borderRadius: 'var(--radius)', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
-                          Copy
+                        <button onClick={() => handleCopyLink(inviteLink, 'main')} style={{ background: copiedId === 'main' ? '#10b981' : 'var(--teal-700)', color: 'white', border: 'none', padding: '0.5rem 0.85rem', borderRadius: 'var(--radius)', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 700, whiteSpace: 'nowrap', transition: 'background-color 0.2s' }}>
+                          {copiedId === 'main' ? 'Copied!' : 'Copy'}
                         </button>
                       </div>
                       <p style={{ fontSize: '0.7rem', color: 'var(--teal-600)', marginTop: '0.5rem', marginBottom: 0 }}>Link valid for 7 days.</p>
@@ -613,8 +635,23 @@ export default function StaffManagement() {
                             <span>·</span>
                             <span>Expires {new Date(inv.expires_at).toLocaleDateString()}</span>
                           </div>
+                          
+                          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: '0.5rem' }}>
+                            <input 
+                              readOnly 
+                              value={`${typeof window !== 'undefined' && window.location.origin.includes('localhost') ? window.location.origin : 'https://amanadiagnostics.com'}/invite/${inv.token}`} 
+                              style={{ ...inp, fontSize: '0.7rem', flex: 1, padding: '0.35rem 0.5rem', background: 'var(--gray-50)', color: 'var(--gray-600)' }} 
+                              onClick={e => (e.target as HTMLInputElement).select()} 
+                            />
+                            <button 
+                              onClick={() => handleCopyLink(`${typeof window !== 'undefined' && window.location.origin.includes('localhost') ? window.location.origin : 'https://amanadiagnostics.com'}/invite/${inv.token}`, inv.id)} 
+                              style={{ background: copiedId === inv.id ? '#10b981' : 'var(--gray-200)', color: copiedId === inv.id ? 'white' : 'var(--gray-700)', border: 'none', padding: '0.35rem 0.65rem', borderRadius: 'var(--radius)', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 700, transition: 'all 0.2s' }}
+                            >
+                              {copiedId === inv.id ? 'Copied' : 'Copy'}
+                            </button>
+                          </div>
                         </div>
-                        <button onClick={() => revokeInvite(inv.id)} style={{ background: 'none', border: 'none', color: 'var(--red)', cursor: 'pointer', padding: '0.4rem', borderRadius: '50%' }}>
+                        <button onClick={() => revokeInvite(inv.id)} title="Revoke invite" style={{ background: 'var(--red-50)', border: '1px solid var(--red-200)', color: 'var(--red)', cursor: 'pointer', padding: '0.4rem', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginLeft: '0.75rem' }}>
                           <RiDeleteBinLine size={16} />
                         </button>
                       </div>
