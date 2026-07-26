@@ -1,6 +1,6 @@
 'use client';
-import ReceptionPage from '@/components/ReceptionPage';
+import ReceptionPageV2 from '@/components/ReceptionPage.v2';
 
 export default function LegacyReceptionPage() {
-  return <ReceptionPage />;
+  return <ReceptionPageV2 />;
 }

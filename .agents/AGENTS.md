@@ -4,6 +4,27 @@
 - **Rule Management**:Keep rules concise, explicit, and actionable.Group and Demarcate Sections Remove outdated/conflicting rules. 
 - **Problem Resolution & Documentation**: Whenever fixing a bug or addressing a recurring problem, always document the root cause and the established solution pattern as a new, concise rule in `AGENTS.md` (or as a Skill for complex workflows). This creates a persistent feedback loop so the agent never repeats the same mistake.
 <!-- END:agent-best-practices -->
+<!-- BEGIN:nextjs-agent-rules -->
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
+<!-- END:nextjs-agent-rules -->
+
+# Amana Diagnostics - Architectural Guidelines
+
+## 1. Avoid God Components
+- Do NOT build components that exceed ~300-500 lines.
+- Break down complex UIs into single-responsibility components (e.g., separate Forms, Modals, Search blocks).
+- Group related components into feature directories (e.g., `components/features/registration/`).
+
+## 2. Modular State Management
+- Avoid monolithic state files (`lib/store.ts`).
+- For complex, multi-step forms or feature-specific UI state, use small, focused Zustand stores (e.g., `useRegistrationStore.ts`).
+- For data fetching, ensure clear boundaries between UI and data access layers.
+
+## 3. Automated Testing (Vitest)
+- All core business logic and critical UI components must have automated tests using Vitest.
+- Write tests alongside new feature development and refactoring.
 <!-- BEGIN:database-sync-rules -->
 # Database Sync & Overrides
 
