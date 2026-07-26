@@ -19,8 +19,13 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 ## 2. Modular State Management
 - Avoid monolithic state files (`lib/store.ts`).
-- For complex, multi-step forms or feature-specific UI state, use small, focused Zustand stores (e.g., `useRegistrationStore.ts`).
+- For complex, multi-step forms or feature-specific UI state, use small, focused Zustand stores (e.g., `useRegistrationStore.ts`, `useQueueStore.ts`, `useWalletStore.ts`).
 - For data fetching, ensure clear boundaries between UI and data access layers.
+
+## 2.1 Domain-Driven Reception Architecture
+- The Reception module is strictly divided into three domains: **Registration**, **Queue/Results**, and **Wallet/Ledger**.
+- Each domain MUST have its own Zustand store and feature directory (e.g., `components/features/wallet/`).
+- Do NOT mix state (e.g., billing logic in the queue component) across domains.
 
 ## 3. Automated Testing (Vitest)
 - All core business logic and critical UI components must have automated tests using Vitest.
