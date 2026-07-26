@@ -637,6 +637,7 @@ export default function DepartmentPage({ department }: Props) {
       });
       showToast(`"${selected.test.testName}" result sent to reception ✓`);
       setSelected(null);
+      setResults([]);
       setIsMcs(false);
       setIsWidal(false);
       setIsMPs(false);
