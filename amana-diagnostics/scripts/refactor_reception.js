@@ -69,5 +69,41 @@ finalContent = finalContent.replace(/form\.middleName/g, 'regForm.middleName');
 finalContent = finalContent.replace(/form\.referredBy/g, 'regForm.referredBy');
 finalContent = finalContent.replace(/form\.referringFacility/g, 'regForm.referringFacility');
 
+// 7. Fix validate function to use store
+const oldValidate = `  const validate = () => {
+    const e: Record<string, string> = {};
+    if (!regForm.firstName.trim()) e.firstName = 'First name is required';
+    if (!regForm.surname.trim()) e.surname = 'Surname is required';
+    if (!form.age.trim()) e.age = 'Age is required';
+    if (!form.phone.trim()) e.phone = 'Phone number is required';
+    const hasDoctor = !!selectedDoctorId || !!regForm.referredBy.trim();
+    const hasFacility = !!selectedFacilityId || !!regForm.referringFacility.trim();
+    if (!hasDoctor && !hasFacility) {
+      e.referredBy = 'Either Referring doctor or facility is required';
+      e.referringFacility = 'Either Referring doctor or facility is required';
+    }
+    if (selectedTests.length === 0) e.tests = 'Select at least one test';
+    return e;
+  };`;
+
+const newValidate = `  const validate = () => {
+    const regStore = useRegistrationStore.getState();
+    const e: Record<string, string> = {};
+    if (!regStore.form.firstName.trim()) e.firstName = 'First name is required';
+    if (!regStore.form.surname.trim()) e.surname = 'Surname is required';
+    if (!regStore.form.age.trim()) e.age = 'Age is required';
+    if (!regStore.form.phone.trim()) e.phone = 'Phone number is required';
+    const hasDoctor = !!selectedDoctorId || !!regStore.form.referredBy.trim();
+    const hasFacility = !!selectedFacilityId || !!regStore.form.referringFacility.trim();
+    if (!hasDoctor && !hasFacility) {
+      e.referredBy = 'Either Referring doctor or facility is required';
+      e.referringFacility = 'Either Referring doctor or facility is required';
+    }
+    if (regStore.selectedTests.length === 0) e.tests = 'Select at least one test';
+    return e;
+  };`;
+
+finalContent = finalContent.replace(oldValidate, newValidate);
+
 fs.writeFileSync(filePath, finalContent, 'utf8');
 console.log("Successfully refactored ReceptionPage.v2.tsx");

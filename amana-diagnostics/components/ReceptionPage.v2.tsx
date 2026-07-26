@@ -28,6 +28,8 @@ import ReferralSelection from './features/registration/ReferralSelection';
 import TestSelection from './features/registration/TestSelection';
 import BillingSummary from './features/registration/BillingSummary';
 import { useRegistrationStore } from '@/lib/store/useRegistrationStore';
+import QueueAndResultsTab from './features/queue/QueueAndResultsTab';
+
 
 type Tab = 'register' | 'queue' | 'results' | 'wallet';
 
@@ -47,12 +49,12 @@ export default function ReceptionPageV2() {
   const [depSearchPage, setDepSearchPage] = useState(0);
   const [showDepSearchDrop, setShowDepSearchDrop] = useState(false);
   const depSearchRef = useRef<HTMLDivElement>(null);
-  const [dateFilter, setDateFilter] = useState<'today' | 'seven_days' | 'thirty_days'>('today');
+  
   const [selectedTests, setSelectedTests] = useState<string[]>([]);
   const [showSlipModal, setShowSlipModal] = useState<Patient | null>(null);
   const [showResultModal, setShowResultModal] = useState<Patient | null>(null);
-  const [searchQ, setSearchQ] = useState('');
-  const [deptFilter, setDeptFilter] = useState<'all' | 'lab' | 'radiology'>('all');
+  
+  
   const [testSearch, setTestSearch] = useState('');
   const [form, setForm] = useState({
     firstName: '', surname: '', middleName: '', age: '', sex: 'Male' as 'Male' | 'Female',
@@ -585,49 +587,24 @@ export default function ReceptionPageV2() {
       .includes(q);
   });
 
-  const filterByDate = (dateString: string | number | Date) => {
-    const pDate = new Date(dateString);
-    const now = new Date();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-
-    if (dateFilter === 'today') {
-      return pDate >= startOfToday;
-    } else if (dateFilter === 'seven_days') {
-      const sevenDaysAgo = new Date(startOfToday.getTime() - 7 * 24 * 60 * 60 * 1000);
-      return pDate >= sevenDaysAgo;
-    } else if (dateFilter === 'thirty_days') {
-      const thirtyDaysAgo = new Date(startOfToday.getTime() - 30 * 24 * 60 * 60 * 1000);
-      return pDate >= thirtyDaysAgo;
-    }
-    return true;
-  };
-
-  const pendingPatients = patients.filter(p => p.tests.some(t => t.status !== 'completed') && filterByDate(p.registeredAt));
-  const resultsPatients = patients.filter(p => p.tests.some(t => t.status === 'completed') && filterByDate(p.registeredAt));
-  const newResultsCount = resultsPatients.length;
-
-  const toggleTest = (id: string) => {
-    setSelectedTests(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
-  };
-
-  const removeTest = (id: string) => {
-    setSelectedTests(prev => prev.filter(x => x !== id));
-  };
+  
+  const newResultsCount = patients.filter(p => p.tests.some(t => t.status === 'completed')).length;
+  const pendingCount = patients.filter(p => p.tests.some(t => t.status !== 'completed')).length;
 
   const validate = () => {
-    const regStore = useRegistrationStore.getState();
     const e: Record<string, string> = {};
+    const regStore = useRegistrationStore.getState();
     if (!regStore.form.firstName.trim()) e.firstName = 'First name is required';
     if (!regStore.form.surname.trim()) e.surname = 'Surname is required';
-    if (!regStore.form.age.trim()) e.age = 'Age is required';
-    if (!regStore.form.phone.trim()) e.phone = 'Phone number is required';
+    if (!form.age.trim()) e.age = 'Age is required';
+    if (!form.phone.trim()) e.phone = 'Phone number is required';
     const hasDoctor = !!selectedDoctorId || !!regStore.form.referredBy.trim();
     const hasFacility = !!selectedFacilityId || !!regStore.form.referringFacility.trim();
     if (!hasDoctor && !hasFacility) {
       e.referredBy = 'Either Referring doctor or facility is required';
       e.referringFacility = 'Either Referring doctor or facility is required';
     }
-    if (regStore.selectedTests.length === 0) e.tests = 'Select at least one test';
+    if (selectedTests.length === 0) e.tests = 'Select at least one test';
     return e;
   };
 
@@ -819,10 +796,10 @@ export default function ReceptionPageV2() {
       const patientData: Omit<Patient, 'id' | 'tests'> & { id?: number; patientProfileId?: number | null } = {
         slipNumber,
         registeredAt: new Date().toISOString(),
-        name: [regForm.firstName, regForm.middleName, regForm.surname].filter(Boolean).join(' '),
+        name: [regStore.form.firstName, regStore.form.middleName, regStore.form.surname].filter(Boolean).join(' '),
         ...form,
-        referredBy: selDoctor ? `Dr. ${selDoctor.name}` : regForm.referredBy,
-        referringFacility: selFacility ? selFacility.name : regForm.referringFacility,
+        referredBy: selDoctor ? `Dr. ${selDoctor.name}` : regStore.form.referredBy,
+        referringFacility: selFacility ? selFacility.name : regStore.form.referringFacility,
         referringDoctorId: (selectedDoctorId && selectedDoctorId !== 'none') ? selectedDoctorId : undefined,
         referringFacilityId: (selectedFacilityId && selectedFacilityId !== 'none') ? selectedFacilityId : undefined,
         commissionAssigned: isReferral && totalCommission > 0,
@@ -872,14 +849,6 @@ export default function ReceptionPageV2() {
     }
   };
 
-  const filtered = (tab === 'queue' ? pendingPatients : resultsPatients).filter(p => {
-    const q = searchQ.toLowerCase();
-    const pName = p.name || [p.firstName, p.middleName, p.surname].filter(Boolean).join(' ') || '';
-    const nameMatch = pName.toLowerCase().includes(q) || (p.slipNumber || '').toLowerCase().includes(q);
-    if (deptFilter === 'all') return nameMatch;
-    return nameMatch && p.tests.some(t => t.department === deptFilter);
-  });
-
   return (
     <div style={{ minHeight: '100vh', background: 'linear-gradient(180deg, #f5fbfa 0%, #f7f8fb 38%, #eef4f4 100%)', display: 'flex', flexDirection: 'column' }}>
       <Header
@@ -894,7 +863,7 @@ export default function ReceptionPageV2() {
       <div style={{ background: 'rgba(255,255,255,0.88)', backdropFilter: 'blur(10px)', borderBottom: '1px solid rgba(148,163,184,0.25)', padding: '0 1.5rem', display: 'flex', gap: 0 }}>
         {[
           { id: 'register', label: 'Register Patient', icon: <RiAddLine size={18} /> },
-          { id: 'queue', label: `Patient Queue (${pendingPatients.length})`, icon: <RiClipboardLine size={18} /> },
+          { id: 'queue', label: `Patient Queue (${pendingCount})`, icon: <RiClipboardLine size={18} /> },
           { id: 'results', label: `Results Ready (${newResultsCount})`, icon: <RiCheckLine size={18} />, badge: newResultsCount },
           { id: 'wallet', label: 'Patient Wallet', icon: < RiWalletLine size={18} /> },
         ].map(t => (
@@ -968,71 +937,12 @@ export default function ReceptionPageV2() {
 
         {/* ===== QUEUE TAB ===== */}
         {(tab === 'queue' || tab === 'results') && (
-          <div>
-            <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
-              <input
-                value={searchQ}
-                onChange={e => setSearchQ(e.target.value)}
-                placeholder="Search by name or slip number..."
-                style={{ ...inputStyle(false), flex: 1, maxWidth: 300 }}
-              />
-
-              {/* Date Range Filters */}
-              <div style={{ display: 'flex', gap: '0.25rem', background: 'var(--gray-200)', padding: '0.2rem', borderRadius: 'var(--radius)' }}>
-                {[
-                  { id: 'today', label: 'Today' },
-                  { id: 'seven_days', label: 'Last 7 Days' },
-                  { id: 'thirty_days', label: 'Last 30 Days' }
-                ].map(f => (
-                  <button key={f.id} onClick={() => setDateFilter(f.id as any)} style={{
-                    padding: '0.4rem 0.85rem', border: 'none',
-                    borderRadius: 'calc(var(--radius) - 1px)', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer',
-                    background: dateFilter === f.id ? 'white' : 'transparent',
-                    color: dateFilter === f.id ? 'var(--teal-800)' : 'var(--gray-600)',
-                    boxShadow: dateFilter === f.id ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
-                    transition: 'all 0.15s'
-                  }}>
-                    {f.label}
-                  </button>
-                ))}
-              </div>
-
-              {tab === 'queue' && (
-                <div style={{ display: 'flex', gap: '0.5rem', marginLeft: 'auto' }}>
-                  {['all', 'lab', 'radiology'].map(d => (
-                    <button key={d} onClick={() => setDeptFilter(d as any)} style={{
-                      padding: '0.45rem 0.9rem', border: '1px solid var(--gray-300)',
-                      borderRadius: 0, fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer',
-                      background: deptFilter === d ? 'var(--teal-700)' : 'white',
-                      color: deptFilter === d ? 'white' : 'var(--gray-600)',
-                    }}>
-                      {d === 'all' ? 'All' : d === 'lab' ? <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}><RiTestTubeLine size={14} /> Lab</span> : <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}><RiRadarLine size={14} /> Radiology</span>}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {filtered.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '4rem', color: 'var(--gray-500)' }}>
-                <div style={{ fontSize: '3rem', marginBottom: '1rem', color: 'var(--gray-400)' }}>{tab === 'results' ? <RiMailOpenLine size={64} /> : <RiFolderOpenLine size={64} />}</div>
-                <p style={{ fontWeight: 600 }}>{tab === 'results' ? 'No results available yet' : 'No patients in queue'}</p>
-                <p style={{ fontSize: '0.78rem', marginTop: '0.25rem' }}>
-                  {tab === 'results' ? 'Results will appear here when departments complete tests.' : 'Register a patient to get started.'}
-                </p>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                {filtered.map(p => (
-                  <PatientCard
-                    key={p.id} patient={p} mode={tab}
-                    onViewSlip={() => setShowSlipModal(p)}
-                    onViewResult={() => setShowResultModal(p)}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
+          <QueueAndResultsTab 
+            patients={patients} 
+            mode={tab as 'queue' | 'results'} 
+            onViewSlip={(p) => setShowSlipModal(p)} 
+            onViewResult={(p) => setShowResultModal(p)} 
+          />
         )}
 
         {tab === 'wallet' && (
@@ -2237,57 +2147,6 @@ function Field({ label, children, error, actionNode }: { label: string; children
 }
 
 /* ---- Patient Card ---- */
-function PatientCard({ patient, mode, onViewSlip, onViewResult }: any) {
-  const labTests = patient.tests.filter((t: PatientTest) => t.department === 'lab');
-  const radioTests = patient.tests.filter((t: PatientTest) => t.department === 'radiology');
-  const completedCount = patient.tests.filter((t: PatientTest) => t.status === 'completed').length;
-
-  return (
-    <div style={{
-      background: 'white', borderRadius: 'var(--radius-lg)',
-      border: '1px solid var(--gray-300)', padding: '1rem 1.25rem',
-      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      gap: '1rem', animation: 'fadeIn 0.3s ease',
-    }}>
-      <div style={{ flex: 1 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
-          <span style={{
-            fontFamily: 'var(--font-mono)', fontSize: '0.72rem',
-            background: 'var(--teal-100)', color: 'var(--teal-800)',
-            padding: '0.15rem 0.5rem', borderRadius: 0, fontWeight: 600,
-          }}>{patient.slipNumber}</span>
-          <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--gray-900)' }}>{patient.name}</span>
-          <span style={{ fontSize: '0.75rem', color: 'var(--gray-500)' }}>{patient.age} • {patient.sex}</span>
-        </div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
-          {patient.tests.map((t: PatientTest) => (
-            <span key={t.testId} style={{
-              fontSize: '0.68rem', fontWeight: 500, padding: '0.15rem 0.5rem', borderRadius: 0,
-              background: t.status === 'completed' ? 'var(--green-light)' : t.status === 'in_progress' ? 'var(--amber-light)' : 'var(--gray-100)',
-              color: t.status === 'completed' ? 'var(--green)' : t.status === 'in_progress' ? 'var(--amber)' : 'var(--gray-600)',
-              border: `1px solid ${t.status === 'completed' ? '#a7d7c5' : t.status === 'in_progress' ? '#f0c97a' : 'var(--gray-300)'}`,
-            }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '0.15rem' }}>{t.department === 'lab' ? <RiTestTubeLine size={12} /> : <RiRadarLine size={12} />} {t.testName}</span>
-              {t.status === 'completed' ? <RiCheckLine size={12} style={{ marginLeft: '0.1rem' }} /> : t.status === 'in_progress' ? <RiMoreLine size={12} style={{ marginLeft: '0.1rem' }} /> : ''}
-            </span>
-          ))}
-        </div>
-        <div style={{ marginTop: '0.4rem', fontSize: '0.7rem', color: 'var(--gray-500)' }}>
-          Registered: {new Date(patient.registeredAt).toLocaleString('en-NG')}
-          {patient.referredBy && ` • Ref: ${patient.referredBy}`}
-          {completedCount > 0 && <span style={{ color: 'var(--green)', fontWeight: 600 }}> • {completedCount}/{patient.tests.length} completed</span>}
-        </div>
-      </div>
-      <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
-        <button onClick={onViewSlip} style={btnStyle('outline')}><RiPrinterLine size={14} /> Slip</button>
-        {mode === 'results' && (
-          <button onClick={onViewResult} style={btnStyle('primary')}><RiFileTextLine size={14} /> View & Print Result</button>
-        )}
-      </div>
-    </div>
-  );
-}
-
 /* ---- Slip Modal ---- */
 function SlipModal({ patient, onClose, org }: { patient: Patient; onClose: () => void; org?: any }) {
   const [modalTab, setModalTab] = useState<'slip' | 'invoice'>('slip');
