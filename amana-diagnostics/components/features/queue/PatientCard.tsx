@@ -2,30 +2,30 @@ import React from 'react';
 import { RiTestTubeLine, RiRadarLine, RiCheckLine, RiMoreLine, RiPrinterLine, RiFileTextLine } from '@remixicon/react';
 import { Patient, PatientTest } from '@/lib/store';
 
-const btnStyle = (type: 'primary' | 'outline' = 'primary') => ({
-  background: type === 'primary' ? 'var(--teal-700)' : 'white',
-  color: type === 'primary' ? 'white' : 'var(--teal-700)',
-  border: type === 'primary' ? 'none' : '1px solid var(--teal-600)',
+const btnStyle = (variant: 'primary' | 'outline' | 'ghost' | 'danger'): React.CSSProperties => ({
+  background: variant === 'primary' ? 'var(--teal-700)' : variant === 'danger' ? 'var(--red)' : variant === 'outline' ? 'white' : 'transparent',
+  color: variant === 'primary' || variant === 'danger' ? 'white' : variant === 'outline' ? 'var(--gray-700)' : 'var(--gray-600)',
+  border: variant === 'outline' ? '1px solid var(--gray-300)' : 'none',
   padding: '0.45rem 0.85rem',
-  borderRadius: 'var(--radius)',
-  fontSize: '0.75rem',
+  borderRadius: 'calc(var(--radius) - 1px)',
+  fontSize: '0.78rem',
   fontWeight: 600,
   cursor: 'pointer',
   display: 'flex',
   alignItems: 'center',
-  justifyContent: 'center',
-  gap: '0.25rem',
-  transition: 'all 0.15s'
+  gap: '0.35rem',
+  transition: 'all 0.15s ease',
+  boxShadow: variant === 'primary' ? '0 1px 3px rgba(15,118,110,0.2)' : variant === 'outline' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none',
 });
 
 interface PatientCardProps {
   patient: Patient;
-  mode: 'queue' | 'results' | 'wallet' | 'register';
+  mode: 'queue' | 'results';
   onViewSlip: () => void;
   onViewResult: () => void;
 }
 
-export default function PatientCard({ patient, mode, onViewSlip, onViewResult }: PatientCardProps) {
+export function PatientCard({ patient, mode, onViewSlip, onViewResult }: PatientCardProps) {
   const completedCount = patient.tests.filter((t: PatientTest) => t.status === 'completed').length;
 
   return (
@@ -43,7 +43,7 @@ export default function PatientCard({ patient, mode, onViewSlip, onViewResult }:
             padding: '0.15rem 0.5rem', borderRadius: 0, fontWeight: 600,
           }}>{patient.slipNumber}</span>
           <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--gray-900)' }}>{patient.name}</span>
-          <span style={{ fontSize: '0.75rem', color: 'var(--gray-500)' }}>{patient.age} • {patient.sex}</span>
+          <span style={{ fontSize: '0.75rem', color: 'var(--gray-500)' }}>{patient.age} ? {patient.sex}</span>
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
           {patient.tests.map((t: PatientTest) => (
@@ -60,8 +60,8 @@ export default function PatientCard({ patient, mode, onViewSlip, onViewResult }:
         </div>
         <div style={{ marginTop: '0.4rem', fontSize: '0.7rem', color: 'var(--gray-500)' }}>
           Registered: {new Date(patient.registeredAt).toLocaleString('en-NG')}
-          {patient.referredBy && ` • Ref: ${patient.referredBy}`}
-          {completedCount > 0 && <span style={{ color: 'var(--green)', fontWeight: 600 }}> • {completedCount}/{patient.tests.length} completed</span>}
+          {patient.referredBy && ` ? Ref: ${patient.referredBy}`}
+          {completedCount > 0 && <span style={{ color: 'var(--green)', fontWeight: 600 }}> ? {completedCount}/{patient.tests.length} completed</span>}
         </div>
       </div>
       <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>

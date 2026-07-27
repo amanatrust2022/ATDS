@@ -1,109 +1,120 @@
 const fs = require('fs');
 const path = require('path');
 
-const filePath = path.join(__dirname, '../components/ReceptionPage.v2.tsx');
-let content = fs.readFileSync(filePath, 'utf8');
+const recPath = path.join(__dirname, '../components/ReceptionPage.tsx');
+let recContent = fs.readFileSync(recPath, 'utf8');
 
-// 1. Rename default export
-content = content.replace('export default function ReceptionPage() {', 'export default function ReceptionPageV2() {');
-
-// 2. Add imports
-const imports = `
-import RegistrationForm from './features/registration/RegistrationForm';
-import ReferralSelection from './features/registration/ReferralSelection';
-import TestSelection from './features/registration/TestSelection';
-import BillingSummary from './features/registration/BillingSummary';
-import { useRegistrationStore } from '@/lib/store/useRegistrationStore';
-`;
-content = content.replace("type Tab = 'register' | 'queue' | 'results' | 'wallet';", imports + "\ntype Tab = 'register' | 'queue' | 'results' | 'wallet';");
-
-// 3. Find boundaries of the Register Tab
-const startIdx = content.indexOf("{/* ===== REGISTER TAB ===== */}");
-const endIdx = content.indexOf("{/* ===== QUEUE TAB ===== */}");
-
-if (startIdx === -1 || endIdx === -1) {
-  console.error("Could not find boundaries!");
-  process.exit(1);
+// 1. Add Imports
+if (!recContent.includes("import { QueueTab } from './features/queue/QueueTab';")) {
+  recContent = recContent.replace(
+    "import React, { useState, useEffect, useCallback } from 'react';",
+    "import React, { useState, useEffect, useCallback } from 'react';\nimport { QueueTab } from './features/queue/QueueTab';\nimport { ResultsTab } from './features/queue/ResultsTab';"
+  );
 }
 
-// 4. Create the new clean UI block
-const newRegisterTab = `{/* ===== REGISTER TAB ===== */}
-        {tab === 'register' && (
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <RegistrationForm />
-              <ReferralSelection />
-            </div>
-            <div>
-              <TestSelection />
-              <BillingSummary />
-              <div className="mt-4 flex justify-end">
-                  <button
-                    onClick={handleRegister}
-                    disabled={saving}
-                    className={\`px-4 py-2 rounded font-bold text-white \${saving ? 'bg-gray-400' : 'bg-teal-700 hover:bg-teal-800'}\`}
-                  >
-                    {saving ? 'Registering...' : 'Submit Registration'}
+// 2. Remove state from ReceptionPage that moved to useQueueStore
+// Wait, we need to make sure we don't break anything. 
+// Actually, let's just replace the JSX for now, and leave the state in ReceptionPage as unused variables to avoid breaking other things if they exist.
+// Let's check if searchQ, dateFilter, deptFilter are used anywhere else.
+// searchQ is used at line 867.
+// `const filtered = (tab === 'queue' ? pendingPatients : resultsPatients).filter(p => { ... })`
+// We need to remove the `filtered` logic and `pendingPatients` logic from ReceptionPage.tsx because it's now inside the components!
+
+const jsxToReplace = `{/* ===== QUEUE TAB ===== */}
+        {(tab === 'queue' || tab === 'results') && (
+          <div>
+            <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+              <input
+                value={searchQ}
+                onChange={e => setSearchQ(e.target.value)}
+                placeholder="Search by name or slip number..."
+                style={{ ...inputStyle(false), flex: 1, maxWidth: 300 }}
+              />
+
+              {/* Date Range Filters */}
+              <div style={{ display: 'flex', gap: '0.25rem', background: 'var(--gray-200)', padding: '0.2rem', borderRadius: 'var(--radius)' }}>
+                {[
+                  { id: 'today', label: 'Today' },
+                  { id: 'seven_days', label: 'Last 7 Days' },
+                  { id: 'thirty_days', label: 'Last 30 Days' }
+                ].map(f => (
+                  <button key={f.id} onClick={() => setDateFilter(f.id as any)} style={{
+                    padding: '0.4rem 0.85rem', border: 'none',
+                    borderRadius: 'calc(var(--radius) - 1px)', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer',
+                    background: dateFilter === f.id ? 'white' : 'transparent',
+                    color: dateFilter === f.id ? 'var(--teal-800)' : 'var(--gray-600)',
+                    boxShadow: dateFilter === f.id ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                    transition: 'all 0.15s'
+                  }}>
+                    {f.label}
                   </button>
+                ))}
               </div>
+
+              {tab === 'queue' && (
+                <div style={{ display: 'flex', gap: '0.5rem', marginLeft: 'auto' }}>
+                  {['all', 'lab', 'radiology'].map(d => (
+                    <button key={d} onClick={() => setDeptFilter(d as any)} style={{
+                      padding: '0.45rem 0.9rem', border: '1px solid var(--gray-300)',
+                      borderRadius: 0, fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer',
+                      background: deptFilter === d ? 'var(--teal-700)' : 'white',
+                      color: deptFilter === d ? 'white' : 'var(--gray-600)',
+                    }}>
+                      {d === 'all' ? 'All' : d === 'lab' ? <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}><RiTestTubeLine size={14} /> Lab</span> : <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}><RiRadarLine size={14} /> Radiology</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
+
+            {filtered.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '4rem', color: 'var(--gray-500)' }}>
+                <div style={{ fontSize: '3rem', marginBottom: '1rem', color: 'var(--gray-400)' }}>{tab === 'results' ? <RiMailOpenLine size={64} /> : <RiFolderOpenLine size={64} />}</div>
+                <p style={{ fontWeight: 600 }}>{tab === 'results' ? 'No results available yet' : 'No patients in queue'}</p>
+                <p style={{ fontSize: '0.78rem', marginTop: '0.25rem' }}>
+                  {tab === 'results' ? 'Results will appear here when departments complete tests.' : 'Register a patient to get started.'}
+                </p>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                {filtered.map(p => (
+                  <PatientCard
+                    key={p.id} patient={p} mode={tab}
+                    onViewSlip={() => setShowSlipModal(p)}
+                    onViewResult={() => setShowResultModal(p)}
+                  />
+                ))}
+              </div>
+            )}
           </div>
+        )}`;
+
+const newJsx = `{/* ===== QUEUE TAB ===== */}
+        {tab === 'queue' && (
+          <QueueTab
+            patients={patients}
+            onViewSlip={(p) => setShowSlipModal(p)}
+            onViewResult={(p) => setShowResultModal(p)}
+          />
         )}
+        
+        {/* ===== RESULTS TAB ===== */}
+        {tab === 'results' && (
+          <ResultsTab
+            patients={patients}
+            onViewSlip={(p) => setShowSlipModal(p)}
+            onViewResult={(p) => setShowResultModal(p)}
+          />
+        )}`;
 
-        `;
+// Clean up line endings just in case
+const normalizedContent = recContent.replace(/\\r\\n/g, '\\n');
+const normalizedTarget = jsxToReplace.replace(/\\r\\n/g, '\\n');
 
-// 5. Splice the content
-const before = content.slice(0, startIdx);
-const after = content.slice(endIdx);
-let finalContent = before + newRegisterTab + after;
-
-// 6. Update handleRegister to use Zustand for the basic form data
-// This is a minimal update to prove it works. 
-finalContent = finalContent.replace('const handleRegister = async () => {', 
-  "const handleRegister = async () => {\n    const regStore = useRegistrationStore.getState();\n    const { form: regForm, selectedTests: regSelectedTests } = regStore;");
-
-// Replace form.firstName -> regForm.firstName
-finalContent = finalContent.replace(/form\.firstName/g, 'regForm.firstName');
-finalContent = finalContent.replace(/form\.surname/g, 'regForm.surname');
-finalContent = finalContent.replace(/form\.middleName/g, 'regForm.middleName');
-finalContent = finalContent.replace(/form\.referredBy/g, 'regForm.referredBy');
-finalContent = finalContent.replace(/form\.referringFacility/g, 'regForm.referringFacility');
-
-// 7. Fix validate function to use store
-const oldValidate = `  const validate = () => {
-    const e: Record<string, string> = {};
-    if (!regForm.firstName.trim()) e.firstName = 'First name is required';
-    if (!regForm.surname.trim()) e.surname = 'Surname is required';
-    if (!form.age.trim()) e.age = 'Age is required';
-    if (!form.phone.trim()) e.phone = 'Phone number is required';
-    const hasDoctor = !!selectedDoctorId || !!regForm.referredBy.trim();
-    const hasFacility = !!selectedFacilityId || !!regForm.referringFacility.trim();
-    if (!hasDoctor && !hasFacility) {
-      e.referredBy = 'Either Referring doctor or facility is required';
-      e.referringFacility = 'Either Referring doctor or facility is required';
-    }
-    if (selectedTests.length === 0) e.tests = 'Select at least one test';
-    return e;
-  };`;
-
-const newValidate = `  const validate = () => {
-    const regStore = useRegistrationStore.getState();
-    const e: Record<string, string> = {};
-    if (!regStore.form.firstName.trim()) e.firstName = 'First name is required';
-    if (!regStore.form.surname.trim()) e.surname = 'Surname is required';
-    if (!regStore.form.age.trim()) e.age = 'Age is required';
-    if (!regStore.form.phone.trim()) e.phone = 'Phone number is required';
-    const hasDoctor = !!selectedDoctorId || !!regStore.form.referredBy.trim();
-    const hasFacility = !!selectedFacilityId || !!regStore.form.referringFacility.trim();
-    if (!hasDoctor && !hasFacility) {
-      e.referredBy = 'Either Referring doctor or facility is required';
-      e.referringFacility = 'Either Referring doctor or facility is required';
-    }
-    if (regStore.selectedTests.length === 0) e.tests = 'Select at least one test';
-    return e;
-  };`;
-
-finalContent = finalContent.replace(oldValidate, newValidate);
-
-fs.writeFileSync(filePath, finalContent, 'utf8');
-console.log("Successfully refactored ReceptionPage.v2.tsx");
+if (normalizedContent.includes(normalizedTarget)) {
+  const result = normalizedContent.replace(normalizedTarget, newJsx);
+  fs.writeFileSync(recPath, result, 'utf8');
+  console.log('Successfully replaced Queue/Results JSX');
+} else {
+  console.log('ERROR: Could not find the JSX block to replace. Did the file change?');
+}
