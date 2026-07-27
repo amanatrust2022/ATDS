@@ -258,15 +258,47 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, newBalance });
     }
 
-    if (action === 'logExternalCharge') {
+    
+    if (action === 'updateLimit') {
+      const { accountId, newLimit } = body;
+      const upStmt = db.prepare('UPDATE billing_accounts SET credit_limit = ?, updated_at = ? WHERE id = ?');
+      upStmt.run(newLimit, nowStr, accountId);
+      
+      const fullAcc = db.prepare('SELECT * FROM billing_accounts WHERE id = ?').get(accountId) as any;
+      if (fullAcc) {
+        queueSync(db, 'billing_accounts', 'UPDATE', accountId, {
+          ...fullAcc,
+          credit_limit: newLimit,
+          updated_at: nowStr
+        });
+      }
+      return NextResponse.json({ success: true });
+    }
+
+    if (action === 'upgradeAccount') {
+      const { accountId } = body;
+      const upStmt = db.prepare("UPDATE billing_accounts SET type = 'family', updated_at = ? WHERE id = ?");
+      upStmt.run(nowStr, accountId);
+      
+      const fullAcc = db.prepare('SELECT * FROM billing_accounts WHERE id = ?').get(accountId) as any;
+      if (fullAcc) {
+        queueSync(db, 'billing_accounts', 'UPDATE', accountId, {
+          ...fullAcc,
+          type: 'family',
+          updated_at: nowStr
+        });
+      }
+      return NextResponse.json({ success: true });
+    }
+if (action === 'logExternalCharge') {
       const { charge } = body;
       const chargeId = crypto.randomUUID();
 
       // If paid via wallet, check limit and deduct balance
-      if (charge.payment_method === 'wallet' && charge.billing_account_id) {
+      if (charge.paymentMethod === 'wallet' && charge.billingAccountId) {
         // Fetch current account
         const accStmt = db.prepare(`SELECT balance, credit_limit FROM billing_accounts WHERE id = ?`);
-        const acc = accStmt.get(charge.billing_account_id) as { balance: number; credit_limit: number } | undefined;
+        const acc = accStmt.get(charge.billingAccountId) as { balance: number; credit_limit: number } | undefined;
         if (!acc) return NextResponse.json({ error: 'Billing account not found' }, { status: 404 });
 
         const currentBalance = acc.balance || 0;
@@ -287,12 +319,12 @@ export async function POST(request: Request) {
           SET balance = ?, updated_at = ? 
           WHERE id = ?
         `);
-        upStmt.run(newBalance, nowStr, charge.billing_account_id);
+        upStmt.run(newBalance, nowStr, charge.billingAccountId);
 
         // Queue sync account update
-        const fullAcc = db.prepare('SELECT * FROM billing_accounts WHERE id = ?').get(charge.billing_account_id) as any;
+        const fullAcc = db.prepare('SELECT * FROM billing_accounts WHERE id = ?').get(charge.billingAccountId) as any;
         if (fullAcc) {
-          queueSync(db, 'billing_accounts', 'UPDATE', charge.billing_account_id, {
+          queueSync(db, 'billing_accounts', 'UPDATE', charge.billingAccountId, {
             ...fullAcc,
             balance: newBalance,
             updated_at: nowStr
@@ -308,30 +340,30 @@ export async function POST(request: Request) {
         `);
         txStmt.run(
           txId,
-          charge.organization_id,
-          charge.billing_account_id,
-          charge.patient_id,
+          charge.organizationId,
+          charge.billingAccountId,
+          charge.patientId,
           'charge',
           -chargeAmount,
-          `${charge.department.toUpperCase()} Bill - Ref: ${charge.receipt_number}`,
-          charge.receipt_number,
+          `${charge.department.toUpperCase()} Bill - Ref: ${charge.receiptNumber}`,
+          charge.receiptNumber,
           'wallet',
-          charge.created_by || null,
+          charge.createdBy || null,
           nowStr
         );
 
         // Queue sync transaction
         queueSync(db, 'billing_ledger_transactions', 'INSERT', txId, {
           id: txId,
-          organization_id: charge.organization_id,
-          billing_account_id: charge.billing_account_id,
-          patient_id: charge.patient_id,
+          organization_id: charge.organizationId,
+          billing_account_id: charge.billingAccountId,
+          patient_id: charge.patientId,
           type: 'charge',
           amount: -chargeAmount,
-          description: `${charge.department.toUpperCase()} Bill - Ref: ${charge.receipt_number}`,
-          reference_id: charge.receipt_number,
+          description: `${charge.department.toUpperCase()} Bill - Ref: ${charge.receiptNumber}`,
+          reference_id: charge.receiptNumber,
           payment_method: 'wallet',
-          created_by: charge.created_by || null,
+          created_by: charge.createdBy || null,
           created_at: nowStr
         });
       }
@@ -344,32 +376,32 @@ export async function POST(request: Request) {
       `);
       chStmt.run(
         chargeId,
-        charge.organization_id,
-        charge.patient_id,
-        charge.payment_method === 'wallet' ? charge.billing_account_id : null,
+        charge.organizationId,
+        charge.patientId,
+        charge.paymentMethod === 'wallet' ? charge.billingAccountId : null,
         charge.department,
-        charge.receipt_number,
+        charge.receiptNumber,
         charge.amount,
-        charge.payment_method,
+        charge.paymentMethod,
         charge.status || 'paid',
         charge.description || null,
-        charge.created_by || null,
+        charge.createdBy || null,
         nowStr
       );
 
       // Queue sync charge record
       queueSync(db, 'external_department_charges', 'INSERT', chargeId, {
         id: chargeId,
-        organization_id: charge.organization_id,
-        patient_id: charge.patient_id,
-        billing_account_id: charge.payment_method === 'wallet' ? charge.billing_account_id : null,
+        organization_id: charge.organizationId,
+        patient_id: charge.patientId,
+        billing_account_id: charge.paymentMethod === 'wallet' ? charge.billingAccountId : null,
         department: charge.department,
-        receipt_number: charge.receipt_number,
+        receipt_number: charge.receiptNumber,
         amount: charge.amount,
-        payment_method: charge.payment_method,
+        payment_method: charge.paymentMethod,
         status: charge.status || 'paid',
         description: charge.description || null,
-        created_by: charge.created_by || null,
+        created_by: charge.createdBy || null,
         created_at: nowStr
       });
 

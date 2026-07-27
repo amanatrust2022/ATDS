@@ -51,3 +51,17 @@ px tsc --noEmit\).
 - Tested on Vercel staging with a real login.
 - \AGENTS.md\ is updated if any architectural decision was made.
 
+
+## 5. Frontend Conventions (Component-Based Architecture)
+- **State vs. UI Separation**: Keep UI components presentational where possible. Business logic, price calculations, and complex form states must live in dedicated Zustand slices under `lib/store/`.
+- **Feature Grouping**: Group UI sub-components by feature inside `components/features/<feature-name>/` (e.g., `components/features/registration/`) instead of placing everything in a single page component.
+- **Ephemeral vs. Domain State**:
+  - Use local React `useState` only for transient UI state (e.g., search bar text, modal visibility, hover states).
+  - Use Zustand stores for domain data that drives the feature (e.g., selected items, calculated totals, submitted payload).
+- **Testing Requirement**: Every Zustand store or complex business logic function must have a co-located or parallel unit test in Vitest (`*.test.ts`) before being wired into the UI.
+
+## 6. Ongoing Refactoring Roadmap (Divide & Conquer)
+We are actively transitioning away from God Components (`ReceptionPage.tsx`, `DepartmentPage.tsx`) and Monolithic State (`lib/store.ts`). All future work must adhere to this phased strategy:
+- **Phase 1 (Active): Feature Extraction.** Pick specific tabs/areas of giant pages and extract them into `components/features/*`. Move all domain state into smaller Zustand slices.
+- **Phase 2 (Upcoming): Sync Abstraction.** Abstract the complex SQLite (Local Mode) vs Supabase (Cloud Mode) fetching/syncing logic behind clean repository interfaces so components do not dictate how to fetch or sync data.
+- **Phase 3 (Ongoing): Gradual Rollout.** Apply these patterns systematically across all modules before adding complex new features.

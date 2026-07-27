@@ -7,8 +7,7 @@ import {
 } from '@remixicon/react';
 import { useWalletStore } from '@/lib/store/useWalletStore';
 import { 
-  depositToBillingAccount, updatePatientBillingAccount, 
-  registerPatientAndGetId, logExternalCharge, fetchAccountLedger, generateSlipNumber 
+  fetchAccountLedger, fetchExternalCharges, linkPatientToAccount, registerPatientAndGetId, logExternalCharge, updateBillingAccountLimit, upgradeBillingAccount, depositToBillingAccount, updatePatientBillingAccount, generateSlipNumber 
 } from '@/lib/store';
 import { getLedgerStatementTemplate, printHtml } from '@/lib/templates';
 import { Patient, BillingAccount } from '@/lib/store';
@@ -49,6 +48,9 @@ export default function LedgerModal({ organization, patients, profile, onSuccess
   
   
   const store = useWalletStore();
+  const [showAddExisting, setShowAddExisting] = useState(false);
+  const [isEditingLimit, setIsEditingLimit] = useState(false);
+  const [newCreditLimit, setNewCreditLimit] = useState(''); // Used for loading states in modals, not fully extracted but prevents crashes
   const [saving, setSaving] = useState(false); // Used for loading states in modals, not fully extracted but prevents crashes
   
   const { 
@@ -168,6 +170,29 @@ export default function LedgerModal({ organization, patients, profile, onSuccess
   }, [showLedgerModal]);
 
   
+
+  const handleUpdateLimit = async (accountId: string) => {
+    const limit = Number(newCreditLimit);
+    if (isNaN(limit) || limit < 0) return alert('Invalid credit limit');
+    try {
+      await updateBillingAccountLimit(accountId, limit);
+      store.updateCreditLimit(accountId, limit);
+      setIsEditingLimit(false);
+      alert('Credit limit updated successfully');
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  const handleUpgradeAccount = async (accountId: string) => {
+    try {
+      await upgradeBillingAccount(accountId);
+      store.upgradeAccountToFamily(accountId);
+      alert('Account upgraded to Family successfully');
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
 
   const handleLinkExistingDependent = async (accountId: string) => {
     if (!existingPatientToLink) return;
@@ -314,9 +339,26 @@ export default function LedgerModal({ organization, patients, profile, onSuccess
                   <div style={{ fontSize: '1.6rem', fontWeight: 800, color: showLedgerModal.balance >= 0 ? '#166534' : '#991b1b', marginTop: '0.2rem' }}>
                     ₦{showLedgerModal.balance.toLocaleString('en-NG', { minimumFractionDigits: 2 })}
                   </div>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--gray-500)', marginTop: '0.5rem', display: 'flex', justifyContent: 'space-between' }}>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--gray-500)', marginTop: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span>Credit Limit:</span>
-                    <span style={{ fontWeight: 600 }}>₦{showLedgerModal.credit_limit.toLocaleString('en-NG')}</span>
+                    {isEditingLimit ? (
+                      <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
+                        <input 
+                          type="number" 
+                          value={newCreditLimit} 
+                          onChange={e => setNewCreditLimit(e.target.value)} 
+                          style={{ padding: '2px', width: '60px', fontSize: '0.7rem', border: '1px solid var(--gray-300)' }} 
+                          placeholder={String(showLedgerModal.credit_limit || 0)}
+                        />
+                        <button onClick={() => handleUpdateLimit(showLedgerModal.id)} style={{ background: 'var(--teal-600)', color: 'white', border: 'none', padding: '2px 4px', fontSize: '0.65rem', cursor: 'pointer', borderRadius: '4px' }}>Save</button>
+                        <button onClick={() => setIsEditingLimit(false)} style={{ background: 'var(--gray-200)', border: 'none', padding: '2px 4px', fontSize: '0.65rem', cursor: 'pointer', borderRadius: '4px' }}>X</button>
+                      </div>
+                    ) : (
+                      <span style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                        ₦{(showLedgerModal.credit_limit || 0).toLocaleString('en-NG')}
+                        <button onClick={() => { setIsEditingLimit(true); setNewCreditLimit(String(showLedgerModal.credit_limit || 0)); }} style={{ background: 'none', border: 'none', color: 'var(--teal-600)', cursor: 'pointer', fontSize: '0.65rem', textDecoration: 'underline' }}>Edit</button>
+                      </span>
+                    )}
                   </div>
                   <div style={{ fontSize: '0.7rem', color: 'var(--gray-500)', marginTop: '0.2rem', display: 'flex', justifyContent: 'space-between' }}>
                     <span>Account Type:</span>
@@ -341,7 +383,15 @@ export default function LedgerModal({ organization, patients, profile, onSuccess
                   <button
                     type="button"
                     onClick={() => {
-                      const members = patients.filter(p => p.billingAccountId === showLedgerModal.id);
+                      const allVisits = patients.filter(p => p.billingAccountId === showLedgerModal.id);
+                  const uniqueMembersMap = new Map();
+                  allVisits.forEach(v => {
+                    const key = `${v.firstName?.toLowerCase()}-${v.surname?.toLowerCase()}`;
+                    if (!uniqueMembersMap.has(key)) {
+                      uniqueMembersMap.set(key, v);
+                    }
+                  });
+                  const members = Array.from(uniqueMembersMap.values());
                       setWorkspaceExpenseForm(prev => ({
                         ...prev,
                         patientId: members[0]?.id ? String(members[0].id) : ''
@@ -528,20 +578,32 @@ export default function LedgerModal({ organization, patients, profile, onSuccess
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                         <h3 style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--gray-900)' }}>Account Members ({members.length})</h3>
                         <div style={{ display: 'flex', gap: '0.5rem' }}>
-                          <button
-                            type="button"
-                            onClick={() => setShowAddExisting(!prev)}
-                            style={{ background: 'white', border: '1px solid var(--gray-300)', padding: '0.3rem 0.6rem', borderRadius: 4, cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600 }}
-                          >
-                            {showAddExisting ? 'Close Link Form' : 'Link Existing Patient'}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setShowQuickRegisterDep(!prev)}
-                            style={{ background: 'var(--teal-700)', color: 'white', border: 'none', padding: '0.3rem 0.6rem', borderRadius: 4, cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600 }}
-                          >
-                            {showQuickRegisterDep ? 'Close Register Form' : 'Register New Dependent'}
-                          </button>
+                          {showLedgerModal.type === 'individual' ? (
+                            <button
+                              type="button"
+                              onClick={() => handleUpgradeAccount(showLedgerModal.id)}
+                              style={{ background: '#f59e0b', color: 'white', border: 'none', padding: '0.3rem 0.6rem', borderRadius: 4, cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600 }}
+                            >
+                              Upgrade to Family Account
+                            </button>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => setShowAddExisting(!showAddExisting)}
+                                style={{ background: 'white', border: '1px solid var(--gray-300)', padding: '0.3rem 0.6rem', borderRadius: 4, cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600 }}
+                              >
+                                {showAddExisting ? 'Close Link Form' : 'Link Existing Patient'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setShowQuickRegisterDep(!showQuickRegisterDep)}
+                                style={{ background: 'var(--teal-700)', color: 'white', border: 'none', padding: '0.3rem 0.6rem', borderRadius: 4, cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600 }}
+                              >
+                                {showQuickRegisterDep ? 'Close Register Form' : 'Register New Dependent'}
+                              </button>
+                            </>
+                          )}
                         </div>
                       </div>
 

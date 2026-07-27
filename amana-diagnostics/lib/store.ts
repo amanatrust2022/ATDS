@@ -734,6 +734,18 @@ export const subscribeToPatients = (organizationId: string, callback: () => void
       event: '*', schema: 'public', table: 'patient_tests',
       filter: `organization_id=eq.${organizationId}`
     }, callback)
+    .on('postgres_changes', {
+      event: '*', schema: 'public', table: 'billing_accounts',
+      filter: `organization_id=eq.${organizationId}`
+    }, callback)
+    .on('postgres_changes', {
+      event: '*', schema: 'public', table: 'billing_ledger_transactions',
+      filter: `organization_id=eq.${organizationId}`
+    }, callback)
+    .on('postgres_changes', {
+      event: '*', schema: 'public', table: 'external_department_charges',
+      filter: `organization_id=eq.${organizationId}`
+    }, callback)
     .subscribe();
   return () => { supabase.removeChannel(channel); };
 };
@@ -1948,3 +1960,33 @@ export const registerPatientAndGetId = async (
 };
 
 
+
+export const updateBillingAccountLimit = async (accountId: string, newLimit: number): Promise<void> => {
+  if (IS_LOCAL_MODE) {
+    const res = await fetch('/api/billing', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'updateLimit', accountId, newLimit })
+    });
+    if (!res.ok) throw new Error('Failed to update credit limit');
+    return;
+  }
+  const supabase = createClient();
+  const { error } = await supabase.from('billing_accounts').update({ credit_limit: newLimit }).eq('id', accountId);
+  if (error) throw error;
+};
+
+export const upgradeBillingAccount = async (accountId: string): Promise<void> => {
+  if (IS_LOCAL_MODE) {
+    const res = await fetch('/api/billing', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'upgradeAccount', accountId })
+    });
+    if (!res.ok) throw new Error('Failed to upgrade account');
+    return;
+  }
+  const supabase = createClient();
+  const { error } = await supabase.from('billing_accounts').update({ type: 'family' }).eq('id', accountId);
+  if (error) throw error;
+};

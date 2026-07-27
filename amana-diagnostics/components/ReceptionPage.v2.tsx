@@ -20,6 +20,7 @@ import {
 } from '@/lib/store';
 import { getResultTemplate, getSlipTemplate, getInvoiceTemplate, getLedgerStatementTemplate, printHtml } from '@/lib/templates';
 import { useAuth } from '@/components/AuthProvider';
+import { useWalletStore } from '@/lib/store/useWalletStore';
 import { RiLogoutCircleLine } from '@remixicon/react';
 
 
@@ -98,7 +99,7 @@ export default function ReceptionPageV2() {
   const [quickSaving, setQuickSaving] = useState(false);
 
   // Billing and wallet states
-  const [billingAccounts, setBillingAccounts] = useState<BillingAccount[]>([]);
+  const { billingAccounts, setBillingAccounts } = useWalletStore();
   const [externalCharges, setExternalCharges] = useState<ExternalDepartmentCharge[]>([]);
   const [selectedPatientBillingAccountId, setSelectedPatientBillingAccountId] = useState<string | null>(null);
   const [linkedAccount, setLinkedAccount] = useState<BillingAccount | null>(null);

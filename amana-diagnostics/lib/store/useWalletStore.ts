@@ -82,6 +82,8 @@ interface WalletState {
   updateNewOwnerForm: (updates: Partial<OwnerFormState>) => void;
   updateWorkspaceDepForm: (updates: Partial<OwnerFormState>) => void;
   updateWorkspaceExpenseForm: (updates: Partial<ExpenseFormState>) => void;
+  updateCreditLimit: (accountId: string, newLimit: number) => void;
+  upgradeAccountToFamily: (accountId: string) => void;
   
   // Toggles & Basic States
   setIsOwnerNew: (isNew: boolean) => void;
@@ -160,6 +162,12 @@ export const useWalletStore = create<WalletState>((set) => ({
   updateNewOwnerForm: (updates) => set((s) => ({ newOwnerForm: { ...s.newOwnerForm, ...updates } })),
   updateWorkspaceDepForm: (updates) => set((s) => ({ workspaceDepForm: { ...s.workspaceDepForm, ...updates } })),
   updateWorkspaceExpenseForm: (updates) => set((s) => ({ workspaceExpenseForm: { ...s.workspaceExpenseForm, ...updates } })),
+  updateCreditLimit: (accountId, newLimit) => set((s) => ({
+    billingAccounts: s.billingAccounts.map(a => a.id === accountId ? { ...a, credit_limit: newLimit } : a)
+  })),
+  upgradeAccountToFamily: (accountId) => set((s) => ({
+    billingAccounts: s.billingAccounts.map(a => a.id === accountId ? { ...a, type: 'family' } : a)
+  })),
 
   setIsOwnerNew: (isNew) => set({ isOwnerNew: isNew }),
   externalCharges: [],

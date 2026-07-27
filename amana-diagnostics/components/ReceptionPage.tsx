@@ -102,6 +102,7 @@ export default function ReceptionPage() {
   const [billingSearchQuery, setBillingSearchQuery] = useState('');
   const [billingTransactions, setBillingTransactions] = useState<BillingLedgerTransaction[]>([]);
   const [loadingLedger, setLoadingLedger] = useState(false);
+  const [editCreditLimit, setEditCreditLimit] = useState<string | null>(null);
 
   // Forms
   const [accountForm, setAccountForm] = useState({
@@ -2285,9 +2286,40 @@ export default function ReceptionPage() {
                   <div style={{ fontSize: '1.6rem', fontWeight: 800, color: showLedgerModal.balance >= 0 ? '#166534' : '#991b1b', marginTop: '0.2rem' }}>
                     ₦{showLedgerModal.balance.toLocaleString('en-NG', { minimumFractionDigits: 2 })}
                   </div>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--gray-500)', marginTop: '0.5rem', display: 'flex', justifyContent: 'space-between' }}>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--gray-500)', marginTop: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span>Credit Limit:</span>
-                    <span style={{ fontWeight: 600 }}>₦{showLedgerModal.credit_limit.toLocaleString('en-NG')}</span>
+                    {editCreditLimit !== null ? (
+                      <div style={{ display: 'flex', gap: '0.25rem' }}>
+                        <input 
+                          type="number" 
+                          value={editCreditLimit} 
+                          onChange={(e) => setEditCreditLimit(e.target.value)} 
+                          style={{ width: '80px', padding: '0.1rem 0.2rem', fontSize: '0.7rem' }}
+                        />
+                        <button type="button" onClick={async () => {
+                          try {
+                            const newLimit = parseFloat(editCreditLimit);
+                            if(isNaN(newLimit)) return alert('Invalid number');
+                            const res = await fetch(`/api/billing?action=update_limit`, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ accountId: showLedgerModal.id, creditLimit: newLimit })
+                            });
+                            if(!res.ok) throw new Error('Update failed');
+                            setShowLedgerModal({...showLedgerModal, credit_limit: newLimit});
+                            setEditCreditLimit(null);
+                            refresh();
+                          } catch (e) {
+                            alert('Error updating limit');
+                          }
+                        }} style={{ background: 'var(--teal-700)', color: 'white', border: 'none', padding: '0.1rem 0.3rem', borderRadius: 2, cursor: 'pointer', fontSize: '0.65rem' }}>Save</button>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                        <span style={{ fontWeight: 600 }}>₦{showLedgerModal.credit_limit.toLocaleString('en-NG')}</span>
+                        <button type="button" onClick={() => setEditCreditLimit(showLedgerModal.credit_limit.toString())} style={{ background: 'none', border: 'none', color: 'var(--blue-600)', cursor: 'pointer', fontSize: '0.65rem' }}>Edit</button>
+                      </div>
+                    )}
                   </div>
                   <div style={{ fontSize: '0.7rem', color: 'var(--gray-500)', marginTop: '0.2rem', display: 'flex', justifyContent: 'space-between' }}>
                     <span>Account Type:</span>
@@ -2312,7 +2344,15 @@ export default function ReceptionPage() {
                   <button
                     type="button"
                     onClick={() => {
-                      const members = patients.filter(p => p.billingAccountId === showLedgerModal.id);
+                      const allVisits = patients.filter(p => p.billingAccountId === showLedgerModal.id);
+                  const uniqueMembersMap = new Map();
+                  allVisits.forEach(v => {
+                    const key = `${v.firstName?.toLowerCase()}-${v.surname?.toLowerCase()}`;
+                    if (!uniqueMembersMap.has(key)) {
+                      uniqueMembersMap.set(key, v);
+                    }
+                  });
+                  const members = Array.from(uniqueMembersMap.values());
                       setWorkspaceExpenseForm(prev => ({
                         ...prev,
                         patientId: members[0]?.id ? String(members[0].id) : ''
@@ -2499,20 +2539,46 @@ export default function ReceptionPage() {
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                         <h3 style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--gray-900)' }}>Account Members ({members.length})</h3>
                         <div style={{ display: 'flex', gap: '0.5rem' }}>
-                          <button
-                            type="button"
-                            onClick={() => setShowAddExisting(prev => !prev)}
-                            style={{ background: 'white', border: '1px solid var(--gray-300)', padding: '0.3rem 0.6rem', borderRadius: 4, cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600 }}
-                          >
-                            {showAddExisting ? 'Close Link Form' : 'Link Existing Patient'}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setShowQuickRegisterDep(prev => !prev)}
-                            style={{ background: 'var(--teal-700)', color: 'white', border: 'none', padding: '0.3rem 0.6rem', borderRadius: 4, cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600 }}
-                          >
-                            {showQuickRegisterDep ? 'Close Register Form' : 'Register New Dependent'}
-                          </button>
+                          {showLedgerModal.type === 'individual' ? (
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                try {
+                                  const res = await fetch(`/api/billing?action=upgrade_family`, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ accountId: showLedgerModal.id })
+                                  });
+                                  if(!res.ok) throw new Error('Update failed');
+                                  setShowLedgerModal({...showLedgerModal, type: 'family'});
+                                  refresh();
+                                  alert('Successfully upgraded to family account!');
+                                } catch (e) {
+                                  alert('Error upgrading account');
+                                }
+                              }}
+                              style={{ background: '#f59e0b', color: 'white', border: 'none', padding: '0.3rem 0.6rem', borderRadius: 4, cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600 }}
+                            >
+                              Upgrade to Family Account
+                            </button>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => setShowAddExisting(prev => !prev)}
+                                style={{ background: 'white', border: '1px solid var(--gray-300)', padding: '0.3rem 0.6rem', borderRadius: 4, cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600 }}
+                              >
+                                {showAddExisting ? 'Close Link Form' : 'Link Existing Patient'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setShowQuickRegisterDep(prev => !prev)}
+                                style={{ background: 'var(--teal-700)', color: 'white', border: 'none', padding: '0.3rem 0.6rem', borderRadius: 4, cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600 }}
+                              >
+                                {showQuickRegisterDep ? 'Close Register Form' : 'Register New Dependent'}
+                              </button>
+                            </>
+                          )}
                         </div>
                       </div>
 
