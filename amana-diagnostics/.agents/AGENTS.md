@@ -1,6 +1,9 @@
 <!-- BEGIN:agent-best-practices -->
 # Agent Best Practices
 
+> **CRITICAL**: Before starting or fixing any feature, you MUST read the [Automated Testing Blueprint](file:///c:/Users/SURFACE/ATDS/amana-diagnostics/.agents/TESTING_BLUEPRINT.md) to understand our two-layer defense against regressions (Unit + RTL Feature Tests).
+
+
 - **Rule Management**:Keep rules concise, explicit, and actionable.Group and Demarcate Sections Remove outdated/conflicting rules. 
 - **Problem Resolution & Documentation**: Whenever fixing a bug or addressing a recurring problem, always document the root cause and the established solution pattern as a new, concise rule in `AGENTS.md` (or as a Skill for complex workflows). This creates a persistent feedback loop so the agent never repeats the same mistake.
 <!-- END:agent-best-practices -->

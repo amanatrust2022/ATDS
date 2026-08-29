@@ -52,4 +52,26 @@ describe('useWalletStore', () => {
     store.closeLedger();
     expect(useWalletStore.getState().showLedgerModal).toBeNull();
   });
+
+  it('should fail submitCreateAccount validation if name is missing and owner is not new', async () => {
+    const store = useWalletStore.getState();
+    await expect(store.submitCreateAccount({
+      organizationId: 'org',
+      profileName: 'admin',
+      generateSlipNumber: async () => '123',
+      registerPatientAndGetId: async () => 'pat',
+      createBillingAccount: async () => {}
+    })).rejects.toThrow('Please enter account name');
+  });
+
+  it('should fail submitDeposit if amount is invalid', async () => {
+    const store = useWalletStore.getState();
+    store.setDepositAmount('invalid');
+    await expect(store.submitDeposit({
+      accountId: 'acc',
+      organizationId: 'org',
+      profileName: 'admin',
+      depositToBillingAccount: async () => {}
+    })).rejects.toThrow('Please enter a valid deposit amount');
+  });
 });

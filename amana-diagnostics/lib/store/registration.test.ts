@@ -56,4 +56,27 @@ describe('Registration Store', () => {
     const discount = store.calculateDiscountAmount(250);
     expect(discount).toBe(25);
   });
+
+  it('should fail validation if fields are missing on submitRegistration', async () => {
+    const store = useRegistrationStore.getState();
+    const result = await store.submitRegistration({
+      organizationId: 'org1',
+      testPrices: [],
+      doctors: [],
+      facilities: [],
+      billingAccounts: [],
+      catalogue: [],
+      selectedDoctorId: '',
+      selectedFacilityId: '',
+      selectedPatientProfileId: null,
+      checkoutBillingAccountId: '',
+      selectedPatientBillingAccountId: null,
+      generateSlipNumber: async () => '123',
+      addPatientWithReferral: async () => {}
+    });
+
+    expect(result.patient).toBeNull();
+    expect(result.errors.firstName).toBe('First name is required');
+    expect(result.errors.tests).toBe('Select at least one test');
+  });
 });

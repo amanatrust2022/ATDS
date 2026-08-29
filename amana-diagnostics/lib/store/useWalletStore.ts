@@ -110,13 +110,28 @@ interface WalletState {
   setDepositing: (val: boolean) => void;
 
   resetAccountForm: () => void;
+
+  submitCreateAccount: (params: {
+    organizationId: string;
+    profileName: string;
+    generateSlipNumber: (orgId: string) => Promise<string>;
+    registerPatientAndGetId: (patientData: any, orgId: string) => Promise<number | string>;
+    createBillingAccount: (payload: any, depositVal: number, method: string, linkedIds: (number | string)[], createdBy: string) => Promise<void>;
+  }) => Promise<void>;
+
+  submitDeposit: (params: {
+    accountId: string;
+    organizationId: string;
+    profileName: string;
+    depositToBillingAccount: (accountId: string, amount: number, notes: string, method: string, createdBy: string, orgId: string, ignored?: any) => Promise<void>;
+  }) => Promise<void>;
 }
 
 const initialOwnerForm: OwnerFormState = { firstName: '', surname: '', middleName: '', age: '', sex: 'Male', phone: '', address: '' };
 const initialAccountForm: AccountFormState = { name: '', type: 'individual', creditLimit: '0', initialDeposit: '0', paymentMethod: 'cash', ownerId: '', linkedIds: [] };
 const initialExpenseForm: ExpenseFormState = { patientId: '', department: 'pharmacy', receiptNumber: '', amount: '', paymentMethod: 'wallet', description: '' };
 
-export const useWalletStore = create<WalletState>((set) => ({
+export const useWalletStore = create<WalletState>((set, get) => ({
   billingAccounts: [],
   showBillingAccountModal: false,
   showLedgerModal: null,
@@ -208,5 +223,99 @@ export const useWalletStore = create<WalletState>((set) => ({
     depSearchQuery: '',
     showOwnerSearchDrop: false,
     showDepSearchDrop: false
-  })
+  }),
+
+  submitCreateAccount: async (params) => {
+    const state = get();
+    if (!state.accountForm.name.trim() && !state.isOwnerNew) throw new Error('Please enter account name');
+
+    let finalOwnerId: number | string = state.accountForm.ownerId;
+    let finalAccountName = state.accountForm.name.trim();
+
+    if (state.isOwnerNew) {
+      if (!state.newOwnerForm.firstName.trim() || !state.newOwnerForm.surname.trim()) {
+        throw new Error('Please fill in new owner first name and surname');
+      }
+      const slipNumber = await params.generateSlipNumber(params.organizationId);
+      const patientData = {
+        slipNumber,
+        registeredAt: new Date().toISOString(),
+        name: [state.newOwnerForm.firstName, state.newOwnerForm.middleName, state.newOwnerForm.surname].filter(Boolean).join(' '),
+        firstName: state.newOwnerForm.firstName.trim(),
+        surname: state.newOwnerForm.surname.trim(),
+        middleName: state.newOwnerForm.middleName.trim(),
+        age: state.newOwnerForm.age.trim(),
+        sex: state.newOwnerForm.sex,
+        phone: state.newOwnerForm.phone.trim(),
+        address: state.newOwnerForm.address.trim()
+      };
+      finalOwnerId = await params.registerPatientAndGetId(patientData, params.organizationId);
+      finalAccountName = finalAccountName || `${state.newOwnerForm.firstName} ${state.newOwnerForm.surname} Wallet`;
+    }
+
+    if (!finalOwnerId) {
+      throw new Error('Owner is required');
+    }
+
+    const newlyRegisteredDependentIds: (number | string)[] = [];
+    for (const nd of state.newDependentsToRegister) {
+      if (!nd.firstName.trim() || !nd.surname.trim()) {
+        throw new Error('Please fill in all dependents first name and surname');
+      }
+      const slipNumber = await params.generateSlipNumber(params.organizationId);
+      const dependentData = {
+        slipNumber,
+        registeredAt: new Date().toISOString(),
+        name: [nd.firstName, nd.middleName, nd.surname].filter(Boolean).join(' '),
+        firstName: nd.firstName.trim(),
+        surname: nd.surname.trim(),
+        middleName: nd.middleName.trim(),
+        age: nd.age.trim(),
+        sex: nd.sex,
+        phone: nd.phone.trim(),
+        address: nd.address.trim()
+      };
+      const newDepId = await params.registerPatientAndGetId(dependentData, params.organizationId);
+      newlyRegisteredDependentIds.push(newDepId);
+    }
+
+    const combinedLinkedIds = Array.from(new Set([
+      ...state.accountForm.linkedIds,
+      ...newlyRegisteredDependentIds
+    ]));
+
+    const payload = {
+      organization_id: params.organizationId,
+      name: finalAccountName,
+      owner_patient_id: finalOwnerId,
+      credit_limit: parseFloat(state.accountForm.creditLimit) || 0.0,
+      type: state.accountForm.type
+    };
+
+    const depositVal = parseFloat(state.accountForm.initialDeposit) || 0.0;
+
+    await params.createBillingAccount(
+      payload,
+      depositVal,
+      state.accountForm.paymentMethod,
+      combinedLinkedIds,
+      params.profileName
+    );
+  },
+
+  submitDeposit: async (params) => {
+    const state = get();
+    const amt = parseFloat(state.depositAmount);
+    if (isNaN(amt) || amt <= 0) throw new Error('Please enter a valid deposit amount');
+
+    await params.depositToBillingAccount(
+      params.accountId,
+      amt,
+      state.depositNotes.trim() || 'Top-up deposit',
+      state.depositMethod,
+      params.profileName,
+      params.organizationId,
+      undefined
+    );
+  }
 }));

@@ -10,8 +10,8 @@ A full-stack diagnostic center workflow system connecting:
 - **Framework**: Next.js 16 (App Router)
 - **Language**: TypeScript
 - **Styling**: CSS Variables (no external CSS library needed)
-- **State**: localStorage (prototype) — replace with Supabase/PostgreSQL for production
-- **Real-time**: `window.dispatchEvent` + polling (replace with WebSocket/Supabase Realtime)
+- **State & Sync**: Hybrid database layer (SQLite local DB for zero-downtime offline operations, synced to Supabase/PostgreSQL)
+- **Authentication**: Native Supabase Auth (role-based) with custom database profiles
 - **Print**: Native browser `window.print()` with formatted HTML templates
 
 ## Getting Started
@@ -63,15 +63,24 @@ Open http://localhost:3000 and select your workstation.
 | X-Ray | Chest PA, Abdomen, LS Spine |
 | Ultrasound | Abdomen, Pelvis, Obstetric, KUB |
 
-## Production Upgrade Path
+## Database Architecture & Security State
 
-| Feature | Current (Prototype) | Production |
-|---------|---------------------|------------|
-| Data storage | localStorage | PostgreSQL / Supabase |
-| Real-time notifications | Event polling | WebSocket / Supabase Realtime |
-| Authentication | None | NextAuth / Supabase Auth (role-based) |
-| Print | browser window.print() | Same (works well) |
-| Logo | Emoji placeholder | Replace with actual SVG/PNG in layout |
+The application operates in a hybrid environment with a robust database and synchronization layer, protected by Row-Level Security (RLS) and secure authentication management.
+
+### 1. Hybrid Storage & Offline Sync
+- **Cloud Mode**: Connected to Supabase (PostgreSQL) for all remote storage, multi-tenancy, and real-time operations.
+- **Local Mode / Hub Mode**: Utilizes a local SQLite database (`amana_clinic.db` via `node:sqlite`) on-premise to ensure zero-downtime offline operations.
+- **Synchronization**: Local changes are recorded in a `sync_outbox` table and periodically synced via `/api/sync` to the Supabase database.
+
+### 2. Authentication & Authorization
+- **Supabase Auth**: Implements role-based access control (RBAC) with specific roles: `admin`, `receptionist`, `lab_tech`, `radiologist`.
+- **Organization Isolation**: All database queries are filtered by `organization_id` to ensure tenants cannot read or write each other's records.
+
+### 3. Row-Level Security (RLS) & Security Policies
+- **Strict Enforcement**: All Supabase tables (such as `profiles`, `organizations`, `invitations`, `patient_tests`, and billing tables) have Row-Level Security enabled.
+- **Organization Isolation Policies**: Select, Insert, Update, and Delete policies enforce that rows match the current user's organization using helper functions (`get_my_org_id()`).
+- **Client-Side Auth Safeguards**: Direct client-side updates (e.g., via `supabaseClient`) to user roles, metadata, or organization associations are prohibited. All modifications must go through secure server-side API endpoints (`/api/staff/update`) utilizing `SUPABASE_SERVICE_ROLE_KEY`.
+- **Infinite Recursion Prevention**: SQL policies do not query the policy's target tables directly. They use `SECURITY DEFINER` functions (e.g., `is_admin()`, `get_my_org_id()`) that bypass standard policies to fetch profile details, preventing RLS recursion loops.
 
 ## File Structure
 
