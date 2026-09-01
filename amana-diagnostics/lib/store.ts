@@ -6,6 +6,7 @@ import { getRadiologyTemplatesRepository } from './repositories/radiologyTemplat
 import { getCustomTestsRepository } from './repositories/customTests';
 import { getCommissionsRepository } from './repositories/commissions';
 import { buildCommissionReport } from './store/commissionReport';
+import { getPatientsRepository } from './repositories/patients';
 
 // Kept for the call sites in this file that have not moved behind a repository
 // yet. New code should use a repository from lib/repositories instead.
@@ -490,266 +491,28 @@ export const TEST_CATALOGUE: Test[] = [
 
 // ─── ORG-SCOPED DATA FUNCTIONS ────────────────────────────────────────────────
 
-export const generateSlipNumber = async (organizationId: string): Promise<string> => {
-  if (IS_LOCAL_MODE) {
-    const res = await fetch(`/api/patients?organizationId=${organizationId}`);
-    const patients = await res.json();
-    const date = new Date();
-    const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, '0');
-    const d = String(date.getDate()).padStart(2, '0');
-    const dateStr = `${y}${m}${d}`;
-    const todayPrefix = `ATD/${dateStr}/`;
-    const todayPatients = patients.filter((p: any) => p.slipNumber && p.slipNumber.startsWith(todayPrefix));
-    const num = todayPatients.length + 1;
-    return `ATD/${dateStr}/${num.toString().padStart(4, '0')}`;
-  }
+export const generateSlipNumber = async (organizationId: string): Promise<string> =>
+  getPatientsRepository().nextSlipNumber(organizationId);
 
-  const supabase = createClient();
-  const date = new Date();
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  const dateStr = `${y}${m}${d}`;
-  const { count } = await supabase
-    .from('patients')
-    .select('*', { count: 'exact', head: true })
-    .eq('organization_id', organizationId)
-    .gte('registered_at', new Date(y, date.getMonth(), date.getDate()).toISOString());
-  const num = (count || 0) + 1;
-  return `ATD/${dateStr}/${num.toString().padStart(4, '0')}`;
-};
+export const fetchPatients = async (organizationId: string): Promise<Patient[]> =>
+  getPatientsRepository().list(organizationId);
 
-export const fetchPatients = async (organizationId: string): Promise<Patient[]> => {
-  if (IS_LOCAL_MODE) {
-    const res = await fetch(`/api/patients?organizationId=${organizationId}`);
-    return res.json();
-  }
-
-  const supabase = createClient();
-  const { data, error } = await supabase
-    .from('patients')
-    .select('*, tests:patient_tests(*)')
-    .eq('organization_id', organizationId)
-    .order('registered_at', { ascending: false });
-
-  if (error) { console.error('Error fetching patients:', error); return []; }
-
-  return (data || []).map((p: any) => ({
-    ...p,
-    slipNumber: p.slip_number,
-    registeredAt: p.registered_at,
-    firstName: p.first_name,
-    surname: p.surname,
-    middle_name: p.middle_name,
-    referredBy: p.referred_by,
-    referringFacility: p.referring_facility,
-    referringDoctorId: p.referring_doctor_id,
-    referringFacilityId: p.referring_facility_id,
-    commissionAssigned: p.commission_assigned,
-    commissionType: p.commission_type,
-    commissionValue: p.commission_value,
-    commissionAmount: p.commission_amount,
-    commissionStatus: p.commission_status,
-    commissionPaidAt: p.commission_paid_at,
-    commissionPaidNotes: p.commission_paid_notes,
-    totalAmount: p.total_amount,
-    discountType: p.discount_type,
-    discountValue: p.discount_value,
-    discountAmount: p.discount_amount,
-    netAmount: p.net_amount,
-    paidAmount: p.paid_amount,
-    paymentStatus: p.payment_status,
-    paymentMethod: p.payment_method,
-    billingAccountId: p.billing_account_id,
-    patientProfileId: p.patient_profile_id,
-    tests: (p.tests || []).map((t: any) => ({
-      ...t,
-      testId: t.test_id,
-      testName: t.test_name,
-      completedBy: t.completed_by,
-      completedBySignatureUrl: t.completed_by_signature_url,
-      completedByTitle: t.completed_by_title,
-      completedAt: t.completed_at,
-      price: t.price,
-      commissionType: t.commission_type,
-      commissionValue: t.commission_value,
-      commissionAmount: t.commission_amount,
-    }))
-  }));
-};
-
-export const fetchPatientProfiles = async (organizationId: string): Promise<PatientProfile[]> => {
-  if (IS_LOCAL_MODE) {
-    const res = await fetch(`/api/patients?action=getPatientProfiles&organizationId=${organizationId}`);
-    if (!res.ok) return [];
-    return res.json();
-  }
-
-  const supabase = createClient();
-  const { data, error } = await supabase
-    .from('patient_profiles')
-    .select('*')
-    .eq('organization_id', organizationId)
-    .order('created_at', { ascending: false });
-
-  if (error) { console.error('Error fetching patient profiles:', error); return []; }
-  return (data || []).map((p: any) => ({
-    id: p.id,
-    organizationId: p.organization_id,
-    firstName: p.first_name,
-    surname: p.surname,
-    middleName: p.middle_name,
-    phone: p.phone,
-    email: p.email,
-    address: p.address,
-    sex: p.sex,
-    createdAt: p.created_at,
-    updatedAt: p.updated_at,
-  }));
-};
+export const fetchPatientProfiles = async (organizationId: string): Promise<PatientProfile[]> =>
+  getPatientsRepository().listProfiles(organizationId);
 
 export const addPatient = async (
   patient: Omit<Patient, 'id' | 'tests'> & { id?: number },
   tests: Omit<PatientTest, 'id' | 'patient_id'>[],
   organizationId: string
-): Promise<void> => {
-  if (IS_LOCAL_MODE) {
-    const res = await fetch('/api/patients', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'addPatient', patient, tests, organizationId })
-    });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Failed to add patient locally');
-    }
-    return;
-  }
+): Promise<void> =>
+  getPatientsRepository().add(patient, tests, organizationId);
 
-  const generatedPatientId = patient.id || Math.floor(10000000 + Math.random() * 90000000);
-  let generatedProfileId = patient.patientProfileId;
+export const updateTestResult = async (testId: string, updates: Partial<PatientTest>): Promise<void> =>
+  getPatientsRepository().updateTestResult(testId, updates);
 
-  const supabase = createClient();
+export const subscribeToPatients = (organizationId: string, callback: () => void) =>
+  getPatientsRepository().subscribe(organizationId, callback);
 
-  // If new patient profile (not returning), we must insert a new profile in Supabase first
-  if (!generatedProfileId) {
-    generatedProfileId = Math.floor(10000000 + Math.random() * 90000000);
-    const { error: profError } = await supabase
-      .from('patient_profiles')
-      .insert([{
-        id: generatedProfileId,
-        organization_id: organizationId,
-        first_name: patient.firstName,
-        surname: patient.surname,
-        middle_name: patient.middleName || null,
-        phone: patient.phone,
-        email: patient.email || null,
-        address: patient.address,
-        sex: patient.sex,
-      }]);
-    if (profError) throw profError;
-  }
-
-  const { error: pError } = await supabase
-    .from('patients')
-    .insert([{
-      id: generatedPatientId,
-      patient_profile_id: generatedProfileId,
-      slip_number: patient.slipNumber,
-      first_name: patient.firstName,
-      surname: patient.surname,
-      middle_name: patient.middleName,
-      age: patient.age,
-      sex: patient.sex,
-      phone: patient.phone,
-      email: patient.email,
-      address: patient.address,
-      referred_by: patient.referredBy,
-      referring_facility: patient.referringFacility,
-      referring_doctor_id: patient.referringDoctorId || null,
-      referring_facility_id: patient.referringFacilityId || null,
-      organization_id: organizationId,
-      billing_account_id: patient.billingAccountId || null,
-    }]);
-  if (pError) throw pError;
-
-  const testsToInsert = tests.map(t => ({
-    patient_id: generatedPatientId,
-    test_id: t.testId,
-    test_name: t.testName,
-    department: t.department,
-    status: t.status,
-    specimen: t.specimen,
-    organization_id: organizationId,
-  }));
-  const { error: tError } = await supabase.from('patient_tests').insert(testsToInsert);
-  if (tError) throw tError;
-};
-
-export const updateTestResult = async (testId: string, updates: Partial<PatientTest>): Promise<void> => {
-  if (IS_LOCAL_MODE) {
-    const res = await fetch('/api/patients', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'updateTestResult', testId, updates })
-    });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Failed to update test result locally');
-    }
-    return;
-  }
-
-  const supabase = createClient();
-  const { error } = await supabase
-    .from('patient_tests')
-    .update({
-      status: updates.status,
-      results: updates.results,
-      completed_by: updates.completedBy,
-      completed_by_signature_url: updates.completedBySignatureUrl,
-      completed_by_title: updates.completedByTitle,
-      completed_at: updates.completedAt,
-      notes: updates.notes,
-      specimen: updates.specimen,
-    })
-    .eq('id', testId);
-  if (error) throw error;
-};
-
-export const subscribeToPatients = (organizationId: string, callback: () => void) => {
-  if (IS_LOCAL_MODE) {
-    // Poll the local API every 5 seconds to get updates in local LAN mode
-    const interval = setInterval(callback, 5000);
-    return () => clearInterval(interval);
-  }
-
-  const supabase = createClient();
-  const channel = supabase.channel(`patients-org-${organizationId}`)
-    .on('postgres_changes', {
-      event: '*', schema: 'public', table: 'patients',
-      filter: `organization_id=eq.${organizationId}`
-    }, callback)
-    .on('postgres_changes', {
-      event: '*', schema: 'public', table: 'patient_tests',
-      filter: `organization_id=eq.${organizationId}`
-    }, callback)
-    .on('postgres_changes', {
-      event: '*', schema: 'public', table: 'billing_accounts',
-      filter: `organization_id=eq.${organizationId}`
-    }, callback)
-    .on('postgres_changes', {
-      event: '*', schema: 'public', table: 'billing_ledger_transactions',
-      filter: `organization_id=eq.${organizationId}`
-    }, callback)
-    .on('postgres_changes', {
-      event: '*', schema: 'public', table: 'external_department_charges',
-      filter: `organization_id=eq.${organizationId}`
-    }, callback)
-    .subscribe();
-  return () => { supabase.removeChannel(channel); };
-};
 
 let customCatalogueCache: Test[] = [];
 
@@ -870,169 +633,11 @@ export const addPatientWithReferral = async (
   patient: Omit<Patient, 'id' | 'tests'> & { id?: number },
   tests: Omit<PatientTest, 'id' | 'patient_id'>[],
   organizationId: string
-): Promise<void> => {
-  if (IS_LOCAL_MODE) {
-    const res = await fetch('/api/patients', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'addPatient', patient, tests, organizationId })
-    });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Failed to add patient referral locally');
-    }
-    return;
-  }
+): Promise<void> =>
+  getPatientsRepository().addWithReferral(patient, tests, organizationId);
 
-  const generatedPatientId = patient.id || Math.floor(10000000 + Math.random() * 90000000);
-  let generatedProfileId = patient.patientProfileId;
-
-  const supabase = createClient();
-
-  if (!generatedProfileId) {
-    generatedProfileId = Math.floor(10000000 + Math.random() * 90000000);
-    const { error: profError } = await supabase
-      .from('patient_profiles')
-      .insert([{
-        id: generatedProfileId,
-        organization_id: organizationId,
-        first_name: patient.firstName,
-        surname: patient.surname,
-        middle_name: patient.middleName || null,
-        phone: patient.phone,
-        email: patient.email || null,
-        address: patient.address,
-        sex: patient.sex,
-      }]);
-    if (profError) throw profError;
-  }
-
-  if (patient.paymentMethod === 'wallet' && patient.billingAccountId) {
-    const { data: acc, error: accErr } = await supabase
-      .from('billing_accounts')
-      .select('balance, credit_limit, name')
-      .eq('id', patient.billingAccountId)
-      .single();
-    if (accErr) throw accErr;
-    
-    const currentBalance = acc.balance || 0;
-    const creditLimit = acc.credit_limit || 0;
-    const netAmount = patient.netAmount || 0;
-    
-    if (currentBalance + creditLimit < netAmount) {
-      throw new Error(`Insufficient wallet balance on "${acc.name}". Available: ₦${(currentBalance + creditLimit).toLocaleString('en-NG')}`);
-    }
-    
-    const newBalance = currentBalance - netAmount;
-    const { error: upErr } = await supabase
-      .from('billing_accounts')
-      .update({ balance: newBalance, updated_at: new Date().toISOString() })
-      .eq('id', patient.billingAccountId);
-    if (upErr) throw upErr;
-  }
-
-  const { error: pError } = await supabase
-    .from('patients')
-    .insert([{
-      id: generatedPatientId,
-      patient_profile_id: generatedProfileId,
-      slip_number: patient.slipNumber,
-      first_name: patient.firstName,
-      surname: patient.surname,
-      middle_name: patient.middleName,
-      age: patient.age,
-      sex: patient.sex,
-      phone: patient.phone,
-      email: patient.email,
-      address: patient.address,
-      referred_by: patient.referredBy,
-      referring_facility: patient.referringFacility,
-      referring_doctor_id: patient.referringDoctorId || null,
-      referring_facility_id: patient.referringFacilityId || null,
-      commission_assigned: patient.commissionAssigned ?? false,
-      commission_type: patient.commissionType || null,
-      commission_value: patient.commissionValue ?? null,
-      commission_amount: patient.commissionAmount ?? null,
-      commission_status: patient.commissionAssigned ? 'pending' : null,
-      total_amount: patient.totalAmount ?? 0,
-      discount_type: patient.discountType || 'none',
-      discount_value: patient.discountValue ?? 0,
-      discount_amount: patient.discountAmount ?? 0,
-      net_amount: patient.netAmount ?? 0,
-      paid_amount: patient.paidAmount ?? 0,
-      payment_status: patient.paymentStatus || 'paid',
-      payment_method: patient.paymentMethod || 'cash',
-      organization_id: organizationId,
-      billing_account_id: patient.billingAccountId || null,
-    }]);
-  if (pError) throw pError;
-
-  if (patient.paymentMethod === 'wallet' && patient.billingAccountId) {
-    const txId = crypto.randomUUID();
-    const { error: txError } = await supabase.from('billing_ledger_transactions').insert([{
-      id: txId,
-      organization_id: organizationId,
-      billing_account_id: patient.billingAccountId,
-      patient_id: generatedPatientId,
-      type: 'charge',
-      amount: -(patient.netAmount || 0),
-      description: `Diagnostics Charge - Slip: ${patient.slipNumber}`,
-      reference_id: patient.slipNumber,
-      payment_method: 'wallet',
-      created_by: 'Reception Desk',
-      created_at: new Date().toISOString()
-    }]);
-    if (txError) throw txError;
-  }
-
-  const testsToInsert = tests.map(t => ({
-    patient_id: generatedPatientId,
-    test_id: t.testId,
-    test_name: t.testName,
-    department: t.department,
-    status: t.status,
-    specimen: t.specimen,
-    price: t.price ?? 0,
-    commission_type: t.commissionType || 'none',
-    commission_value: t.commissionValue ?? 0,
-    commission_amount: t.commissionAmount ?? 0,
-    organization_id: organizationId,
-  }));
-  const { error: tError } = await supabase.from('patient_tests').insert(testsToInsert);
-  if (tError) throw tError;
-
-};
-
-export const updatePatient = async (id: number | string, updates: Partial<Patient>): Promise<void> => {
-  if (IS_LOCAL_MODE) {
-    const res = await fetch('/api/patients', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'updatePatient', patientId: id, updates })
-    });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Failed to update patient locally');
-    }
-    return;
-  }
-
-  const supabase = createClient();
-  const { error } = await supabase.from('patients').update({
-    first_name: updates.firstName,
-    surname: updates.surname,
-    middle_name: updates.middleName,
-    age: updates.age,
-    sex: updates.sex,
-    phone: updates.phone,
-    email: updates.email,
-    address: updates.address,
-    referred_by: updates.referredBy,
-    referring_facility: updates.referringFacility,
-    name: updates.name,
-  }).eq('id', id);
-  if (error) throw error;
-};
+export const updatePatient = async (id: number | string, updates: Partial<Patient>): Promise<void> =>
+  getPatientsRepository().update(id, updates);
 
 export const markCommissionPaid = async (patientId: number | string, notes?: string): Promise<void> =>
   getCommissionsRepository().markPaid(patientId, notes);
@@ -1470,46 +1075,8 @@ export const updatePatientBillingAccount = async (
 export const registerPatientAndGetId = async (
   patient: Omit<Patient, 'id' | 'tests'>,
   organizationId: string
-): Promise<number | string> => {
-  if (IS_LOCAL_MODE) {
-    const res = await fetch('/api/patients', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'addPatient', patient, tests: [], organizationId })
-    });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Failed to register patient locally');
-    }
-    const data = await res.json();
-    return data.id;
-  }
-
-  const supabase = createClient();
-  const { data: pData, error: pError } = await supabase
-    .from('patients')
-    .insert([{
-      slip_number: patient.slipNumber,
-      first_name: patient.firstName,
-      surname: patient.surname,
-      middle_name: patient.middleName || null,
-      age: patient.age,
-      sex: patient.sex,
-      phone: patient.phone,
-      email: patient.email || null,
-      address: patient.address,
-      referred_by: patient.referredBy || null,
-      referring_facility: patient.referringFacility || null,
-      referring_doctor_id: patient.referringDoctorId || null,
-      referring_facility_id: patient.referringFacilityId || null,
-      organization_id: organizationId,
-      billing_account_id: patient.billingAccountId || null,
-    }])
-    .select()
-    .single();
-  if (pError) throw pError;
-  return pData.id;
-};
+): Promise<number | string> =>
+  getPatientsRepository().registerAndGetId(patient, organizationId);
 
 
 
