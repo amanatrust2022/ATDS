@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase';
 import { RuntimeMode, RUNTIME_MODE } from '@/lib/runtimeMode';
+import { postJson } from './localHttp';
 import type { ReferringDoctor, ReferringFacility } from '@/lib/store';
 
 /**
@@ -27,21 +28,10 @@ type ReferralTarget = 'facility' | 'doctor';
 type ReferralAction = 'add' | 'update' | 'delete';
 
 /** Every local write goes to the same endpoint with a target/action envelope. */
-const postReferral = async (
+const postReferral = (
   body: Record<string, unknown> & { target: ReferralTarget; action: ReferralAction },
   failureMessage: string,
-): Promise<any> => {
-  const res = await fetch('/api/referrals', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.error || failureMessage);
-  }
-  return res;
-};
+): Promise<Response> => postJson('/api/referrals', body, failureMessage);
 
 export const localReferralsRepository: ReferralsRepository = {
   async listFacilities(organizationId) {

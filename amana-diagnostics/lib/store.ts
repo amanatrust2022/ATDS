@@ -1,6 +1,9 @@
 import { createClient } from './supabase';
 import { isLocalMode } from './runtimeMode';
 import { getReferralsRepository } from './repositories/referrals';
+import { getTestPricesRepository } from './repositories/testPrices';
+import { getRadiologyTemplatesRepository } from './repositories/radiologyTemplates';
+import { getCustomTestsRepository } from './repositories/customTests';
 
 // Kept for the call sites in this file that have not moved behind a repository
 // yet. New code should use a repository from lib/repositories instead.
@@ -823,49 +826,11 @@ export interface TestPrice {
   commission_value?: number;
 }
 
-export const fetchTestPrices = async (organizationId: string): Promise<TestPrice[]> => {
-  if (IS_LOCAL_MODE) {
-    const res = await fetch(`/api/test-prices?organizationId=${organizationId}`);
-    return res.json();
-  }
+export const fetchTestPrices = async (organizationId: string): Promise<TestPrice[]> =>
+  getTestPricesRepository().list(organizationId);
 
-  const supabase = createClient();
-  const { data, error } = await supabase
-    .from('test_prices')
-    .select('*')
-    .eq('organization_id', organizationId);
-  if (error) { console.error('fetchTestPrices error:', error); return []; }
-  return data || [];
-};
-
-export const upsertTestPrices = async (prices: Omit<TestPrice, 'id'>[], organizationId: string): Promise<void> => {
-  if (IS_LOCAL_MODE) {
-    const res = await fetch('/api/test-prices', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prices, organizationId })
-    });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Failed to upsert test prices locally');
-    }
-    return;
-  }
-
-  const supabase = createClient();
-  const rows = prices.map(p => ({
-    organization_id: organizationId,
-    test_id: p.test_id || (p as any).testId,
-    test_name: p.test_name || (p as any).testName,
-    price: p.price,
-    commission_type: p.commission_type || 'percentage',
-    commission_value: p.commission_value || 0,
-  }));
-  const { error } = await supabase
-    .from('test_prices')
-    .upsert(rows, { onConflict: 'organization_id,test_id' });
-  if (error) throw error;
-};
+export const upsertTestPrices = async (prices: Omit<TestPrice, 'id'>[], organizationId: string): Promise<void> =>
+  getTestPricesRepository().upsertMany(prices, organizationId);
 
 // ─── COMMISSION REPORT ────────────────────────────────────────────────────────
 
@@ -1181,202 +1146,37 @@ export interface RadiologyTemplate {
   created_by?: string;
 }
 
-export const fetchCustomTemplates = async (organizationId: string): Promise<RadiologyTemplate[]> => {
-  if (IS_LOCAL_MODE) {
-    const res = await fetch(`/api/radiology-templates?organizationId=${organizationId}`);
-    return res.json();
-  }
-
-  const supabase = createClient();
-  const { data, error } = await supabase
-    .from('radiology_templates')
-    .select('*')
-    .eq('organization_id', organizationId)
-    .order('name', { ascending: true });
-  if (error) { console.error('fetchCustomTemplates error:', error); return []; }
-  return data || [];
-};
+export const fetchCustomTemplates = async (organizationId: string): Promise<RadiologyTemplate[]> =>
+  getRadiologyTemplatesRepository().list(organizationId);
 
 export const addCustomTemplate = async (
   template: Omit<RadiologyTemplate, 'id' | 'created_at'>,
   userId?: string
-): Promise<RadiologyTemplate> => {
-  if (IS_LOCAL_MODE) {
-    const res = await fetch('/api/radiology-templates', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'add', template, userId })
-    });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Failed to add template locally');
-    }
-    return res.json();
-  }
+): Promise<RadiologyTemplate> =>
+  getRadiologyTemplatesRepository().add(template, userId);
 
-  const supabase = createClient();
-  const { data, error } = await supabase
-    .from('radiology_templates')
-    .insert([{ ...template, created_by: userId }])
-    .select()
-    .single();
-  if (error) throw error;
-  return data;
-};
+export const updateCustomTemplate = async (id: string, updates: Partial<RadiologyTemplate>): Promise<void> =>
+  getRadiologyTemplatesRepository().update(id, updates);
 
-export const updateCustomTemplate = async (id: string, updates: Partial<RadiologyTemplate>): Promise<void> => {
-  if (IS_LOCAL_MODE) {
-    const res = await fetch('/api/radiology-templates', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'update', id, updates })
-    });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Failed to update template locally');
-    }
-    return;
-  }
-
-  const supabase = createClient();
-  const { error } = await supabase
-    .from('radiology_templates')
-    .update({
-      key: updates.key,
-      name: updates.name,
-      findings: updates.findings,
-      impression: updates.impression,
-    })
-    .eq('id', id);
-  if (error) throw error;
-};
-
-export const deleteCustomTemplate = async (id: string): Promise<void> => {
-  if (IS_LOCAL_MODE) {
-    const res = await fetch('/api/radiology-templates', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'delete', id })
-    });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Failed to delete template locally');
-    }
-    return;
-  }
-
-  const supabase = createClient();
-  const { error } = await supabase
-    .from('radiology_templates')
-    .delete()
-    .eq('id', id);
-  if (error) throw error;
-};
+export const deleteCustomTemplate = async (id: string): Promise<void> =>
+  getRadiologyTemplatesRepository().remove(id);
 
 // ─── DYNAMIC CUSTOM TESTS ─────────────────────────────────────────────────────
 
-export const fetchCustomTests = async (organizationId: string): Promise<Test[]> => {
-  if (IS_LOCAL_MODE) {
-    const res = await fetch(`/api/custom-tests?organizationId=${organizationId}`);
-    if (!res.ok) return [];
-    return res.json();
-  }
+export const fetchCustomTests = async (organizationId: string): Promise<Test[]> =>
+  getCustomTestsRepository().list(organizationId);
 
-  const supabase = createClient();
-  const { data, error } = await supabase
-    .from('custom_tests')
-    .select('*')
-    .eq('organization_id', organizationId);
-  if (error) {
-    console.error('Error fetching custom tests:', error);
-    return [];
-  }
+export const addCustomTest = async (test: Omit<Test, 'is_active'> & { is_active?: boolean }, organizationId: string): Promise<void> =>
+  getCustomTestsRepository().add(test, organizationId);
 
-  return (data || []).map((t: any) => ({
-    id: t.id,
-    name: t.name,
-    department: t.department,
-    category: t.category,
-    specimen: t.specimen,
-    parameters: typeof t.parameters === 'string' ? JSON.parse(t.parameters) : t.parameters,
-    is_active: t.is_active
-  }));
-};
+export const updateCustomTest = async (id: string, updates: Partial<Test>, organizationId: string): Promise<void> =>
+  getCustomTestsRepository().update(id, updates, organizationId);
 
-export const addCustomTest = async (test: Omit<Test, 'is_active'> & { is_active?: boolean }, organizationId: string): Promise<void> => {
-  const payload = {
-    id: test.id,
-    organization_id: organizationId,
-    name: test.name,
-    department: test.department,
-    category: test.category,
-    specimen: test.specimen,
-    parameters: JSON.stringify(test.parameters),
-    is_active: test.is_active === false ? 0 : 1,
-    updated_at: new Date().toISOString()
-  };
-
-  if (IS_LOCAL_MODE) {
-    const res = await fetch('/api/custom-tests', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'add', test: payload, organizationId })
-    });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Failed to add custom test locally');
-    }
-    return;
-  }
-
-  const supabase = createClient();
-  const { error } = await supabase
-    .from('custom_tests')
-    .insert([{
-      ...payload,
-      parameters: test.parameters,
-      is_active: test.is_active !== false
-    }]);
-  if (error) throw error;
-};
-
-export const updateCustomTest = async (id: string, updates: Partial<Test>, organizationId: string): Promise<void> => {
-  const payload: any = {
-    updated_at: new Date().toISOString()
-  };
-  if (updates.name !== undefined) payload.name = updates.name;
-  if (updates.department !== undefined) payload.department = updates.department;
-  if (updates.category !== undefined) payload.category = updates.category;
-  if (updates.specimen !== undefined) payload.specimen = updates.specimen;
-  if (updates.parameters !== undefined) payload.parameters = JSON.stringify(updates.parameters);
-  if (updates.is_active !== undefined) payload.is_active = updates.is_active ? 1 : 0;
-
-  if (IS_LOCAL_MODE) {
-    const res = await fetch('/api/custom-tests', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'update', id, updates: payload, organizationId })
-    });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Failed to update custom test locally');
-    }
-    return;
-  }
-
-  const supabase = createClient();
-  if ('is_active' in payload) {
-    payload.is_active = payload.is_active === 1;
-  }
-  if (payload.parameters) {
-    payload.parameters = JSON.parse(payload.parameters);
-  }
-  const { error } = await supabase
-    .from('custom_tests')
-    .upsert({ ...payload, id, organization_id: organizationId });
-  if (error) throw error;
-};
-
+/**
+ * Built-in catalogue entries cannot be deleted, only deactivated for the
+ * organisation. That policy is the same on both back ends, so it lives here
+ * rather than in either repository.
+ */
 export const deleteCustomTest = async (id: string, organizationId: string): Promise<void> => {
   const isDefault = TEST_CATALOGUE.some(t => t.id === id);
 
@@ -1386,26 +1186,7 @@ export const deleteCustomTest = async (id: string, organizationId: string): Prom
     return;
   }
 
-  if (IS_LOCAL_MODE) {
-    const res = await fetch('/api/custom-tests', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'delete', id, organizationId })
-    });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Failed to delete custom test locally');
-    }
-    return;
-  }
-
-  const supabase = createClient();
-  const { error } = await supabase
-    .from('custom_tests')
-    .delete()
-    .eq('organization_id', organizationId)
-    .eq('id', id);
-  if (error) throw error;
+  await getCustomTestsRepository().remove(id, organizationId);
 };
 
 // ─── BILLING AND WALLET SYSTEM ────────────────────────────────────────────────
