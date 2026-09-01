@@ -97,8 +97,29 @@ describe('Date Filters', () => {
 });
 ```
 
-## 4. Definition of Done (DoD) Checklist for Testing
+## 4. Where the Existing Tests Live
+Feature tests (RTL) — copy the setup pattern from these rather than starting from scratch:
+- `components/features/queue/QueueTab.test.tsx` — filtering, empty states, callbacks
+- `components/features/registration/ReferralSelection.test.tsx` — comboboxes writing to the store
+- `components/features/registration/BillingSummary.test.tsx` — discount, payment method, wallet limits
+- `components/features/registration/PatientLookup.test.tsx`, `TestSearchPicker.test.tsx`, `RegistrationForm.test.tsx`
+
+Unit tests: `lib/store/registrationBilling.test.ts`, `useQueueStore.test.ts`, `wallet.test.ts`, `registration.test.ts`.
+
+**Resetting Zustand between tests.** Stores are module singletons and leak state across tests. Reset in `beforeEach`:
+```ts
+useRegistrationStore.getState().resetForm();               // form, tests, discount, payment
+useQueueStore.setState({ searchQuery: '', deptFilter: 'all', dateFilter: 'today' });
+```
+
+**Note:** `@testing-library/user-event` is NOT installed. Use `fireEvent` from `@testing-library/react`.
+
+## 5. Prove the Test Can Fail
+A feature test that passes against the broken code is worthless. After writing one for a bug, reintroduce the bug, watch the test fail, then restore. The regressions this suite was built around — a `Field` that dropped `actionNode`, `setForm(prev => ...)` against a `Partial` setter, a missing `setDiscountValue` — were all invisible to unit tests and to a passing build.
+
+## 6. Definition of Done (DoD) Checklist for Testing
 When an AI Agent builds or fixes a feature, ensure:
 1. Is the business logic extracted into pure functions and covered by a **Unit Test**?
 2. Is the user interaction covered by a **Feature Test** (RTL)?
 3. Does `npx vitest run` pass flawlessly?
+4. Was the feature test shown to fail against the unfixed code?
