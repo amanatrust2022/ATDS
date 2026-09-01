@@ -1,10 +1,10 @@
 'use client';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  RiHospitalLine, RiAddLine, RiClipboardLine, RiCheckLine, RiErrorWarningLine,
-  RiTestTubeLine, RiRadarLine, RiMailOpenLine, RiFolderOpenLine, RiPrinterLine,
-  RiFileTextLine, RiMoreLine, RiCloseLine, RiArrowUpSLine, RiArrowDownSLine, RiMailLine,
-  RiUserHeartLine, RiSearchLine, RiMoneyDollarCircleLine, RiWalletLine, RiFolderUserLine,
+  RiHospitalLine, RiAddLine, RiClipboardLine, RiCheckLine,
+  RiTestTubeLine, RiRadarLine, RiPrinterLine,
+  RiFileTextLine, RiMoreLine, RiCloseLine, RiMailLine,
+  RiSearchLine, RiWalletLine, RiFolderUserLine,
 } from '@remixicon/react';
 import Header from '@/components/Header';
 import RegistrationTab from './features/registration/RegistrationTab';
@@ -12,13 +12,12 @@ import WalletTab from './features/wallet/WalletTab';
 import { QueueTab } from './features/queue/QueueTab';
 import { ResultsTab } from './features/queue/ResultsTab';
 import {
-  Patient, PatientTest, TEST_CATALOGUE, getTestById, fetchPatients, addPatient, generateSlipNumber, subscribeToPatients,
+  Patient, PatientTest, TEST_CATALOGUE, fetchPatients, generateSlipNumber, subscribeToPatients,
   ReferringDoctor, ReferringFacility, TestPrice,
   fetchReferringDoctors, fetchReferringFacilities, fetchTestPrices,
-  addPatientWithReferral, addReferringDoctor, addReferringFacility,
   fetchCustomTests, setCustomCatalogueCache, Test,
   BillingAccount, BillingLedgerTransaction, ExternalDepartmentCharge,
-  fetchBillingAccounts, fetchPatientWallet, createBillingAccount, depositToBillingAccount, logExternalCharge, fetchAccountLedger, fetchExternalCharges,
+  fetchBillingAccounts, createBillingAccount, depositToBillingAccount, logExternalCharge, fetchAccountLedger, fetchExternalCharges,
   updatePatientBillingAccount, registerPatientAndGetId,
   PatientProfile, fetchPatientProfiles
 } from '@/lib/store';
@@ -32,7 +31,6 @@ export default function ReceptionPage() {
   const [tab, setTab] = useState<Tab>('register');
   const [patients, setPatients] = useState<Patient[]>([]);
   const [patientProfiles, setPatientProfiles] = useState<PatientProfile[]>([]);
-  const [selectedPatientProfileId, setSelectedPatientProfileId] = useState<number | null>(null);
 
   // Searchable dropdown states for open billing account modal
   const [ownerSearchQuery, setOwnerSearchQuery] = useState('');
@@ -45,59 +43,24 @@ export default function ReceptionPage() {
   const [showDepSearchDrop, setShowDepSearchDrop] = useState(false);
   const depSearchRef = useRef<HTMLDivElement>(null);
   const [dateFilter, setDateFilter] = useState<'today' | 'seven_days' | 'thirty_days'>('today');
-  const [selectedTests, setSelectedTests] = useState<string[]>([]);
   const [showSlipModal, setShowSlipModal] = useState<Patient | null>(null);
   const [showResultModal, setShowResultModal] = useState<Patient | null>(null);
   const [searchQ, setSearchQ] = useState('');
   const [deptFilter, setDeptFilter] = useState<'all' | 'lab' | 'radiology'>('all');
-  const [testSearch, setTestSearch] = useState('');
-  const [form, setForm] = useState({
-    firstName: '', surname: '', middleName: '', age: '', sex: 'Male' as 'Male' | 'Female',
-    phone: '', email: '', address: '', referredBy: '', referringFacility: '',
-  });
-  const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
 
-  // Returning patient lookup state
-  const [patientSearchQuery, setPatientSearchQuery] = useState('');
-  const [showPatientSearchDrop, setShowPatientSearchDrop] = useState(false);
-  const [loadedPatientName, setLoadedPatientName] = useState('');
-  const patientSearchRef = useRef<HTMLDivElement>(null);
 
   // Referral DB state
   const [doctors, setDoctors] = useState<ReferringDoctor[]>([]);
   const [facilities, setFacilities] = useState<ReferringFacility[]>([]);
   const [testPrices, setTestPrices] = useState<TestPrice[]>([]);
   const [catalogue, setCatalogue] = useState<Test[]>(TEST_CATALOGUE);
-  const [selectedDoctorId, setSelectedDoctorId] = useState('');
-  const [selectedFacilityId, setSelectedFacilityId] = useState('');
-  const [doctorSearch, setDoctorSearch] = useState('');
-  const [facilitySearch, setFacilitySearch] = useState('');
-  const [showDoctorDrop, setShowDoctorDrop] = useState(false);
-  const [showFacilityDrop, setShowFacilityDrop] = useState(false);
-  const doctorRef = useRef<HTMLDivElement>(null);
-  const facilityRef = useRef<HTMLDivElement>(null);
 
-  // Billing and discount states
-  const [discountType, setDiscountType] = useState<'none' | 'flat' | 'percentage'>('none');
-  const [discountValue, setDiscountValue] = useState('');
-  const [paidAmount, setPaidAmount] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('cash');
 
-  // Quick register modal states
-  const [showQuickDoctor, setShowQuickDoctor] = useState(false);
-  const [showQuickFacility, setShowQuickFacility] = useState(false);
-  const [quickDoctorForm, setQuickDoctorForm] = useState({ name: '', phone: '', email: '', facility_id: '' });
-  const [quickFacilityForm, setQuickFacilityForm] = useState({ name: '', address: '', phone: '', email: '' });
-  const [quickError, setQuickError] = useState('');
-  const [quickSaving, setQuickSaving] = useState(false);
 
   // Billing and wallet states
   const [billingAccounts, setBillingAccounts] = useState<BillingAccount[]>([]);
   const [externalCharges, setExternalCharges] = useState<ExternalDepartmentCharge[]>([]);
-  const [selectedPatientBillingAccountId, setSelectedPatientBillingAccountId] = useState<string | null>(null);
-  const [linkedAccount, setLinkedAccount] = useState<BillingAccount | null>(null);
-  const [checkoutBillingAccountId, setCheckoutBillingAccountId] = useState<string>('');
 
   // Modals & search
   const [showBillingAccountModal, setShowBillingAccountModal] = useState(false);
@@ -391,24 +354,6 @@ export default function ReceptionPage() {
     }
   }, [showLedgerModal]);
 
-  // Sync wallet details for current checkout patient & set default payment method
-  useEffect(() => {
-    if (!selectedPatientBillingAccountId) {
-      setLinkedAccount(null);
-      setCheckoutBillingAccountId('');
-      if (paymentMethod === 'wallet') {
-        setPaymentMethod('cash');
-      }
-      return;
-    }
-    const acc = billingAccounts.find(a => a.id === selectedPatientBillingAccountId);
-    setLinkedAccount(acc || null);
-    if (acc) {
-      setCheckoutBillingAccountId(acc.id);
-      setPaymentMethod('wallet'); // Set wallet as default payment method!
-    }
-  }, [selectedPatientBillingAccountId, billingAccounts]);
-
   const handleLinkExistingDependent = async (accountId: string) => {
     if (!existingPatientToLink) return;
     try {
@@ -556,9 +501,6 @@ export default function ReceptionPage() {
   // Close dropdowns on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (doctorRef.current && !doctorRef.current.contains(e.target as Node)) setShowDoctorDrop(false);
-      if (facilityRef.current && !facilityRef.current.contains(e.target as Node)) setShowFacilityDrop(false);
-      if (patientSearchRef.current && !patientSearchRef.current.contains(e.target as Node)) setShowPatientSearchDrop(false);
       if (ownerSearchRef.current && !ownerSearchRef.current.contains(e.target as Node)) setShowOwnerSearchDrop(false);
       if (depSearchRef.current && !depSearchRef.current.contains(e.target as Node)) setShowDepSearchDrop(false);
     };
@@ -572,16 +514,6 @@ export default function ReceptionPage() {
     const unsubscribe = subscribeToPatients(organization.id, refresh);
     return () => { unsubscribe(); };
   }, [organization?.id, refresh]);
-
-  const filteredTests = catalogue.filter(test => {
-    const q = testSearch.trim().toLowerCase();
-    if (!q) return true;
-
-    return [test.name, test.specimen, test.department, test.category]
-      .join(' ')
-      .toLowerCase()
-      .includes(q);
-  });
 
   const filterByDate = (dateString: string | number | Date) => {
     const pDate = new Date(dateString);
@@ -604,268 +536,6 @@ export default function ReceptionPage() {
   const resultsPatients = patients.filter(p => p.tests.some(t => t.status === 'completed') && filterByDate(p.registeredAt));
   const newResultsCount = resultsPatients.length;
 
-  const toggleTest = (id: string) => {
-    setSelectedTests(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
-  };
-
-  const removeTest = (id: string) => {
-    setSelectedTests(prev => prev.filter(x => x !== id));
-  };
-
-  const validate = () => {
-    const e: Record<string, string> = {};
-    if (!form.firstName.trim()) e.firstName = 'First name is required';
-    if (!form.surname.trim()) e.surname = 'Surname is required';
-    if (!form.age.trim()) e.age = 'Age is required';
-    if (!form.phone.trim()) e.phone = 'Phone number is required';
-    const hasDoctor = !!selectedDoctorId || !!form.referredBy.trim();
-    const hasFacility = !!selectedFacilityId || !!form.referringFacility.trim();
-    if (!hasDoctor && !hasFacility) {
-      e.referredBy = 'Either Referring doctor or facility is required';
-      e.referringFacility = 'Either Referring doctor or facility is required';
-    }
-    if (selectedTests.length === 0) e.tests = 'Select at least one test';
-    return e;
-  };
-
-  // ─── BILLING CALCULATIONS ───────────────────────────────────────────────────
-  const selectedTestDetails = selectedTests.map(tid => {
-    const test = getTestById(tid)!;
-    const catalog = testPrices.find(p => p.test_id === tid);
-    return {
-      testId: test.id,
-      testName: test.name,
-      department: test.department,
-      specimen: test.specimen,
-      price: catalog ? catalog.price : 0,
-      commissionType: catalog ? catalog.commission_type : 'none',
-      commissionValue: catalog ? catalog.commission_value : 0,
-    };
-  });
-
-  const subtotal = selectedTestDetails.reduce((sum, t) => sum + t.price, 0);
-  const discVal = parseFloat(discountValue) || 0;
-  const discountAmount = discountType === 'percentage'
-    ? (subtotal * discVal) / 100
-    : discountType === 'flat'
-      ? discVal
-      : 0;
-  const netBill = Math.max(0, subtotal - discountAmount);
-  // Auto-set paid amount if wallet is used
-  useEffect(() => {
-    if (paymentMethod === 'wallet') {
-      setPaidAmount(netBill.toString());
-    }
-  }, [paymentMethod, netBill]);
-  const amountPaidVal = paidAmount === '' ? netBill : (parseFloat(paidAmount) || 0);
-  const balance = netBill - amountPaidVal;
-  const paymentStatus = amountPaidVal >= netBill
-    ? 'paid'
-    : amountPaidVal > 0
-      ? 'partial'
-      : 'unpaid';
-
-  const isReferral = !!(selectedDoctorId && selectedDoctorId !== 'none') || !!(selectedFacilityId && selectedFacilityId !== 'none');
-  const totalCommission = selectedTestDetails.reduce((sum, t) => {
-    let commAmt = 0;
-    if (isReferral && t.commissionType !== 'none') {
-      if (t.commissionType === 'percentage') {
-        commAmt = (t.price * (t.commissionValue || 0)) / 100;
-      } else if (t.commissionType === 'flat') {
-        commAmt = t.commissionValue || 0;
-      }
-    }
-    return sum + commAmt;
-  }, 0);
-
-  const handleQuickDoctorSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!quickDoctorForm.name.trim()) {
-      setQuickError('Name is required');
-      return;
-    }
-    if (!organization?.id) return;
-    setQuickSaving(true);
-    setQuickError('');
-    try {
-      const doc = await addReferringDoctor({
-        organization_id: organization.id,
-        name: quickDoctorForm.name.trim(),
-        phone: quickDoctorForm.phone.trim() || undefined,
-        email: quickDoctorForm.email.trim() || undefined,
-        facility_id: quickDoctorForm.facility_id || undefined,
-        commission_type: 'percentage',
-        commission_value: 0,
-        is_active: true,
-      }, organization.id);
-
-      const updatedDocs = await fetchReferringDoctors(organization.id);
-      setDoctors(updatedDocs.filter(d => d.is_active));
-      setSelectedDoctorId(doc.id);
-      setDoctorSearch('');
-      setForm(prev => ({ ...prev, referredBy: `Dr. ${doc.name}` }));
-
-      if (doc.facility_id) {
-        setSelectedFacilityId(doc.facility_id);
-        const fac = facilities.find(f => f.id === doc.facility_id);
-        if (fac) {
-          setForm(prev => ({ ...prev, referringFacility: fac.name }));
-        }
-      }
-
-      setShowQuickDoctor(false);
-    } catch (err: any) {
-      setQuickError(err.message || 'Failed to register doctor');
-    } finally {
-      setQuickSaving(false);
-    }
-  };
-
-  const handleQuickFacilitySubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!quickFacilityForm.name.trim()) {
-      setQuickError('Facility name is required');
-      return;
-    }
-    if (!organization?.id) return;
-    setQuickSaving(true);
-    setQuickError('');
-    try {
-      const fac = await addReferringFacility({
-        organization_id: organization.id,
-        name: quickFacilityForm.name.trim(),
-        address: quickFacilityForm.address.trim() || undefined,
-        phone: quickFacilityForm.phone.trim() || undefined,
-        email: quickFacilityForm.email.trim() || undefined,
-        commission_type: 'percentage',
-        commission_value: 0,
-        is_active: true,
-      }, organization.id);
-
-      const updatedFacs = await fetchReferringFacilities(organization.id);
-      setFacilities(updatedFacs.filter(f => f.is_active));
-      setSelectedFacilityId(fac.id);
-      setFacilitySearch('');
-      setForm(prev => ({ ...prev, referringFacility: fac.name }));
-
-      setShowQuickFacility(false);
-    } catch (err: any) {
-      setQuickError(err.message || 'Failed to register facility');
-    } finally {
-      setQuickSaving(false);
-    }
-  };
-
-  const handleRegister = async () => {
-    const e = validate();
-    setErrors(e);
-    if (Object.keys(e).length > 0) return;
-
-    if (paymentMethod === 'wallet') {
-      if (!checkoutBillingAccountId) {
-        alert('Please select a wallet account for payment.');
-        return;
-      }
-      const acc = billingAccounts.find(a => a.id === checkoutBillingAccountId);
-      if (!acc) {
-        alert('Selected wallet account not found.');
-        return;
-      }
-      if ((acc.balance + acc.credit_limit) < netBill) {
-        alert(`Insufficient wallet balance on "${acc.name}". Available: ₦${(acc.balance + acc.credit_limit).toLocaleString('en-NG')}`);
-        return;
-      }
-    }
-
-    setSaving(true);
-
-    try {
-      const slipNumber = await generateSlipNumber(organization?.id || '');
-      const isReferral = !!(selectedDoctorId && selectedDoctorId !== 'none') || !!(selectedFacilityId && selectedFacilityId !== 'none');
-
-      const tests = selectedTestDetails.map(t => {
-        let commAmt = 0;
-        if (isReferral && t.commissionType !== 'none') {
-          if (t.commissionType === 'percentage') {
-            commAmt = (t.price * (t.commissionValue || 0)) / 100;
-          } else if (t.commissionType === 'flat') {
-            commAmt = t.commissionValue || 0;
-          }
-        }
-        return {
-          testId: t.testId,
-          testName: t.testName,
-          department: t.department,
-          status: 'pending' as const,
-          specimen: t.specimen,
-          price: t.price,
-          commissionType: t.commissionType as any || 'none',
-          commissionValue: t.commissionValue || 0,
-          commissionAmount: commAmt,
-        };
-      });
-
-      const totalCommission = tests.reduce((sum, t) => sum + (t.commissionAmount || 0), 0);
-
-      // Find selected doctor/facility names
-      const selDoctor = doctors.find(d => d.id === selectedDoctorId);
-      const selFacility = facilities.find(f => f.id === selectedFacilityId);
-
-      const patientData: Omit<Patient, 'id' | 'tests'> & { id?: number; patientProfileId?: number | null } = {
-        slipNumber,
-        registeredAt: new Date().toISOString(),
-        name: [form.firstName, form.middleName, form.surname].filter(Boolean).join(' '),
-        ...form,
-        referredBy: selDoctor ? `Dr. ${selDoctor.name}` : form.referredBy,
-        referringFacility: selFacility ? selFacility.name : form.referringFacility,
-        referringDoctorId: (selectedDoctorId && selectedDoctorId !== 'none') ? selectedDoctorId : undefined,
-        referringFacilityId: (selectedFacilityId && selectedFacilityId !== 'none') ? selectedFacilityId : undefined,
-        commissionAssigned: isReferral && totalCommission > 0,
-        commissionType: isReferral && totalCommission > 0 ? 'varies' : undefined,
-        commissionValue: 0,
-        commissionAmount: totalCommission,
-        totalAmount: subtotal,
-        discountType: discountType,
-        discountValue: discVal,
-        discountAmount: discountAmount,
-        netAmount: netBill,
-        paidAmount: amountPaidVal,
-        paymentStatus: paymentStatus,
-        paymentMethod: paymentMethod,
-        billingAccountId: paymentMethod === 'wallet' ? checkoutBillingAccountId : (selectedPatientBillingAccountId || undefined),
-        patientProfileId: selectedPatientProfileId || undefined,
-      };
-
-      await addPatientWithReferral(patientData, tests, organization?.id || '');
-
-      const tempPatient: Patient = {
-        id: 0,
-        tests: tests as any,
-        ...patientData
-      };
-
-      setShowSlipModal(tempPatient);
-      setForm({ firstName: '', surname: '', middleName: '', age: '', sex: 'Male', phone: '', email: '', address: '', referredBy: '', referringFacility: '' });
-      setSelectedTests([]);
-      setSelectedDoctorId('');
-      setSelectedFacilityId('');
-      setDoctorSearch('');
-      setFacilitySearch('');
-      setLoadedPatientName('');
-      setSelectedPatientBillingAccountId(null);
-      setSelectedPatientProfileId(null);
-      setPatientSearchQuery('');
-      setDiscountType('none');
-      setDiscountValue('');
-      setPaidAmount('');
-      setPaymentMethod('cash');
-      setErrors({});
-    } catch (err: any) {
-      alert('Registration failed: ' + err.message);
-    } finally {
-      setSaving(false);
-    }
-  };
 
   const filtered = (tab === 'queue' ? pendingPatients : resultsPatients).filter(p => {
     const q = searchQ.toLowerCase();
@@ -2064,163 +1734,6 @@ export default function ReceptionPage() {
         </div>
       )}
 
-      {/* Quick Add Doctor Modal */}
-      {showQuickDoctor && (
-        <div style={modalOverlay}>
-          <form onSubmit={handleQuickDoctorSubmit} style={{ ...modalBox, maxWidth: 450 }}>
-            <div style={{ background: 'var(--teal-800)', padding: '1rem 1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div>
-                <h2 style={{ color: 'white', fontFamily: 'var(--font-display)', fontSize: '1rem', fontWeight: 700 }}>Quick Register Referring Doctor</h2>
-                <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.7rem', marginTop: '0.15rem' }}>Add a new referring doctor to the system database</p>
-              </div>
-              <button type="button" onClick={() => setShowQuickDoctor(false)} style={closeBtn}><RiCloseLine size={16} /></button>
-            </div>
-
-            <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.9rem', background: 'white' }}>
-              {quickError && (
-                <div style={{ color: 'var(--red)', fontSize: '0.75rem', background: 'var(--red-light)', padding: '0.5rem 0.75rem', borderRadius: 'var(--radius)', border: '1px solid #f5c6cb' }}>
-                  {quickError}
-                </div>
-              )}
-
-              <Field label="Doctor's Name *">
-                <input
-                  required
-                  style={inputStyle(false)}
-                  placeholder="e.g. John Doe"
-                  value={quickDoctorForm.name}
-                  onChange={e => setQuickDoctorForm({ ...quickDoctorForm, name: e.target.value })}
-                />
-              </Field>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                <Field label="Phone Number">
-                  <input
-                    style={inputStyle(false)}
-                    placeholder="e.g. +234 80..."
-                    value={quickDoctorForm.phone}
-                    onChange={e => setQuickDoctorForm({ ...quickDoctorForm, phone: e.target.value })}
-                  />
-                </Field>
-                <Field label="Email Address">
-                  <input
-                    type="email"
-                    style={inputStyle(false)}
-                    placeholder="e.g. doc@hospital.com"
-                    value={quickDoctorForm.email}
-                    onChange={e => setQuickDoctorForm({ ...quickDoctorForm, email: e.target.value })}
-                  />
-                </Field>
-              </div>
-
-              <Field label="Affiliated Facility">
-                <select
-                  style={inputStyle(false)}
-                  value={quickDoctorForm.facility_id}
-                  onChange={e => setQuickDoctorForm({ ...quickDoctorForm, facility_id: e.target.value })}
-                >
-                  <option value="">Independent / None</option>
-                  {facilities.map(f => (
-                    <option key={f.id} value={f.id}>{f.name}</option>
-                  ))}
-                </select>
-              </Field>
-            </div>
-
-            <div style={{ padding: '0.85rem 1.25rem', borderTop: '1px solid var(--gray-200)', display: 'flex', gap: '0.75rem', background: '#f8fafc', justifyContent: 'flex-end' }}>
-              <button type="button" onClick={() => setShowQuickDoctor(false)} style={btnStyle('outline')}>Cancel</button>
-              <button
-                type="submit"
-                disabled={quickSaving}
-                style={{
-                  ...btnStyle('primary'),
-                  cursor: quickSaving ? 'not-allowed' : 'pointer',
-                  opacity: quickSaving ? 0.7 : 1
-                }}
-              >
-                {quickSaving ? 'Saving...' : 'Register Doctor'}
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {/* Quick Add Facility Modal */}
-      {showQuickFacility && (
-        <div style={modalOverlay}>
-          <form onSubmit={handleQuickFacilitySubmit} style={{ ...modalBox, maxWidth: 450 }}>
-            <div style={{ background: 'var(--teal-800)', padding: '1rem 1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div>
-                <h2 style={{ color: 'white', fontFamily: 'var(--font-display)', fontSize: '1rem', fontWeight: 700 }}>Quick Register Referring Facility</h2>
-                <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.7rem', marginTop: '0.15rem' }}>Add a new referring facility to the system database</p>
-              </div>
-              <button type="button" onClick={() => setShowQuickFacility(false)} style={closeBtn}><RiCloseLine size={16} /></button>
-            </div>
-
-            <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.9rem', background: 'white' }}>
-              {quickError && (
-                <div style={{ color: 'var(--red)', fontSize: '0.75rem', background: 'var(--red-light)', padding: '0.5rem 0.75rem', borderRadius: 'var(--radius)', border: '1px solid #f5c6cb' }}>
-                  {quickError}
-                </div>
-              )}
-
-              <Field label="Facility Name *">
-                <input
-                  required
-                  style={inputStyle(false)}
-                  placeholder="e.g. City General Hospital"
-                  value={quickFacilityForm.name}
-                  onChange={e => setQuickFacilityForm({ ...quickFacilityForm, name: e.target.value })}
-                />
-              </Field>
-
-              <Field label="Address">
-                <input
-                  style={inputStyle(false)}
-                  placeholder="e.g. 12 Clinic Road, Kano"
-                  value={quickFacilityForm.address}
-                  onChange={e => setQuickFacilityForm({ ...quickFacilityForm, address: e.target.value })}
-                />
-              </Field>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                <Field label="Phone Number">
-                  <input
-                    style={inputStyle(false)}
-                    placeholder="e.g. +234 80..."
-                    value={quickFacilityForm.phone}
-                    onChange={e => setQuickFacilityForm({ ...quickFacilityForm, phone: e.target.value })}
-                  />
-                </Field>
-                <Field label="Email Address">
-                  <input
-                    type="email"
-                    style={inputStyle(false)}
-                    placeholder="e.g. contact@facility.com"
-                    value={quickFacilityForm.email}
-                    onChange={e => setQuickFacilityForm({ ...quickFacilityForm, email: e.target.value })}
-                  />
-                </Field>
-              </div>
-            </div>
-
-            <div style={{ padding: '0.85rem 1.25rem', borderTop: '1px solid var(--gray-200)', display: 'flex', gap: '0.75rem', background: '#f8fafc', justifyContent: 'flex-end' }}>
-              <button type="button" onClick={() => setShowQuickFacility(false)} style={btnStyle('outline')}>Cancel</button>
-              <button
-                type="submit"
-                disabled={quickSaving}
-                style={{
-                  ...btnStyle('primary'),
-                  cursor: quickSaving ? 'not-allowed' : 'pointer',
-                  opacity: quickSaving ? 0.7 : 1
-                }}
-              >
-                {quickSaving ? 'Saving...' : 'Register Facility'}
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
     </div>
   );
 }
