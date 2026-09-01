@@ -1,5 +1,11 @@
-import { createClient } from './supabase';
-import { isLocalMode } from './runtimeMode';
+/**
+ * Domain types, the built-in test catalogue, and the data-access API the app
+ * calls.
+ *
+ * Every function here delegates to a repository in lib/repositories, which
+ * decides whether the app is talking to the on-premise SQLite hub or to
+ * Supabase. Nothing in this file branches on the runtime mode any more.
+ */
 import { getReferralsRepository } from './repositories/referrals';
 import { getTestPricesRepository } from './repositories/testPrices';
 import { getRadiologyTemplatesRepository } from './repositories/radiologyTemplates';
@@ -7,10 +13,7 @@ import { getCustomTestsRepository } from './repositories/customTests';
 import { getCommissionsRepository } from './repositories/commissions';
 import { buildCommissionReport } from './store/commissionReport';
 import { getPatientsRepository } from './repositories/patients';
-
-// Kept for the call sites in this file that have not moved behind a repository
-// yet. New code should use a repository from lib/repositories instead.
-const IS_LOCAL_MODE = isLocalMode();
+import { getBillingRepository } from './repositories/billing';
 
 export type Department = 'lab' | 'radiology';
 export type TestStatus = 'pending' | 'in_progress' | 'completed';
@@ -746,39 +749,11 @@ export interface ExternalDepartmentCharge {
   patientSlip?: string;
 }
 
-export const fetchBillingAccounts = async (organizationId: string): Promise<BillingAccount[]> => {
-  if (IS_LOCAL_MODE) {
-    const res = await fetch(`/api/billing?type=accounts&organizationId=${organizationId}`);
-    if (!res.ok) throw new Error('Failed to fetch billing accounts');
-    return res.json();
-  }
+export const fetchBillingAccounts = async (organizationId: string): Promise<BillingAccount[]> =>
+  getBillingRepository().listAccounts(organizationId);
 
-  const supabase = createClient();
-  const { data, error } = await supabase
-    .from('billing_accounts')
-    .select('*')
-    .eq('organization_id', organizationId)
-    .order('name', { ascending: true });
-  if (error) { console.error('fetchBillingAccounts error:', error); return []; }
-  return data || [];
-};
-
-export const fetchPatientWallet = async (patientId: number | string): Promise<BillingAccount | null> => {
-  if (IS_LOCAL_MODE) {
-    const res = await fetch(`/api/billing?type=patient_wallet&patientId=${patientId}`);
-    if (!res.ok) return null;
-    return res.json();
-  }
-
-  const supabase = createClient();
-  const { data, error } = await supabase
-    .from('patients')
-    .select('billing_account_id, billing_accounts(*)')
-    .eq('id', patientId)
-    .maybeSingle();
-  if (error || !data || !data.billing_accounts) return null;
-  return data.billing_accounts as any;
-};
+export const fetchPatientWallet = async (patientId: number | string): Promise<BillingAccount | null> =>
+  getBillingRepository().findPatientWallet(patientId);
 
 export const createBillingAccount = async (
   account: Omit<BillingAccount, 'id' | 'balance' | 'created_at' | 'updated_at'>,
@@ -786,68 +761,8 @@ export const createBillingAccount = async (
   paymentMethod: string,
   linkedPatientIds: (string | number)[],
   createdBy: string
-): Promise<void> => {
-  if (IS_LOCAL_MODE) {
-    const res = await fetch('/api/billing', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'createAccount',
-        account,
-        initialDeposit,
-        paymentMethod,
-        linkedPatientIds,
-        createdBy,
-        organizationId: account.organization_id
-      })
-    });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Failed to create billing account');
-    }
-    return;
-  }
-
-  const supabase = createClient();
-  const accountId = crypto.randomUUID();
-  const now = new Date().toISOString();
-
-  const { error: accError } = await supabase.from('billing_accounts').insert([{
-    id: accountId,
-    organization_id: account.organization_id,
-    name: account.name,
-    owner_patient_id: account.owner_patient_id,
-    balance: initialDeposit,
-    credit_limit: account.credit_limit || 0,
-    type: account.type,
-    created_at: now,
-    updated_at: now
-  }]);
-  if (accError) throw accError;
-
-  const allPatientIds = Array.from(new Set([account.owner_patient_id, ...linkedPatientIds]));
-  const { error: linkError } = await supabase
-    .from('patients')
-    .update({ billing_account_id: accountId })
-    .in('id', allPatientIds);
-  if (linkError) throw linkError;
-
-  if (initialDeposit > 0) {
-    const { error: ledError } = await supabase.from('billing_ledger_transactions').insert([{
-      id: crypto.randomUUID(),
-      organization_id: account.organization_id,
-      billing_account_id: accountId,
-      patient_id: account.owner_patient_id,
-      type: 'deposit',
-      amount: initialDeposit,
-      description: 'Initial deposit upon account opening',
-      payment_method: paymentMethod,
-      created_by: createdBy,
-      created_at: now
-    }]);
-    if (ledError) throw ledError;
-  }
-};
+): Promise<void> =>
+  getBillingRepository().createAccount(account, initialDeposit, paymentMethod, linkedPatientIds, createdBy);
 
 export const depositToBillingAccount = async (
   accountId: string,
@@ -857,220 +772,25 @@ export const depositToBillingAccount = async (
   createdBy: string,
   organizationId: string,
   patientId?: number | string
-): Promise<void> => {
-  if (IS_LOCAL_MODE) {
-    const res = await fetch('/api/billing', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'deposit',
-        accountId,
-        amount,
-        description,
-        paymentMethod,
-        createdBy,
-        organizationId,
-        patientId
-      })
-    });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Failed to process deposit');
-    }
-    return;
-  }
-
-  const supabase = createClient();
-  const now = new Date().toISOString();
-
-  const { data: acc, error: accErr } = await supabase
-    .from('billing_accounts')
-    .select('balance')
-    .eq('id', accountId)
-    .single();
-  if (accErr) throw accErr;
-
-  const newBalance = (acc.balance || 0) + amount;
-
-  const { error: upErr } = await supabase
-    .from('billing_accounts')
-    .update({ balance: newBalance, updated_at: now })
-    .eq('id', accountId);
-  if (upErr) throw upErr;
-
-  const { error: ledErr } = await supabase.from('billing_ledger_transactions').insert([{
-    id: crypto.randomUUID(),
-    organization_id: organizationId,
-    billing_account_id: accountId,
-    patient_id: patientId || null,
-    type: 'deposit',
-    amount,
-    description,
-    payment_method: paymentMethod,
-    created_by: createdBy,
-    created_at: now
-  }]);
-  if (ledErr) throw ledErr;
-};
+): Promise<void> =>
+  getBillingRepository().deposit(accountId, amount, description, paymentMethod, createdBy, organizationId, patientId);
 
 export const logExternalCharge = async (
   charge: Omit<ExternalDepartmentCharge, 'id' | 'createdAt'>
-): Promise<void> => {
-  if (IS_LOCAL_MODE) {
-    const res = await fetch('/api/billing', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'logExternalCharge',
-        charge
-      })
-    });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Failed to log external charge');
-    }
-    return;
-  }
+): Promise<void> =>
+  getBillingRepository().logExternalCharge(charge);
 
-  const supabase = createClient();
-  const chargeId = crypto.randomUUID();
-  const now = new Date().toISOString();
+export const fetchAccountLedger = async (accountId: string): Promise<BillingLedgerTransaction[]> =>
+  getBillingRepository().listLedger(accountId);
 
-  if (charge.paymentMethod === 'wallet' && charge.billingAccountId) {
-    const { data: acc, error: accErr } = await supabase
-      .from('billing_accounts')
-      .select('balance, credit_limit')
-      .eq('id', charge.billingAccountId)
-      .single();
-    if (accErr) throw accErr;
-
-    const currentBalance = acc.balance || 0;
-    const creditLimit = acc.credit_limit || 0;
-    const chargeAmount = charge.amount;
-
-    if (currentBalance + creditLimit < chargeAmount) {
-      throw new Error(`Insufficient wallet balance. Available credit: ₦${(currentBalance + creditLimit).toLocaleString('en-NG')}`);
-    }
-
-    const newBalance = currentBalance - chargeAmount;
-
-    const { error: upErr } = await supabase
-      .from('billing_accounts')
-      .update({ balance: newBalance, updated_at: now })
-      .eq('id', charge.billingAccountId);
-    if (upErr) throw upErr;
-
-    const { error: ledErr } = await supabase.from('billing_ledger_transactions').insert([{
-      id: crypto.randomUUID(),
-      organization_id: charge.organizationId,
-      billing_account_id: charge.billingAccountId,
-      patient_id: charge.patientId,
-      type: 'charge',
-      amount: -chargeAmount,
-      description: `${charge.department.toUpperCase()} Bill - Ref: ${charge.receiptNumber}`,
-      reference_id: charge.receiptNumber,
-      payment_method: 'wallet',
-      created_by: charge.createdBy,
-      created_at: now
-    }]);
-    if (ledErr) throw ledErr;
-  }
-
-  const { error: chErr } = await supabase.from('external_department_charges').insert([{
-    id: chargeId,
-    organization_id: charge.organizationId,
-    patient_id: charge.patientId,
-    billing_account_id: charge.paymentMethod === 'wallet' ? charge.billingAccountId : null,
-    department: charge.department,
-    receipt_number: charge.receiptNumber,
-    amount: charge.amount,
-    payment_method: charge.paymentMethod,
-    status: charge.status || 'paid',
-    description: charge.description || null,
-    created_by: charge.createdBy,
-    created_at: now
-  }]);
-  if (chErr) throw chErr;
-};
-
-export const fetchAccountLedger = async (accountId: string): Promise<BillingLedgerTransaction[]> => {
-  if (IS_LOCAL_MODE) {
-    const res = await fetch(`/api/billing?type=ledger&accountId=${accountId}`);
-    if (!res.ok) throw new Error('Failed to fetch account ledger');
-    return res.json();
-  }
-
-  const supabase = createClient();
-  const { data, error } = await supabase
-    .from('billing_ledger_transactions')
-    .select('*')
-    .eq('billing_account_id', accountId)
-    .order('created_at', { ascending: false });
-  if (error) { console.error('fetchAccountLedger error:', error); return []; }
-  return data || [];
-};
-
-export const fetchExternalCharges = async (organizationId: string): Promise<ExternalDepartmentCharge[]> => {
-  if (IS_LOCAL_MODE) {
-    const res = await fetch(`/api/billing?type=external_charges&organizationId=${organizationId}`);
-    if (!res.ok) throw new Error('Failed to fetch external charges');
-    return res.json();
-  }
-
-  const supabase = createClient();
-  const { data, error } = await supabase
-    .from('external_department_charges')
-    .select('*, patient:patients(first_name, surname, middle_name, slip_number)')
-    .eq('organization_id', organizationId)
-    .order('created_at', { ascending: false });
-  if (error) { console.error('fetchExternalCharges error:', error); return []; }
-  
-  return (data || []).map((c: any) => ({
-    id: c.id,
-    organizationId: c.organization_id,
-    patientId: c.patient_id,
-    billingAccountId: c.billing_account_id,
-    department: c.department,
-    receiptNumber: c.receipt_number,
-    amount: c.amount,
-    paymentMethod: c.payment_method,
-    status: c.status,
-    description: c.description,
-    createdBy: c.created_by,
-    createdAt: c.created_at,
-    patientName: c.patient ? [c.patient.first_name, c.patient.middle_name, c.patient.surname].filter(Boolean).join(' ') : 'Unknown',
-    patientSlip: c.patient ? c.patient.slip_number : ''
-  }));
-};
+export const fetchExternalCharges = async (organizationId: string): Promise<ExternalDepartmentCharge[]> =>
+  getBillingRepository().listExternalCharges(organizationId);
 
 export const updatePatientBillingAccount = async (
   patientId: number | string,
   billingAccountId: string | null
-): Promise<void> => {
-  if (IS_LOCAL_MODE) {
-    const res = await fetch('/api/billing', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'linkPatient',
-        patientId,
-        billingAccountId
-      })
-    });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Failed to update patient billing account');
-    }
-    return;
-  }
-
-  const supabase = createClient();
-  const { error } = await supabase
-    .from('patients')
-    .update({ billing_account_id: billingAccountId, updated_at: new Date().toISOString() })
-    .eq('id', patientId);
-  if (error) throw error;
-};
+): Promise<void> =>
+  getBillingRepository().linkPatient(patientId, billingAccountId);
 
 export const registerPatientAndGetId = async (
   patient: Omit<Patient, 'id' | 'tests'>,
@@ -1078,34 +798,8 @@ export const registerPatientAndGetId = async (
 ): Promise<number | string> =>
   getPatientsRepository().registerAndGetId(patient, organizationId);
 
+export const updateBillingAccountLimit = async (accountId: string, newLimit: number): Promise<void> =>
+  getBillingRepository().setCreditLimit(accountId, newLimit);
 
-
-export const updateBillingAccountLimit = async (accountId: string, newLimit: number): Promise<void> => {
-  if (IS_LOCAL_MODE) {
-    const res = await fetch('/api/billing', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'updateLimit', accountId, newLimit })
-    });
-    if (!res.ok) throw new Error('Failed to update credit limit');
-    return;
-  }
-  const supabase = createClient();
-  const { error } = await supabase.from('billing_accounts').update({ credit_limit: newLimit }).eq('id', accountId);
-  if (error) throw error;
-};
-
-export const upgradeBillingAccount = async (accountId: string): Promise<void> => {
-  if (IS_LOCAL_MODE) {
-    const res = await fetch('/api/billing', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'upgradeAccount', accountId })
-    });
-    if (!res.ok) throw new Error('Failed to upgrade account');
-    return;
-  }
-  const supabase = createClient();
-  const { error } = await supabase.from('billing_accounts').update({ type: 'family' }).eq('id', accountId);
-  if (error) throw error;
-};
+export const upgradeBillingAccount = async (accountId: string): Promise<void> =>
+  getBillingRepository().upgradeToFamily(accountId);
