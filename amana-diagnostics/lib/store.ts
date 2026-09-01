@@ -4,6 +4,8 @@ import { getReferralsRepository } from './repositories/referrals';
 import { getTestPricesRepository } from './repositories/testPrices';
 import { getRadiologyTemplatesRepository } from './repositories/radiologyTemplates';
 import { getCustomTestsRepository } from './repositories/customTests';
+import { getCommissionsRepository } from './repositories/commissions';
+import { buildCommissionReport } from './store/commissionReport';
 
 // Kept for the call sites in this file that have not moved behind a repository
 // yet. New code should use a repository from lib/repositories instead.
@@ -852,7 +854,6 @@ export interface CommissionEntry {
 }
 
 export const fetchCommissionReport = async (organizationId: string, from?: string, to?: string): Promise<CommissionEntry[]> => {
-  // Pull core arrays
   const [patients, prices, doctors, facilities] = await Promise.all([
     fetchPatients(organizationId),
     fetchTestPrices(organizationId),
@@ -860,61 +861,7 @@ export const fetchCommissionReport = async (organizationId: string, from?: strin
     fetchReferringFacilities(organizationId),
   ]);
 
-  // Filter patients with commission
-  let filteredPatients = patients.filter(p => p.commissionAssigned);
-  if (from) {
-    filteredPatients = filteredPatients.filter(p => p.registeredAt >= from);
-  }
-  if (to) {
-    filteredPatients = filteredPatients.filter(p => p.registeredAt <= to);
-  }
-
-  const priceMap = new Map(prices.map(p => [p.test_id || (p as any).testId, p.price]));
-  const doctorMap = new Map(doctors.map(d => [d.id, d]));
-  const facilityMap = new Map(facilities.map(f => [f.id, f]));
-
-  return filteredPatients.map((p: any) => {
-    const tests = (p.tests || []).map((t: any) => ({
-      testId: t.testId,
-      testName: t.testName,
-      price: t.price || priceMap.get(t.testId) || 0,
-      commissionType: t.commissionType || 'none',
-      commissionValue: t.commissionValue || 0,
-      commissionAmount: t.commissionAmount || 0,
-    }));
-    const totalAmount = tests.reduce((sum: number, t: any) => sum + t.price, 0);
-
-    let referrerName = p.referredBy || '—';
-    let referrerType: 'doctor' | 'facility' = 'doctor';
-
-    if (p.referringDoctorId && doctorMap.has(p.referringDoctorId)) {
-      referrerName = doctorMap.get(p.referringDoctorId)!.name;
-      referrerType = 'doctor';
-    } else if (p.referringFacilityId && facilityMap.has(p.referringFacilityId)) {
-      referrerName = facilityMap.get(p.referringFacilityId)!.name;
-      referrerType = 'facility';
-    } else if (p.referringFacility) {
-      referrerName = p.referringFacility;
-      referrerType = 'facility';
-    }
-
-    return {
-      patientId: p.id,
-      patientName: `${p.firstName} ${p.surname}`,
-      slipNumber: p.slipNumber,
-      registeredAt: p.registeredAt,
-      referrerName,
-      referrerType,
-      commissionType: 'varies',
-      commissionValue: 0,
-      tests,
-      totalAmount,
-      commissionAmount: p.commissionAmount || 0,
-      commissionStatus: p.commissionStatus || 'pending',
-      commissionPaidAt: p.commissionPaidAt,
-      commissionPaidNotes: p.commissionPaidNotes,
-    };
-  });
+  return buildCommissionReport(patients, prices, doctors, facilities, { from, to });
 };
 
 // ─── PATIENT (updated) with referring_doctor_id support ───────────────────────
@@ -1087,51 +1034,11 @@ export const updatePatient = async (id: number | string, updates: Partial<Patien
   if (error) throw error;
 };
 
-export const markCommissionPaid = async (patientId: number | string, notes?: string): Promise<void> => {
-  if (IS_LOCAL_MODE) {
-    const res = await fetch('/api/patients', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'markCommissionPaid', patientId, notes })
-    });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Failed to mark commission paid locally');
-    }
-    return;
-  }
+export const markCommissionPaid = async (patientId: number | string, notes?: string): Promise<void> =>
+  getCommissionsRepository().markPaid(patientId, notes);
 
-  const supabase = createClient();
-  const { error } = await supabase.from('patients').update({
-    commission_status: 'paid',
-    commission_paid_at: new Date().toISOString(),
-    commission_paid_notes: notes || null,
-  }).eq('id', patientId);
-  if (error) throw error;
-};
-
-export const markCommissionsUnpaid = async (patientIds: (number | string)[]): Promise<void> => {
-  if (IS_LOCAL_MODE) {
-    const res = await fetch('/api/patients', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'markCommissionsUnpaid', patientIds })
-    });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Failed to mark commissions unpaid locally');
-    }
-    return;
-  }
-
-  const supabase = createClient();
-  const { error } = await supabase.from('patients').update({
-    commission_status: 'pending',
-    commission_paid_at: null,
-    commission_paid_notes: null,
-  }).in('id', patientIds);
-  if (error) throw error;
-};
+export const markCommissionsUnpaid = async (patientIds: (number | string)[]): Promise<void> =>
+  getCommissionsRepository().markUnpaid(patientIds);
 
 // ─── RADIOLOGY TEMPLATES ──────────────────────────────────────────────────────
 

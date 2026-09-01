@@ -6,12 +6,13 @@ vi.mock('@/lib/supabase', () => ({ createClient: () => createClientMock() }));
 import { getTestPricesRepository, localTestPricesRepository, cloudTestPricesRepository } from './testPrices';
 import { getCustomTestsRepository, localCustomTestsRepository, cloudCustomTestsRepository } from './customTests';
 import { getRadiologyTemplatesRepository, localRadiologyTemplatesRepository, cloudRadiologyTemplatesRepository } from './radiologyTemplates';
+import { getCommissionsRepository, localCommissionsRepository, cloudCommissionsRepository } from './commissions';
 import type { Test } from '@/lib/store';
 
 const supabaseStub = (result: { data?: any; error?: any } = { data: [], error: null }) => {
   const calls: Array<{ method: string; args: any[] }> = [];
   const builder: any = { then: (resolve: any) => resolve(result) };
-  for (const method of ['from', 'select', 'eq', 'order', 'insert', 'update', 'upsert', 'delete', 'single']) {
+  for (const method of ['from', 'select', 'eq', 'in', 'order', 'insert', 'update', 'upsert', 'delete', 'single']) {
     builder[method] = (...args: any[]) => { calls.push({ method, args }); return builder; };
   }
   return { client: { from: builder.from }, argsFor: (m: string) => calls.find(c => c.method === m)?.args };
@@ -227,5 +228,62 @@ describe('Radiology templates repository', () => {
 
     await expect(localRadiologyTemplatesRepository.add({} as any))
       .rejects.toThrow('Template key already exists');
+  });
+});
+
+describe('Commissions repository', () => {
+  it('picks an implementation by runtime mode', () => {
+    expect(getCommissionsRepository('local')).toBe(localCommissionsRepository);
+    expect(getCommissionsRepository('cloud')).toBe(cloudCommissionsRepository);
+  });
+
+  it('settles one visit locally', async () => {
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({}) });
+
+    await localCommissionsRepository.markPaid(42, 'Bank transfer');
+
+    expect(bodyOf()).toEqual({ action: 'markCommissionPaid', patientId: 42, notes: 'Bank transfer' });
+  });
+
+  it('stamps the settlement time on the cloud write', async () => {
+    const stub = supabaseStub({ data: null, error: null });
+    createClientMock.mockReturnValue(stub.client);
+
+    await cloudCommissionsRepository.markPaid(42, 'Cash');
+
+    const [update] = stub.argsFor('update')!;
+    expect(update.commission_status).toBe('paid');
+    expect(update.commission_paid_notes).toBe('Cash');
+    expect(typeof update.commission_paid_at).toBe('string');
+  });
+
+  it('stores a null note rather than undefined when none is given', async () => {
+    const stub = supabaseStub({ data: null, error: null });
+    createClientMock.mockReturnValue(stub.client);
+
+    await cloudCommissionsRepository.markPaid(42);
+
+    expect(stub.argsFor('update')![0].commission_paid_notes).toBeNull();
+  });
+
+  // Reversing must clear the previous payment's details, or a re-settled
+  // commission would inherit them.
+  it('clears the payment details when a settlement is reversed', async () => {
+    const stub = supabaseStub({ data: null, error: null });
+    createClientMock.mockReturnValue(stub.client);
+
+    await cloudCommissionsRepository.markUnpaid([1, 2]);
+
+    expect(stub.argsFor('update')![0]).toEqual({
+      commission_status: 'pending', commission_paid_at: null, commission_paid_notes: null,
+    });
+  });
+
+  it('reverses a whole batch in one write', async () => {
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({}) });
+
+    await localCommissionsRepository.markUnpaid([1, 2, 3]);
+
+    expect(bodyOf()).toEqual({ action: 'markCommissionsUnpaid', patientIds: [1, 2, 3] });
   });
 });
