@@ -45,8 +45,6 @@ export default function ReceptionPage() {
   const [dateFilter, setDateFilter] = useState<'today' | 'seven_days' | 'thirty_days'>('today');
   const [showSlipModal, setShowSlipModal] = useState<Patient | null>(null);
   const [showResultModal, setShowResultModal] = useState<Patient | null>(null);
-  const [searchQ, setSearchQ] = useState('');
-  const [deptFilter, setDeptFilter] = useState<'all' | 'lab' | 'radiology'>('all');
   const [saving, setSaving] = useState(false);
 
 
@@ -65,7 +63,6 @@ export default function ReceptionPage() {
   // Modals & search
   const [showBillingAccountModal, setShowBillingAccountModal] = useState(false);
   const [showLedgerModal, setShowLedgerModal] = useState<BillingAccount | null>(null);
-  const [showLogExpenseModal, setShowLogExpenseModal] = useState(false);
   const [billingSearchQuery, setBillingSearchQuery] = useState('');
   const [billingTransactions, setBillingTransactions] = useState<BillingLedgerTransaction[]>([]);
   const [loadingLedger, setLoadingLedger] = useState(false);
@@ -80,16 +77,6 @@ export default function ReceptionPage() {
     paymentMethod: 'cash',
     ownerId: '',
     linkedIds: [] as (number | string)[]
-  });
-
-  const [expenseForm, setExpenseForm] = useState({
-    patientId: '',
-    department: 'pharmacy',
-    receiptNumber: '',
-    amount: '',
-    paymentMethod: 'cash',
-    description: '',
-    billingAccountId: ''
   });
 
   const [isOwnerNew, setIsOwnerNew] = useState(false);
@@ -298,43 +285,6 @@ export default function ReceptionPage() {
       setDepositing(false);
     }
   };
-
-  const handleLogExpenseSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!expenseForm.patientId) return alert('Please select a patient');
-    if (!expenseForm.receiptNumber.trim()) return alert('Please enter a receipt number');
-    const amt = parseFloat(expenseForm.amount);
-    if (isNaN(amt) || amt <= 0) return alert('Please enter a valid amount');
-
-    setSaving(true);
-    try {
-      const selectedPatient = patients.find(p => p.id === Number(expenseForm.patientId));
-      const bAccountId = selectedPatient?.billingAccountId || null;
-
-      const chargePayload = {
-        organizationId: organization?.id || '',
-        patientId: expenseForm.patientId,
-        billingAccountId: expenseForm.paymentMethod === 'wallet' ? bAccountId || undefined : undefined,
-        department: expenseForm.department,
-        receiptNumber: expenseForm.receiptNumber.trim(),
-        amount: amt,
-        paymentMethod: expenseForm.paymentMethod,
-        status: 'paid' as const,
-        description: expenseForm.description.trim() || undefined,
-        createdBy: profile?.full_name || 'Staff'
-      };
-
-      await logExternalCharge(chargePayload);
-      alert('Department charge logged successfully');
-      setShowLogExpenseModal(false);
-      refresh();
-    } catch (err: any) {
-      alert('Logging failed: ' + err.message);
-    } finally {
-      setSaving(false);
-    }
-  };
-
   // Load ledger transactions and reset workspace states when modal opens
   useEffect(() => {
     if (showLedgerModal) {
@@ -536,14 +486,6 @@ export default function ReceptionPage() {
   const resultsPatients = patients.filter(p => p.tests.some(t => t.status === 'completed') && filterByDate(p.registeredAt));
   const newResultsCount = resultsPatients.length;
 
-
-  const filtered = (tab === 'queue' ? pendingPatients : resultsPatients).filter(p => {
-    const q = searchQ.toLowerCase();
-    const pName = p.name || [p.firstName, p.middleName, p.surname].filter(Boolean).join(' ') || '';
-    const nameMatch = pName.toLowerCase().includes(q) || (p.slipNumber || '').toLowerCase().includes(q);
-    if (deptFilter === 'all') return nameMatch;
-    return nameMatch && p.tests.some(t => t.department === deptFilter);
-  });
 
   return (
     <div style={{ minHeight: '100vh', background: 'linear-gradient(180deg, #f5fbfa 0%, #f7f8fb 38%, #eef4f4 100%)', display: 'flex', flexDirection: 'column' }}>
