@@ -66,7 +66,18 @@ px tsc --noEmit\).
 - **Extraction Hazard**: When splitting a God Component, extractions done by script silently break in three ways TypeScript will only catch if props are typed: `useState` updater callbacks passed to a Zustand `Partial` setter (a no-op), calls to setters that no longer exist, and prop names dropped from a rewritten helper component (e.g. a `Field` that stops forwarding `actionNode`). Never type an extracted component's props as `any` — the props interface is what makes these fail loudly. Verify the extracted UI still renders every button and modal the original had.
 
 ## 6. Ongoing Refactoring Roadmap (Divide & Conquer)
-We are actively transitioning away from God Components (`ReceptionPage.tsx`, `DepartmentPage.tsx`) and Monolithic State (`lib/store.ts`). All future work must adhere to this phased strategy:
-- **Phase 1 (Active): Feature Extraction.** Pick specific tabs/areas of giant pages and extract them into `components/features/*`. Move all domain state into smaller Zustand slices.
-- **Phase 2 (Upcoming): Sync Abstraction.** Abstract the complex SQLite (Local Mode) vs Supabase (Cloud Mode) fetching/syncing logic behind clean repository interfaces so components do not dictate how to fetch or sync data.
-- **Phase 3 (Ongoing): Gradual Rollout.** Apply these patterns systematically across all modules before adding complex new features.
+We are transitioning away from God Components (`ReceptionPage.tsx`, `DepartmentPage.tsx`) and Monolithic State (`lib/store.ts`). All future work must adhere to this phased strategy:
+- **Phase 1 (Done for Reception): Feature Extraction.** Tabs and areas of giant pages become components under `components/features/*`, with domain state in small Zustand slices.
+- **Phase 2 (Done): Sync Abstraction.** SQLite (local hub) vs Supabase (cloud) lives behind repository interfaces in `lib/repositories/`. `lib/store.ts` no longer branches on runtime mode at all.
+- **Phase 3 (Next): Gradual Rollout.** `DepartmentPage.tsx` (Lab + Radiology) gets the Phase 1 treatment; then apply these patterns to any remaining module before adding complex new features.
+
+## 7. Data Access (Repositories)
+- **One place decides the back end.** `lib/runtimeMode.ts` resolves local vs cloud. Never re-derive it — several page components still carry a copy of that detection and are NOT interchangeable with it (they omit the `NODE_ENV` clause); move them here rather than copying again.
+- **Adding a data function**: add it to the interface in `lib/repositories/<domain>.ts` and implement it for both back ends. Do NOT add an `if (isLocalMode())` branch to a component or to `lib/store.ts`.
+- **Each implementation owns its own encoding.** SQLite and Postgres genuinely differ (JSON strings vs jsonb, 0/1 vs booleans). Do not build one shared payload and patch it apart per back end.
+- **Business rules stay above the repository.** A rule that is the same on both back ends (e.g. a built-in catalogue entry is deactivated rather than deleted) belongs in `lib/store.ts` or a pure module, not duplicated into both implementations.
+- **Reads and writes fail differently, on purpose.** Reads log and return `[]`/`null` so a screen degrades rather than crashes; writes throw so the user is told. Preserve that asymmetry.
+- **Money-moving changes are characterisation-tested first.** Write tests against the current behaviour through the `lib/store.ts` API, watch them pass, then change the code and re-run them unchanged. See `lib/repositories/billing.characterization.test.ts`.
+
+### Known limitation: non-atomic wallet writes
+`billing.logExternalCharge` and `patients.addWithReferral` each debit a wallet and then write further rows without a transaction. A failure mid-sequence leaves the wallet debited with no matching record. Fixing this needs a Postgres function so the debit and inserts commit together. Do not paper over it with retries.
