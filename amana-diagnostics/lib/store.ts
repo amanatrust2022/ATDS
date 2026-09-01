@@ -1,14 +1,10 @@
 import { createClient } from './supabase';
+import { isLocalMode } from './runtimeMode';
+import { getReferralsRepository } from './repositories/referrals';
 
-const IS_LOCAL_MODE = typeof window !== 'undefined'
-  ? (localStorage.getItem('amana_local_mode') === null
-      ? (window.location.hostname === 'localhost' || 
-         window.location.hostname === '127.0.0.1' || 
-         window.location.hostname.startsWith('192.168.') || 
-         window.location.hostname.startsWith('10.') || 
-         window.location.hostname.startsWith('172.'))
-      : localStorage.getItem('amana_local_mode') === 'true')
-  : (process.env.NEXT_PUBLIC_LOCAL_SERVER_MODE === 'true' || process.env.NODE_ENV === 'development');
+// Kept for the call sites in this file that have not moved behind a repository
+// yet. New code should use a repository from lib/repositories instead.
+const IS_LOCAL_MODE = isLocalMode();
 
 export type Department = 'lab' | 'radiology';
 export type TestStatus = 'pending' | 'in_progress' | 'completed';
@@ -777,82 +773,17 @@ export interface ReferringFacility {
   created_at: string;
 }
 
-export const fetchReferringFacilities = async (organizationId: string): Promise<ReferringFacility[]> => {
-  if (IS_LOCAL_MODE) {
-    const res = await fetch(`/api/referrals?type=facilities&organizationId=${organizationId}`);
-    return res.json();
-  }
+export const fetchReferringFacilities = async (organizationId: string): Promise<ReferringFacility[]> =>
+  getReferralsRepository().listFacilities(organizationId);
 
-  const supabase = createClient();
-  const { data, error } = await supabase
-    .from('referring_facilities')
-    .select('*')
-    .eq('organization_id', organizationId)
-    .order('name', { ascending: true });
-  if (error) { console.error('fetchReferringFacilities error:', error); return []; }
-  return data || [];
-};
+export const addReferringFacility = async (facility: Omit<ReferringFacility, 'id' | 'created_at'>, organizationId: string): Promise<ReferringFacility> =>
+  getReferralsRepository().addFacility(facility, organizationId);
 
-export const addReferringFacility = async (facility: Omit<ReferringFacility, 'id' | 'created_at'>, organizationId: string): Promise<ReferringFacility> => {
-  if (IS_LOCAL_MODE) {
-    const res = await fetch('/api/referrals', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ target: 'facility', action: 'add', facility, organizationId })
-    });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Failed to add referring facility locally');
-    }
-    return res.json();
-  }
+export const updateReferringFacility = async (id: string, updates: Partial<ReferringFacility>): Promise<void> =>
+  getReferralsRepository().updateFacility(id, updates);
 
-  const supabase = createClient();
-  const { data, error } = await supabase
-    .from('referring_facilities')
-    .insert([{ ...facility, organization_id: organizationId }])
-    .select().single();
-  if (error) throw error;
-  return data;
-};
-
-export const updateReferringFacility = async (id: string, updates: Partial<ReferringFacility>): Promise<void> => {
-  if (IS_LOCAL_MODE) {
-    const res = await fetch('/api/referrals', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ target: 'facility', action: 'update', id, updates })
-    });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Failed to update referring facility locally');
-    }
-    return;
-  }
-
-  const supabase = createClient();
-  const { error } = await supabase.from('referring_facilities').update(updates).eq('id', id);
-  if (error) throw error;
-};
-
-export const deleteReferringFacility = async (id: string): Promise<void> => {
-  if (IS_LOCAL_MODE) {
-    const res = await fetch('/api/referrals', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ target: 'facility', action: 'delete', id })
-    });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Failed to delete referring facility locally');
-    }
-    return;
-  }
-
-  const supabase = createClient();
-  const { error } = await supabase.from('referring_facilities').delete().eq('id', id);
-  if (error) throw error;
-};
+export const deleteReferringFacility = async (id: string): Promise<void> =>
+  getReferralsRepository().deleteFacility(id);
 
 // ─── REFERRING DOCTORS ────────────────────────────────────────────────────────
 
@@ -870,84 +801,17 @@ export interface ReferringDoctor {
   created_at: string;
 }
 
-export const fetchReferringDoctors = async (organizationId: string): Promise<ReferringDoctor[]> => {
-  if (IS_LOCAL_MODE) {
-    const res = await fetch(`/api/referrals?type=doctors&organizationId=${organizationId}`);
-    return res.json();
-  }
+export const fetchReferringDoctors = async (organizationId: string): Promise<ReferringDoctor[]> =>
+  getReferralsRepository().listDoctors(organizationId);
 
-  const supabase = createClient();
-  const { data, error } = await supabase
-    .from('referring_doctors')
-    .select('*, referring_facilities(name)')
-    .eq('organization_id', organizationId)
-    .order('name', { ascending: true });
-  if (error) { console.error('fetchReferringDoctors error:', error); return []; }
-  return (data || []).map((d: any) => ({ ...d, facility_name: d.referring_facilities?.name }));
-};
+export const addReferringDoctor = async (doctor: Omit<ReferringDoctor, 'id' | 'created_at' | 'facility_name'>, organizationId: string): Promise<ReferringDoctor> =>
+  getReferralsRepository().addDoctor(doctor, organizationId);
 
-export const addReferringDoctor = async (doctor: Omit<ReferringDoctor, 'id' | 'created_at' | 'facility_name'>, organizationId: string): Promise<ReferringDoctor> => {
-  if (IS_LOCAL_MODE) {
-    const res = await fetch('/api/referrals', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ target: 'doctor', action: 'add', doctor, organizationId })
-    });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Failed to add referring doctor locally');
-    }
-    return res.json();
-  }
+export const updateReferringDoctor = async (id: string, updates: Partial<ReferringDoctor>): Promise<void> =>
+  getReferralsRepository().updateDoctor(id, updates);
 
-  const supabase = createClient();
-  const { facility_name, ...rest } = doctor as any;
-  const { data, error } = await supabase
-    .from('referring_doctors')
-    .insert([{ ...rest, organization_id: organizationId }])
-    .select().single();
-  if (error) throw error;
-  return data;
-};
-
-export const updateReferringDoctor = async (id: string, updates: Partial<ReferringDoctor>): Promise<void> => {
-  if (IS_LOCAL_MODE) {
-    const res = await fetch('/api/referrals', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ target: 'doctor', action: 'update', id, updates })
-    });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Failed to update referring doctor locally');
-    }
-    return;
-  }
-
-  const supabase = createClient();
-  const { facility_name, ...rest } = updates as any;
-  const { error } = await supabase.from('referring_doctors').update(rest).eq('id', id);
-  if (error) throw error;
-};
-
-export const deleteReferringDoctor = async (id: string): Promise<void> => {
-  if (IS_LOCAL_MODE) {
-    const res = await fetch('/api/referrals', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ target: 'doctor', action: 'delete', id })
-    });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || 'Failed to delete referring doctor locally');
-    }
-    return;
-  }
-
-  const supabase = createClient();
-  const { error } = await supabase.from('referring_doctors').delete().eq('id', id);
-  if (error) throw error;
-};
+export const deleteReferringDoctor = async (id: string): Promise<void> =>
+  getReferralsRepository().deleteDoctor(id);
 
 export interface TestPrice {
   id?: string;
