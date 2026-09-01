@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { filterPatientsByDate, filterPatientsBySearchAndDept } from './useQueueStore';
-import { Patient } from './index';
+import { Patient } from '@/lib/store';
 
 describe('useQueueStore filters', () => {
   beforeEach(() => {

@@ -8,7 +8,9 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./vitest.setup.ts'],
-    pool: 'forks'
+    pool: 'forks',
+    // Build output contains stale copies of source tests — never collect from it
+    exclude: ['**/node_modules/**', '**/.next/**', '**/.open-next/**', '**/dist/**', '**/src-tauri/**']
   },
   resolve: {
     alias: {

@@ -1,5 +1,4 @@
-import test from 'node:test';
-import assert from 'node:assert/strict';
+import { test, expect } from 'vitest';
 import { buildFallbackProfile, createOrganizationWithFallback, upsertProfileForUser } from './workspace.js';
 
 test('upserts a profile row for the authenticated user', async () => {
@@ -30,9 +29,9 @@ test('upserts a profile row for the authenticated user', async () => {
     email: 'ada@example.com',
   });
 
-  assert.equal(calls[0].payload.id, 'user-1');
-  assert.equal(calls[0].options.onConflict, 'id');
-  assert.equal(calls[0].payload.organization_id, 'org-1');
+  expect(calls[0].payload.id).toBe('user-1');
+  expect(calls[0].options.onConflict).toBe('id');
+  expect(calls[0].payload.organization_id).toBe('org-1');
 });
 
 test('reuses an existing organization when the slug already exists', async () => {
@@ -66,9 +65,9 @@ test('reuses an existing organization when the slug already exists', async () =>
     letterheadLine2: '',
   });
 
-  assert.equal(result.organization.id, 'org-123');
-  assert.equal(result.created, false);
-  assert.deepEqual(calls, ['rpc', 'select:organizations']);
+  expect(result.organization.id).toBe('org-123');
+  expect(result.created).toBe(false);
+  expect(calls).toEqual(['rpc', 'select:organizations']);
 });
 
 test('creates a new organization when no matching slug exists', async () => {
@@ -127,9 +126,9 @@ test('creates a new organization when no matching slug exists', async () => {
     letterheadLine2: '',
   }, { userId: 'user-1' });
 
-  assert.equal(result.organization.id, 'org-456');
-  assert.equal(result.created, true);
-  assert.deepEqual(calls, ['rpc', 'select:organizations', 'insert:organizations', 'update:profiles']);
+  expect(result.organization.id).toBe('org-456');
+  expect(result.created).toBe(true);
+  expect(calls).toEqual(['rpc', 'select:organizations', 'insert:organizations', 'update:profiles']);
 });
 
 test('builds a fallback profile payload from auth metadata when no profile row exists', () => {
@@ -143,7 +142,7 @@ test('builds a fallback profile payload from auth metadata when no profile row e
     },
   });
 
-  assert.deepEqual(profile, {
+  expect(profile).toEqual({
     id: 'user-1',
     email: 'ada@example.com',
     full_name: 'Ada Lovelace',
@@ -180,9 +179,9 @@ test('falls back to the server profile endpoint when direct Supabase upsert is b
     email: 'grace@example.com',
   });
 
-  assert.deepEqual(result, { id: 'user-2' });
-  assert.equal(calls.length, 1);
-  assert.match(calls[0].url, /\/api\/auth\/profile$/);
+  expect(result).toEqual({ id: 'user-2' });
+  expect(calls.length).toBe(1);
+  expect(calls[0].url).toMatch(/\/api\/auth\/profile$/);
 
   if (originalWindow === undefined) {
     delete globalThis.window;

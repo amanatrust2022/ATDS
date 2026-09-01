@@ -8,6 +8,7 @@ import {
 import { useRegistrationStore } from '@/lib/store/useRegistrationStore';
 import { Patient, PatientProfile, ReferringDoctor, ReferringFacility, TestPrice, Test, BillingAccount } from '@/lib/store';
 import { generateSlipNumber, addPatientWithReferral, addReferringDoctor, addReferringFacility, fetchReferringDoctors, fetchReferringFacilities } from '@/lib/store';
+import type { Organization } from '@/components/AuthProvider';
 
 const inputStyle = (error?: boolean) => ({
   width: '100%', padding: '0.65rem 1rem', borderRadius: 'var(--radius)',
@@ -18,21 +19,38 @@ const inputStyle = (error?: boolean) => ({
 const closeBtn = { background: 'rgba(255,255,255,0.1)', color: 'white', border: 'none', padding: '0.4rem', borderRadius: 'var(--radius)', cursor: 'pointer', display: 'flex' };
 const dropItemStyle = { padding: '0.65rem 1rem', cursor: 'pointer', borderBottom: '1px solid var(--gray-100)', transition: 'background 0.15s' };
 
-function Field({ label, children, error }: any) {
+function Field({ label, children, error, actionNode }: { label: string; children: React.ReactNode; error?: string; actionNode?: React.ReactNode }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-      <label style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--gray-600)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</label>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <label style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--gray-600)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</label>
+        {actionNode}
+      </div>
       {children}
       {error && <span style={{ color: 'var(--red)', fontSize: '0.7rem' }}>{error}</span>}
     </div>
   );
 }
 
-export default function RegistrationTab({ 
+interface RegistrationTabProps {
+  patients: Patient[];
+  patientProfiles: PatientProfile[];
+  doctors: ReferringDoctor[];
+  setDoctors: React.Dispatch<React.SetStateAction<ReferringDoctor[]>>;
+  facilities: ReferringFacility[];
+  setFacilities: React.Dispatch<React.SetStateAction<ReferringFacility[]>>;
+  testPrices: TestPrice[];
+  catalogue: Test[];
+  billingAccounts: BillingAccount[];
+  organization: Organization | null;
+  setShowSlipModal: React.Dispatch<React.SetStateAction<Patient | null>>;
+}
+
+export default function RegistrationTab({
   patients, patientProfiles, doctors, setDoctors, facilities, setFacilities,
   testPrices, catalogue, billingAccounts, organization,
   setShowSlipModal
-}: any) {
+}: RegistrationTabProps) {
   // Local state that wasn't moved to store
   const [patientSearchQuery, setPatientSearchQuery] = useState('');
   const [showPatientSearchDrop, setShowPatientSearchDrop] = useState(false);
@@ -67,10 +85,10 @@ export default function RegistrationTab({
   const store = useRegistrationStore();
   const { form, setForm, selectedTests, addTest, removeTest, clearTests, discountType, setDiscount, discountValue, paymentMethod, setPaymentMethod, paidAmount, setPaidAmount } = store;
 
-  const getTestById = (id: string) => catalogue.find((t: any) => t.id === id);
+  const getTestById = (id: string) => catalogue.find(t => t.id === id);
 
   // Filter logic
-  const filteredTests = catalogue.filter((test: any) => {
+  const filteredTests = catalogue.filter(test => {
     const q = testSearch.trim().toLowerCase();
     if (!q) return true;
     return [test.name, test.specimen, test.department, test.category].join(' ').toLowerCase().includes(q);
@@ -175,13 +193,13 @@ export default function RegistrationTab({
       setDoctors(updatedDocs.filter(d => d.is_active));
       setSelectedDoctorId(doc.id);
       setDoctorSearch('');
-      setForm(prev => ({ ...prev, referredBy: `Dr. ${doc.name}` }));
+      setForm({ referredBy: `Dr. ${doc.name}` });
 
       if (doc.facility_id) {
         setSelectedFacilityId(doc.facility_id);
         const fac = facilities.find(f => f.id === doc.facility_id);
         if (fac) {
-          setForm(prev => ({ ...prev, referringFacility: fac.name }));
+          setForm({ referringFacility: fac.name });
         }
       }
 
@@ -218,7 +236,7 @@ export default function RegistrationTab({
       setFacilities(updatedFacs.filter(f => f.is_active));
       setSelectedFacilityId(fac.id);
       setFacilitySearch('');
-      setForm(prev => ({ ...prev, referringFacility: fac.name }));
+      setForm({ referringFacility: fac.name });
 
       setShowQuickFacility(false);
     } catch (err: any) {
@@ -588,7 +606,7 @@ export default function RegistrationTab({
                               setSelectedDoctorId('none');
                               setDoctorSearch('');
                               setShowDoctorDrop(false);
-                              setForm(prev => ({ ...prev, referredBy: 'Not referred by anyone', referringFacility: 'None / Walk-in' }));
+                              setForm({ referredBy: 'Not referred by anyone', referringFacility: 'None / Walk-in' });
                               setSelectedFacilityId('none');
                               setFacilitySearch('');
                             }}
@@ -661,7 +679,7 @@ export default function RegistrationTab({
                               setSelectedFacilityId('none');
                               setFacilitySearch('');
                               setShowFacilityDrop(false);
-                              setForm(prev => ({ ...prev, referringFacility: 'None / Walk-in' }));
+                              setForm({ referringFacility: 'None / Walk-in' });
                             }}
                             style={{ ...dropItemStyle, borderTop: '1px solid var(--gray-200)', background: '#f8fafc', display: 'flex', flexDirection: 'column', gap: '0.05rem' }}
                             onMouseEnter={e => e.currentTarget.style.background = 'var(--gray-100)'}
@@ -891,7 +909,7 @@ export default function RegistrationTab({
                           style={{ ...inputStyle(false), padding: '0.35rem 0.5rem', fontSize: '0.75rem' }}
                           placeholder={discountType === 'percentage' ? 'e.g. 10' : 'e.g. 1000'}
                           value={discountValue}
-                          onChange={e => setDiscountValue(e.target.value)}
+                          onChange={e => setDiscount(discountType, e.target.value)}
                         />
                       </div>
                     )}
