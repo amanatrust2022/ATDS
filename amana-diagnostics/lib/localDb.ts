@@ -410,3 +410,36 @@ export function queueSync(db: any, tableName: string, action: 'INSERT' | 'UPDATE
   `);
   insertStmt.run(tableName, action, recordId, JSON.stringify(payload), Date.now());
 }
+
+/**
+ * Runs `fn` inside a SQLite transaction, rolling back if it throws.
+ *
+ * BEGIN IMMEDIATE takes the write lock straight away, so two concurrent
+ * wallet charges serialise instead of both reading the same balance — the
+ * SQLite counterpart of SELECT ... FOR UPDATE on Postgres.
+ *
+ * `fn` must not return early past the COMMIT; throw instead.
+ */
+export function inTransaction<T>(db: any, fn: () => T): T {
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    const result = fn();
+    db.exec('COMMIT');
+    return result;
+  } catch (err) {
+    try {
+      db.exec('ROLLBACK');
+    } catch {
+      // A rollback failure must not mask the error that caused it.
+    }
+    throw err;
+  }
+}
+
+/** An error carrying the HTTP status an API route should answer with. */
+export class HttpError extends Error {
+  constructor(message: string, public status: number) {
+    super(message);
+    this.name = 'HttpError';
+  }
+}

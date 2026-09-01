@@ -36,6 +36,33 @@ export interface BillingRepository {
 
 const ENDPOINT = '/api/billing';
 
+/**
+ * True when the failure is "this function is not in the database", rather than
+ * a real error from inside it. PostgREST answers PGRST202 when the name is not
+ * in its schema cache; Postgres answers 42883 for an undefined function.
+ */
+const isMissingFunction = (error: { code?: string; message?: string }): boolean =>
+  error.code === 'PGRST202' ||
+  error.code === '42883' ||
+  /could not find the function|schema cache/i.test(error.message || '');
+
+/**
+ * The function reports a shortfall as `INSUFFICIENT_FUNDS:<available>` so the
+ * amount can be formatted here, keeping the message identical to the one the
+ * client produced before the check moved into the database.
+ */
+const toBillingError = (error: { message?: string }): Error => {
+  const shortfall = /INSUFFICIENT_FUNDS:([\d.]+)/.exec(error.message || '');
+  if (shortfall) {
+    const available = Number(shortfall[1]);
+    return new Error(`Insufficient wallet balance. Available credit: ₦${available.toLocaleString('en-NG')}`);
+  }
+  if (/BILLING_ACCOUNT_NOT_FOUND/.test(error.message || '')) {
+    return new Error('Billing account not found');
+  }
+  return new Error(error.message || 'Failed to log external charge');
+};
+
 // ─── LOCAL (on-premise hub) ───────────────────────────────────────────────────
 
 export const localBillingRepository: BillingRepository = {
@@ -106,7 +133,16 @@ export const localBillingRepository: BillingRepository = {
 
 // ─── CLOUD (Supabase) ─────────────────────────────────────────────────────────
 
-export const cloudBillingRepository: BillingRepository = {
+/** The fallback write path is not part of the interface; only this implementation has one. */
+type CloudBillingRepository = BillingRepository & {
+  logExternalChargeSequentially(
+    charge: Omit<ExternalDepartmentCharge, 'id' | 'createdAt'>,
+    chargeId: string,
+    now: string,
+  ): Promise<void>;
+};
+
+export const cloudBillingRepository: CloudBillingRepository = {
   async listAccounts(organizationId) {
     const supabase = createClient();
     const { data, error } = await supabase
@@ -205,15 +241,76 @@ export const cloudBillingRepository: BillingRepository = {
   },
 
   /**
-   * NOTE: the wallet debit, its ledger entry and the charge row are three
-   * separate writes with no transaction around them. A failure between them
-   * leaves the wallet debited without a matching record. Making this atomic
-   * needs a Postgres function; the behaviour is preserved here as-is.
+   * Debits the wallet and records the charge in one transaction, via the
+   * `log_external_department_charge` Postgres function (supabase_wallet_atomicity.sql).
+   *
+   * If that function is not deployed yet, falls back to the previous sequential
+   * writes so an app release cannot outrun the migration. The fallback is NOT
+   * atomic — see `logExternalChargeSequentially`.
    */
   async logExternalCharge(charge) {
     const supabase = createClient();
     const chargeId = crypto.randomUUID();
     const now = new Date().toISOString();
+
+    const chargeRow = {
+      id: chargeId,
+      organization_id: charge.organizationId,
+      patient_id: charge.patientId,
+      billing_account_id: charge.paymentMethod === 'wallet' ? charge.billingAccountId : null,
+      department: charge.department,
+      receipt_number: charge.receiptNumber,
+      amount: charge.amount,
+      payment_method: charge.paymentMethod,
+      status: charge.status || 'paid',
+      description: charge.description || null,
+      created_by: charge.createdBy,
+      created_at: now,
+    };
+
+    const ledgerRow = {
+      id: crypto.randomUUID(),
+      organization_id: charge.organizationId,
+      billing_account_id: charge.billingAccountId,
+      patient_id: charge.patientId,
+      type: 'charge',
+      amount: -charge.amount,
+      description: `${charge.department.toUpperCase()} Bill - Ref: ${charge.receiptNumber}`,
+      reference_id: charge.receiptNumber,
+      payment_method: 'wallet',
+      created_by: charge.createdBy,
+      created_at: now,
+    };
+
+    const { error } = await supabase.rpc('log_external_department_charge', {
+      p_charge: chargeRow,
+      p_ledger: ledgerRow,
+    });
+
+    if (!error) return;
+
+    if (isMissingFunction(error)) {
+      console.warn(
+        '[billing] log_external_department_charge is not deployed; falling back to ' +
+        'non-atomic writes. Apply supabase_wallet_atomicity.sql to fix this.',
+      );
+      return cloudBillingRepository.logExternalChargeSequentially(charge, chargeId, now);
+    }
+
+    throw toBillingError(error);
+  },
+
+  /**
+   * The pre-atomicity write path, kept only as the fallback for a database
+   * where the function has not been applied yet. A failure part-way through
+   * leaves the wallet debited with no record of why.
+   */
+  async logExternalChargeSequentially(
+    charge: Omit<ExternalDepartmentCharge, 'id' | 'createdAt'>,
+    chargeId: string,
+    now: string,
+  ) {
+    const supabase = createClient();
 
     if (charge.paymentMethod === 'wallet' && charge.billingAccountId) {
       const { data: acc, error: accErr } = await supabase

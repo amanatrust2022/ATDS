@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getDb, queueSync } from '@/lib/localDb';
+import { getDb, queueSync, inTransaction, HttpError } from '@/lib/localDb';
 
 export async function GET(request: Request) {
   try {
@@ -294,21 +294,27 @@ if (action === 'logExternalCharge') {
       const { charge } = body;
       const chargeId = crypto.randomUUID();
 
+      // The debit, its ledger entry and the charge row must all land or none of
+      // them: a failure part-way through would leave the wallet debited with
+      // nothing recording why. Throw rather than return early inside here, or
+      // the transaction is left open.
+      inTransaction(db, () => {
       // If paid via wallet, check limit and deduct balance
       if (charge.paymentMethod === 'wallet' && charge.billingAccountId) {
         // Fetch current account
         const accStmt = db.prepare(`SELECT balance, credit_limit FROM billing_accounts WHERE id = ?`);
         const acc = accStmt.get(charge.billingAccountId) as { balance: number; credit_limit: number } | undefined;
-        if (!acc) return NextResponse.json({ error: 'Billing account not found' }, { status: 404 });
+        if (!acc) throw new HttpError('Billing account not found', 404);
 
         const currentBalance = acc.balance || 0;
         const creditLimit = acc.credit_limit || 0;
         const chargeAmount = charge.amount;
 
         if (currentBalance + creditLimit < chargeAmount) {
-          return NextResponse.json({ 
-            error: `Insufficient wallet balance. Total available credit: ₦${(currentBalance + creditLimit).toLocaleString('en-NG')}` 
-          }, { status: 400 });
+          throw new HttpError(
+            `Insufficient wallet balance. Total available credit: ₦${(currentBalance + creditLimit).toLocaleString('en-NG')}`,
+            400,
+          );
         }
 
         const newBalance = currentBalance - chargeAmount;
@@ -404,6 +410,7 @@ if (action === 'logExternalCharge') {
         created_by: charge.createdBy || null,
         created_at: nowStr
       });
+      });
 
       return NextResponse.json({ success: true, id: chargeId });
     }
@@ -429,6 +436,11 @@ if (action === 'logExternalCharge') {
 
     return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
   } catch (error: any) {
+    // A rejected charge (insufficient funds, unknown account) is the caller's
+    // problem, not a server fault — keep its status so the UI can tell them.
+    if (error instanceof HttpError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     console.error('API POST /api/billing error:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

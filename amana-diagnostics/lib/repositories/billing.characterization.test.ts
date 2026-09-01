@@ -32,11 +32,16 @@ type Op = { table: string; method: string; args: any[] };
  * Supabase stub that answers each `.from()` chain with the next queued result and
  * records every operation, so a test can assert the order writes happened in.
  */
-const supabaseWith = (results: Array<{ data?: any; error?: any }> = []) => {
+const supabaseWith = (results: Array<{ data?: any; error?: any }> = [], rpcResult: { error?: any } = {}) => {
   const ops: Op[] = [];
+  const rpcCalls: Array<{ fn: string; args: any }> = [];
   let call = 0;
 
-  const client = {
+  const client: any = {
+    rpc(fn: string, args: any) {
+      rpcCalls.push({ fn, args });
+      return Promise.resolve({ data: null, error: rpcResult.error ?? null });
+    },
     from(table: string) {
       const result = results[call++] ?? { data: null, error: null };
       const builder: any = { then: (resolve: any) => resolve(result) };
@@ -50,12 +55,16 @@ const supabaseWith = (results: Array<{ data?: any; error?: any }> = []) => {
   return {
     client,
     ops,
+    rpcCalls,
     /** Args of the nth call of a method on a table, in the order they happened. */
     find: (table: string, method: string, nth = 0) =>
       ops.filter(o => o.table === table && o.method === method)[nth]?.args,
     sequence: () => ops.filter(o => ['insert', 'update'].includes(o.method)).map(o => `${o.method}:${o.table}`),
   };
 };
+
+/** The error PostgREST returns when a function is not in its schema cache. */
+const FUNCTION_MISSING = { code: 'PGRST202', message: 'Could not find the function public.log_external_department_charge' };
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -221,90 +230,177 @@ describe('Depositing into an account', () => {
   });
 });
 
+/**
+ * Charging a wallet now goes through the log_external_department_charge
+ * Postgres function so the debit and the rows explaining it commit together.
+ *
+ * The balance rules themselves (spend into the credit limit, refuse beyond it)
+ * moved into SQL and can no longer be asserted from JavaScript — see the VERIFY
+ * block at the foot of supabase_wallet_atomicity.sql, which exercises them
+ * against a real database. What is still asserted here is the payload the
+ * function receives, since a wrong payload is the failure this layer can cause,
+ * and the full rules are still covered on the fallback path below.
+ */
 describe('Charging a wallet for an outside department', () => {
-  it('debits the wallet, writes the ledger entry, then records the charge', async () => {
+  const walletCharge = {
+    organizationId: 'org-1', patientId: 42, billingAccountId: 'acc-1',
+    department: 'pharmacy', receiptNumber: 'R-1', amount: 2500,
+    paymentMethod: 'wallet', status: 'paid', createdBy: 'Reception',
+  };
+
+  it('hands the whole charge to the database in a single call', async () => {
+    const sb = supabaseWith();
+    createClientMock.mockReturnValue(sb.client);
+
+    await logExternalCharge(walletCharge as any);
+
+    expect(sb.rpcCalls).toHaveLength(1);
+    expect(sb.rpcCalls[0].fn).toBe('log_external_department_charge');
+    // Nothing is written directly any more; the function does it all.
+    expect(sb.sequence()).toEqual([]);
+  });
+
+  it('sends the charge row the function will insert', async () => {
+    const sb = supabaseWith();
+    createClientMock.mockReturnValue(sb.client);
+
+    await logExternalCharge(walletCharge as any);
+
+    expect(sb.rpcCalls[0].args.p_charge).toMatchObject({
+      organization_id: 'org-1', patient_id: 42, billing_account_id: 'acc-1',
+      department: 'pharmacy', receipt_number: 'R-1', amount: 2500,
+      payment_method: 'wallet', status: 'paid', created_by: 'Reception',
+    });
+  });
+
+  it('sends the ledger row as a negative amount describing the charge', async () => {
+    const sb = supabaseWith();
+    createClientMock.mockReturnValue(sb.client);
+
+    await logExternalCharge(walletCharge as any);
+
+    expect(sb.rpcCalls[0].args.p_ledger).toMatchObject({
+      type: 'charge', amount: -2500, reference_id: 'R-1',
+      payment_method: 'wallet', description: 'PHARMACY Bill - Ref: R-1',
+    });
+  });
+
+  it('does not attribute a cash charge to the wallet even when one is linked', async () => {
+    const sb = supabaseWith();
+    createClientMock.mockReturnValue(sb.client);
+
+    await logExternalCharge({ ...walletCharge, paymentMethod: 'cash' } as any);
+
+    expect(sb.rpcCalls[0].args.p_charge.billing_account_id).toBeNull();
+  });
+
+  it('defaults an unstated charge status to paid', async () => {
+    const sb = supabaseWith();
+    createClientMock.mockReturnValue(sb.client);
+
+    await logExternalCharge({ ...walletCharge, status: undefined } as any);
+
+    expect(sb.rpcCalls[0].args.p_charge.status).toBe('paid');
+  });
+
+  // The database reports the shortfall machine-readably; the wording the
+  // receptionist sees must not have changed.
+  it('reports a refused charge in the same words as before', async () => {
+    createClientMock.mockReturnValue(
+      supabaseWith([], { error: { message: 'INSUFFICIENT_FUNDS:1500' } }).client,
+    );
+
+    await expect(logExternalCharge(walletCharge as any))
+      .rejects.toThrow('Insufficient wallet balance. Available credit: ₦1,500');
+  });
+
+  it('reports an unknown account plainly', async () => {
+    createClientMock.mockReturnValue(
+      supabaseWith([], { error: { message: 'BILLING_ACCOUNT_NOT_FOUND' } }).client,
+    );
+
+    await expect(logExternalCharge(walletCharge as any)).rejects.toThrow('Billing account not found');
+  });
+
+  it('passes any other database failure through', async () => {
+    createClientMock.mockReturnValue(
+      supabaseWith([], { error: { message: 'deadlock detected' } }).client,
+    );
+
+    await expect(logExternalCharge(walletCharge as any)).rejects.toThrow('deadlock detected');
+  });
+});
+
+/**
+ * A release can reach a database where supabase_wallet_atomicity.sql has not
+ * been applied. The charge must still go through, non-atomically, rather than
+ * failing outright.
+ */
+describe('Charging when the database function is not deployed yet', () => {
+  const walletCharge = {
+    organizationId: 'org-1', patientId: 42, billingAccountId: 'acc-1',
+    department: 'pharmacy', receiptNumber: 'R-1', amount: 2500,
+    paymentMethod: 'wallet', status: 'paid', createdBy: 'Reception',
+  };
+
+  it('falls back to the sequential writes and warns', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const sb = supabaseWith([
       { data: { balance: 10000, credit_limit: 0 }, error: null }, // read wallet
       { data: null, error: null },                                // debit
       { data: null, error: null },                                // ledger
       { data: null, error: null },                                // charge row
-    ]);
+    ], { error: FUNCTION_MISSING });
     createClientMock.mockReturnValue(sb.client);
 
-    await logExternalCharge({
-      organizationId: 'org-1', patientId: 42, billingAccountId: 'acc-1',
-      department: 'pharmacy', receiptNumber: 'R-1', amount: 2500,
-      paymentMethod: 'wallet', status: 'paid', createdBy: 'Reception',
-    } as any);
+    await logExternalCharge(walletCharge as any);
 
     expect(sb.find('billing_accounts', 'update')![0]).toMatchObject({ balance: 7500 });
-
-    const [ledger] = sb.find('billing_ledger_transactions', 'insert')!;
-    expect(ledger[0]).toMatchObject({ type: 'charge', amount: -2500, reference_id: 'R-1' });
-    expect(ledger[0].description).toBe('PHARMACY Bill - Ref: R-1');
-
     expect(sb.sequence()).toEqual([
       'update:billing_accounts',
       'insert:billing_ledger_transactions',
       'insert:external_department_charges',
     ]);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('supabase_wallet_atomicity.sql'));
+
+    warn.mockRestore();
   });
 
-  it('spends into the credit limit when the balance alone is short', async () => {
+  it('still spends into the credit limit on the fallback path', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
     const sb = supabaseWith([
       { data: { balance: 1000, credit_limit: 5000 }, error: null },
       { data: null, error: null }, { data: null, error: null }, { data: null, error: null },
-    ]);
+    ], { error: FUNCTION_MISSING });
     createClientMock.mockReturnValue(sb.client);
 
-    await logExternalCharge({
-      organizationId: 'org-1', patientId: 42, billingAccountId: 'acc-1',
-      department: 'pharmacy', receiptNumber: 'R-2', amount: 3000,
-      paymentMethod: 'wallet', createdBy: 'Reception',
-    } as any);
+    await logExternalCharge({ ...walletCharge, amount: 3000 } as any);
 
-    // Balance is allowed to go negative, down to the credit limit.
     expect(sb.find('billing_accounts', 'update')![0].balance).toBe(-2000);
   });
 
-  it('refuses a charge beyond the balance plus credit limit, and writes nothing', async () => {
-    const sb = supabaseWith([{ data: { balance: 1000, credit_limit: 500 }, error: null }]);
+  it('still refuses an over-limit charge on the fallback path, writing nothing', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const sb = supabaseWith(
+      [{ data: { balance: 1000, credit_limit: 500 }, error: null }],
+      { error: FUNCTION_MISSING },
+    );
     createClientMock.mockReturnValue(sb.client);
 
-    await expect(logExternalCharge({
-      organizationId: 'org-1', patientId: 42, billingAccountId: 'acc-1',
-      department: 'pharmacy', receiptNumber: 'R-3', amount: 5000,
-      paymentMethod: 'wallet', createdBy: 'Reception',
-    } as any)).rejects.toThrow(/Insufficient wallet balance/);
+    await expect(logExternalCharge({ ...walletCharge, amount: 5000 } as any))
+      .rejects.toThrow(/Insufficient wallet balance/);
 
     expect(sb.sequence()).toEqual([]);
   });
 
-  it('records a cash charge without touching any wallet', async () => {
-    const sb = supabaseWith([{ data: null, error: null }]);
+  it('recognises the undefined-function error Postgres itself raises', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const sb = supabaseWith([{ data: null, error: null }], { error: { code: '42883', message: 'function does not exist' } });
     createClientMock.mockReturnValue(sb.client);
 
-    await logExternalCharge({
-      organizationId: 'org-1', patientId: 42, billingAccountId: 'acc-1',
-      department: 'pharmacy', receiptNumber: 'R-4', amount: 2500,
-      paymentMethod: 'cash', createdBy: 'Reception',
-    } as any);
+    await logExternalCharge({ ...walletCharge, paymentMethod: 'cash' } as any);
 
     expect(sb.sequence()).toEqual(['insert:external_department_charges']);
-    // A cash charge is not attributed to the wallet even if one is linked.
-    expect(sb.find('external_department_charges', 'insert')![0][0].billing_account_id).toBeNull();
-  });
-
-  it('defaults an unstated charge status to paid', async () => {
-    const sb = supabaseWith([{ data: null, error: null }]);
-    createClientMock.mockReturnValue(sb.client);
-
-    await logExternalCharge({
-      organizationId: 'org-1', patientId: 42, department: 'pharmacy',
-      receiptNumber: 'R-5', amount: 100, paymentMethod: 'cash', createdBy: 'R',
-    } as any);
-
-    expect(sb.find('external_department_charges', 'insert')![0][0].status).toBe('paid');
   });
 });
 
