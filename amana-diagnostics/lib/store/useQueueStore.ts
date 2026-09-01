@@ -1,8 +1,8 @@
 import { create } from 'zustand';
 import { Patient } from '@/lib/store';
 
-type DateFilter = 'today' | 'seven_days' | 'thirty_days';
-type DeptFilter = 'all' | 'lab' | 'radiology';
+export type DateFilter = 'today' | 'seven_days' | 'thirty_days';
+export type DeptFilter = 'all' | 'lab' | 'radiology';
 
 interface QueueState {
   searchQuery: string;
@@ -59,6 +59,20 @@ export const filterPatientsByDate = (patients: Patient[], filterType: DateFilter
     return true;
   });
 };
+
+/**
+ * Patients counted on the "Patient Queue" tab badge: anyone with work outstanding,
+ * within the currently selected date window.
+ */
+export const selectPendingPatients = (patients: Patient[], dateFilter: DateFilter) =>
+  filterPatientsByDate(patients.filter(p => p.tests.some(t => t.status !== 'completed')), dateFilter);
+
+/**
+ * Patients counted on the "Results Ready" tab badge and the header notification count:
+ * anyone with at least one completed test, within the currently selected date window.
+ */
+export const selectCompletedPatients = (patients: Patient[], dateFilter: DateFilter) =>
+  filterPatientsByDate(patients.filter(p => p.tests.some(t => t.status === 'completed')), dateFilter);
 
 export const filterPatientsBySearchAndDept = (
   patients: Patient[],

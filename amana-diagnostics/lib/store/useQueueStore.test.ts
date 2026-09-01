@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { filterPatientsByDate, filterPatientsBySearchAndDept } from './useQueueStore';
+import { filterPatientsByDate, filterPatientsBySearchAndDept, selectPendingPatients, selectCompletedPatients } from './useQueueStore';
 import { Patient } from '@/lib/store';
 
 describe('useQueueStore filters', () => {
@@ -102,5 +102,56 @@ describe('useQueueStore filters', () => {
       expect(result.length).toBe(1);
       expect(result[0].id).toBe(3);
     });
+  });
+});
+
+describe('Tab badge counts', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 6, 27, 12, 0, 0)); // July 27, 2026
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const patient = (id: number, daysAgo: number, statuses: string[]): Patient => ({
+    id,
+    name: `Patient ${id}`,
+    slipNumber: `SLIP-${id}`,
+    registeredAt: new Date(2026, 6, 27 - daysAgo, 10, 0, 0).toISOString(),
+    tests: statuses.map((status, i) => ({ testId: `t${i}`, testName: `Test ${i}`, department: 'lab', status })),
+  }) as unknown as Patient;
+
+  const today = patient(1, 0, ['pending']);
+  const tenDaysAgo = patient(2, 10, ['in_progress']);
+  const doneToday = patient(3, 0, ['completed']);
+  const doneTenDaysAgo = patient(4, 10, ['completed']);
+
+  const all = [today, tenDaysAgo, doneToday, doneTenDaysAgo];
+
+  // Regression: ReceptionPage held its own dateFilter state whose setter was never
+  // called, so the badges stayed pinned to 'today' while the lists widened.
+  it('counts only today when the window is today', () => {
+    expect(selectPendingPatients(all, 'today').map(p => p.id)).toEqual([1]);
+    expect(selectCompletedPatients(all, 'today').map(p => p.id)).toEqual([3]);
+  });
+
+  it('widens the pending count when the user widens the date window', () => {
+    expect(selectPendingPatients(all, 'thirty_days').map(p => p.id).sort()).toEqual([1, 2]);
+  });
+
+  it('widens the completed count when the user widens the date window', () => {
+    expect(selectCompletedPatients(all, 'thirty_days').map(p => p.id).sort()).toEqual([3, 4]);
+  });
+
+  it('counts a partly finished patient as both outstanding and having results', () => {
+    const partly = patient(5, 0, ['completed', 'pending']);
+    expect(selectPendingPatients([partly], 'today').map(p => p.id)).toEqual([5]);
+    expect(selectCompletedPatients([partly], 'today').map(p => p.id)).toEqual([5]);
+  });
+
+  it('leaves a fully completed patient out of the outstanding count', () => {
+    expect(selectPendingPatients([doneToday], 'today')).toEqual([]);
   });
 });

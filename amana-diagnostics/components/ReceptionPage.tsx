@@ -11,6 +11,7 @@ import RegistrationTab from './features/registration/RegistrationTab';
 import WalletTab from './features/wallet/WalletTab';
 import { QueueTab } from './features/queue/QueueTab';
 import { ResultsTab } from './features/queue/ResultsTab';
+import { useQueueStore, selectPendingPatients, selectCompletedPatients } from '@/lib/store/useQueueStore';
 import {
   Patient, PatientTest, TEST_CATALOGUE, fetchPatients, generateSlipNumber, subscribeToPatients,
   ReferringDoctor, ReferringFacility, TestPrice,
@@ -42,7 +43,7 @@ export default function ReceptionPage() {
   const [depSearchPage, setDepSearchPage] = useState(0);
   const [showDepSearchDrop, setShowDepSearchDrop] = useState(false);
   const depSearchRef = useRef<HTMLDivElement>(null);
-  const [dateFilter, setDateFilter] = useState<'today' | 'seven_days' | 'thirty_days'>('today');
+  const dateFilter = useQueueStore(state => state.dateFilter);
   const [showSlipModal, setShowSlipModal] = useState<Patient | null>(null);
   const [showResultModal, setShowResultModal] = useState<Patient | null>(null);
   const [saving, setSaving] = useState(false);
@@ -465,25 +466,10 @@ export default function ReceptionPage() {
     return () => { unsubscribe(); };
   }, [organization?.id, refresh]);
 
-  const filterByDate = (dateString: string | number | Date) => {
-    const pDate = new Date(dateString);
-    const now = new Date();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-
-    if (dateFilter === 'today') {
-      return pDate >= startOfToday;
-    } else if (dateFilter === 'seven_days') {
-      const sevenDaysAgo = new Date(startOfToday.getTime() - 7 * 24 * 60 * 60 * 1000);
-      return pDate >= sevenDaysAgo;
-    } else if (dateFilter === 'thirty_days') {
-      const thirtyDaysAgo = new Date(startOfToday.getTime() - 30 * 24 * 60 * 60 * 1000);
-      return pDate >= thirtyDaysAgo;
-    }
-    return true;
-  };
-
-  const pendingPatients = patients.filter(p => p.tests.some(t => t.status !== 'completed') && filterByDate(p.registeredAt));
-  const resultsPatients = patients.filter(p => p.tests.some(t => t.status === 'completed') && filterByDate(p.registeredAt));
+  // Badge counts share the queue store's date window so they cannot drift from the
+  // lists the user is actually looking at.
+  const pendingPatients = selectPendingPatients(patients, dateFilter);
+  const resultsPatients = selectCompletedPatients(patients, dateFilter);
   const newResultsCount = resultsPatients.length;
 
 
