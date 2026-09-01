@@ -61,7 +61,9 @@ px tsc --noEmit\).
 - **Ephemeral vs. Domain State**:
   - Use local React `useState` only for transient UI state (e.g., search bar text, modal visibility, hover states).
   - Use Zustand stores for domain data that drives the feature (e.g., selected items, calculated totals, submitted payload).
+- **Pure Calculation Modules**: Domain math that is not itself state (billing totals, discounts, commission) belongs in a plain module under `lib/store/` (e.g. `registrationBilling.ts`), not inlined in a component and not duplicated inside a store action. Stores and components both import from that one module, so a formula has exactly one implementation.
 - **Testing Requirement**: Every Zustand store or complex business logic function must have a co-located or parallel unit test in Vitest (`*.test.ts`) before being wired into the UI.
+- **Extraction Hazard**: When splitting a God Component, extractions done by script silently break in three ways TypeScript will only catch if props are typed: `useState` updater callbacks passed to a Zustand `Partial` setter (a no-op), calls to setters that no longer exist, and prop names dropped from a rewritten helper component (e.g. a `Field` that stops forwarding `actionNode`). Never type an extracted component's props as `any` — the props interface is what makes these fail loudly. Verify the extracted UI still renders every button and modal the original had.
 
 ## 6. Ongoing Refactoring Roadmap (Divide & Conquer)
 We are actively transitioning away from God Components (`ReceptionPage.tsx`, `DepartmentPage.tsx`) and Monolithic State (`lib/store.ts`). All future work must adhere to this phased strategy:

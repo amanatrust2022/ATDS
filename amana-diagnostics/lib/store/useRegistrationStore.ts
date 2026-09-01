@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { Test, TestPrice } from '@/lib/store';
+import { calculateDiscountAmount } from './registrationBilling';
 
 interface RegistrationForm {
   firstName: string;
@@ -101,13 +102,7 @@ export const useRegistrationStore = create<RegistrationState>((set, get) => ({
 
   calculateDiscountAmount: (total) => {
     const { discountType, discountValue } = get();
-    const val = parseFloat(discountValue) || 0;
-    if (discountType === 'flat') {
-      return val;
-    } else if (discountType === 'percentage') {
-      return (total * val) / 100;
-    }
-    return 0;
+    return calculateDiscountAmount(total, discountType, discountValue);
   },
 
   submitRegistration: async (params) => {
