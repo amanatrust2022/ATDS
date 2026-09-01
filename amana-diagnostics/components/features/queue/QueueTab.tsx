@@ -1,8 +1,8 @@
 import React, { useMemo } from 'react';
 import { QueueHeader } from './QueueHeader';
 import { QueueList } from './QueueList';
-import { Patient, PatientTest } from '@/lib/store';
-import { useQueueStore, filterPatientsByDate, filterPatientsBySearchAndDept } from '@/lib/store/useQueueStore';
+import { Patient } from '@/lib/store';
+import { useQueueStore, selectPendingPatients, filterPatientsBySearchAndDept } from '@/lib/store/useQueueStore';
 
 interface QueueTabProps {
   patients: Patient[];
@@ -13,16 +13,11 @@ interface QueueTabProps {
 export const QueueTab: React.FC<QueueTabProps> = ({ patients, onViewSlip, onViewResult }) => {
   const { searchQuery, dateFilter, deptFilter } = useQueueStore();
 
-  const pendingPatients = useMemo(() => {
-    return patients.filter(p => p.tests.length > 0 && p.tests.some((t: PatientTest) => t.status === 'in_progress'));
-  }, [patients]);
-
+  // Same selector the "Patient Queue" tab badge counts, so the two cannot drift.
   const filtered = useMemo(() => {
-    let result = pendingPatients;
-    result = filterPatientsByDate(result, dateFilter);
-    result = filterPatientsBySearchAndDept(result, searchQuery, deptFilter);
-    return result;
-  }, [pendingPatients, searchQuery, dateFilter, deptFilter]);
+    const pending = selectPendingPatients(patients, dateFilter);
+    return filterPatientsBySearchAndDept(pending, searchQuery, deptFilter);
+  }, [patients, searchQuery, dateFilter, deptFilter]);
 
   return (
     <div>

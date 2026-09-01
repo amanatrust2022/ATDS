@@ -55,6 +55,29 @@ describe('Feature: Patient Queue Management', () => {
     expect(screen.getByText('Jane Smith')).toBeInTheDocument();
   });
 
+  // Regression: the queue once listed only patients with a test at in_progress, so a
+  // patient who had just been registered — every test still pending — was counted by
+  // the tab badge but never appeared in the queue underneath it.
+  it('shows a freshly registered patient whose tests are all still pending', () => {
+    const justRegistered = patient({
+      id: 7, name: 'Newly Registered', slipNumber: 'ATD-0007',
+      tests: [test({ status: 'pending' })],
+    });
+    renderQueue([justRegistered]);
+
+    expect(screen.getByText('Newly Registered')).toBeInTheDocument();
+  });
+
+  it('keeps a partly finished patient in the queue while work is outstanding', () => {
+    const partial = patient({
+      id: 8, name: 'Half Done',
+      tests: [test({ status: 'completed' }), test({ testId: 'esr', testName: 'ESR', status: 'pending' })],
+    });
+    renderQueue([partial]);
+
+    expect(screen.getByText('Half Done')).toBeInTheDocument();
+  });
+
   it('narrows the queue to the patient the receptionist searched for', () => {
     renderQueue();
 
@@ -137,14 +160,22 @@ describe('Feature: Ready Results', () => {
     expect(screen.queryByText('John Doe')).not.toBeInTheDocument();
   });
 
-  it('withholds a patient whose tests are only partly complete', () => {
+  // A partly finished patient has a result worth printing, so reception sees them
+  // here as well as in the queue. The card shows "1/2 completed".
+  it('shows a patient whose tests are only partly complete', () => {
     const partial = patient({
       id: 6, name: 'Half Done',
       tests: [test({ status: 'completed' }), test({ testId: 'esr', testName: 'ESR', status: 'pending' })],
     });
     render(<ResultsTab patients={[partial]} onViewSlip={vi.fn()} onViewResult={vi.fn()} />);
 
-    expect(screen.queryByText('Half Done')).not.toBeInTheDocument();
+    expect(screen.getByText('Half Done')).toBeInTheDocument();
+  });
+
+  it('withholds a patient with nothing completed yet', () => {
+    render(<ResultsTab patients={[john]} onViewSlip={vi.fn()} onViewResult={vi.fn()} />);
+
+    expect(screen.queryByText('John Doe')).not.toBeInTheDocument();
     expect(screen.getByText('No results available yet')).toBeInTheDocument();
   });
 
