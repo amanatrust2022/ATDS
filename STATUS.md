@@ -22,17 +22,20 @@ bugs hide: a change in one corner quietly breaks something in another, and nobod
 notices until a receptionist does. The work split them into small pieces, each with
 automated tests that run every time the code changes.
 
-Concretely: the automated test suite went from **23 tests to 328**. Those tests now
+Concretely: the automated test suite went from **23 tests to 335**. Those tests now
 catch mistakes before they reach you, rather than after.
 
-Along the way the tidy-up uncovered four real bugs that were already live:
+Along the way it uncovered real bugs that were already live. Every one is logged in
+[BUGFIXES.md](BUGFIXES.md); the ones you would notice:
 
 | Bug | Status |
 |---|---|
-| Newly registered patients did not appear in the Patient Queue | Fixed in the code, **not yet released** |
-| Wallet charges could be lost if the internet dropped mid-payment | Fixed, then rolled back — see below |
+| Newly registered patients did not appear in the Patient Queue | Fixed, **not yet released** |
+| Patient names showed blank on every queue card | Fixed, **not yet released** |
+| Searching a patient by name never worked, for anyone | Fixed, **not yet released** |
+| "Apply & Insert into Report" deleted the end of an obstetric scan report | Fixed, **not yet released** |
+| Wallet charges could be lost if the internet dropped mid-payment | Attempted, rolled back — see below |
 | Two people charging the same wallet at once could overspend the limit | Same as above |
-| "Apply & Insert into Report" deleted the end of an obstetric scan report | Fixed in the code, **not yet released** |
 
 ---
 
@@ -44,7 +47,9 @@ Along the way the tidy-up uncovered four real bugs that were already live:
 - **The wallet safety feature is switched off.** It was switched on last week, had a
   fault, and was removed again on 2 September. The system reverted to the way it has
   worked for the past two years. This is a safe, stable state to sit in.
-- **The queue problem is still there**, because the fix has not been released.
+- **The queue problems are fixed but not released.** Newly registered patients now
+  appear instantly rather than after a page reload, and their names show. Neither
+  reaches the clinic until the next release.
 
 ### Why the wallet feature was switched off
 
@@ -74,12 +79,11 @@ tag it `v1.2.21`, and push the tag. That triggers the build automatically.
 **Test it on staging first.** This release changes a lot at once. It should be given a
 real login and a few practice registrations before it reaches the front desk.
 
-### 2. The queue problem needs one look at the data
+### 2. Nothing else, for now
 
-Registered patients still do not appear in the queue. The fix for the known cause is
-in the code but unreleased, so that may be the whole story — or there may be a second
-cause. A single, read-only check will tell us which. It is written out in the
-conversation; it only reads, it changes nothing.
+The queue problem is understood and fixed: registration was saving the patient but
+never telling the queue, so the list only updated on a page reload. It now updates the
+moment the save succeeds, with no waiting.
 
 ---
 
