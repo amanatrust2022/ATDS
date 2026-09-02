@@ -8,6 +8,16 @@ import { RADIOLOGY_TEMPLATES, serializeRadiologyResults, deserializeRadiologyRes
 import TemplateManager from '@/components/TemplateManager';
 import TestManager from '@/components/TestManager';
 import dynamic from 'next/dynamic';
+import {
+  colourOptions, appearanceOptions, microscopyDefaults, growthOptions, degreeOptions, shapeOptions,
+  GRAM_POSITIVE_ANTIBIOTICS, GRAM_NEGATIVE_ANTIBIOTICS,
+  isMcsTest, isWidalTest, isMPsTest, isNoGrowth, stripMatrixRows,
+  emptyMcsState, emptyWidalState, emptyMpsState,
+  serializeMcsResults, deserializeMcsResults,
+  serializeWidalResults, deserializeWidalResults,
+  serializeMpsResults, deserializeMpsResults,
+  type McsFormState, type WidalFormState, type MpsFormState,
+} from '@/lib/store/labResults';
 const RichTextEditor = dynamic(() => import('@/components/RichTextEditor'), { ssr: false });
 
 interface Props { department: Department; }
@@ -51,273 +61,6 @@ function timeAgo(iso: string) {
   return `${Math.floor(mins / 60)}h ${mins % 60}m ago`;
 }
 
-// --- MCS TYPES, CONSTANTS AND HELPERS ---
-const colourOptions = ['Yellow', 'Amber', 'Pale Yellow', 'Straw', 'Colourless', 'Turbid Yellow', 'Bloody', 'Brown', 'Green'];
-const appearanceOptions = ['Clear', 'Turbid', 'Slightly Turbid', 'Cloudy', 'Mucus-containing', 'Bloody'];
-const microscopyDefaults = ['Pus Cells', 'Epithelial Cells', 'RBCs', 'Yeast Cells', 'Trichomonas vaginalis', 'Bacteria', 'Casts', 'Crystals', 'Ova', 'Trophozoites'];
-const growthOptions = ['Growth', 'No Growth', 'Sterile', 'Scanty Growth', 'Moderate Growth', 'Heavy Growth'];
-const degreeOptions = ['Heavy', 'Moderate', 'Scanty', 'Nil'];
-const shapeOptions = ['Cocci', 'Bacilli', 'Coccobacilli', 'Yeast-like cells', 'Nil'];
-
-const GRAM_POSITIVE_ANTIBIOTICS = [
-  { antibiotic: 'Rocephin', code: 'R' },
-  { antibiotic: 'Ciprofloxacin', code: 'CPX' },
-  { antibiotic: 'Azithromycin', code: 'AZ' },
-  { antibiotic: 'Levofloxacin', code: 'LEV' },
-  { antibiotic: 'Erythromycin', code: 'E' },
-  { antibiotic: 'Pefloxacin', code: 'PEF' },
-  { antibiotic: 'Gentamycin', code: 'CN' },
-  { antibiotic: 'Ampiclox', code: 'APX' },
-  { antibiotic: 'Zinnacef', code: 'Z' },
-  { antibiotic: 'Amoxacillin', code: 'AM' }
-];
-
-const GRAM_NEGATIVE_ANTIBIOTICS = [
-  { antibiotic: 'Amoxicillin Clavulanate', code: 'AUG' },
-  { antibiotic: 'Cefotaxime', code: 'CTX' },
-  { antibiotic: 'Imipenem/Cilastatin', code: 'IMP' },
-  { antibiotic: 'Nitrofurantoin', code: 'NF' },
-  { antibiotic: 'Cefuroxime', code: 'CXM' },
-  { antibiotic: 'Ceftriaxone Sulbactam', code: 'CRO' },
-  { antibiotic: 'Ofloxacin', code: 'OFX' },
-  { antibiotic: 'Gentamycin', code: 'GN' },
-  { antibiotic: 'Nalidixic Acid', code: 'NA' },
-  { antibiotic: 'Ampiclox', code: 'ACX' },
-  { antibiotic: 'Cefexime', code: 'ZEM' },
-  { antibiotic: 'Levofloxacin', code: 'LBC' }
-];
-
-export function isMcsTest(testId: string, testName: string) {
-  const id = testId.toLowerCase();
-  const name = testName.toLowerCase();
-  return id.endsWith('_mcs') || id.includes('mcs') || id === 'sfmcs' || name.includes('mcs') || name.includes('culture & sensitivity') || name.includes('culture and sensitivity');
-}
-
-export interface McsFormState {
-  macroscopy: {
-    colour: string;
-    appearance: string;
-  };
-  microscopy: { parameter: string; value: string }[];
-  culture: {
-    growth: string;
-    organism: string;
-    degree: string;
-    gramReaction: string;
-    shape: string;
-    incubationPeriod: string;
-    incubationTemperature: string;
-  };
-  sensitivity: { antibiotic: string; code: string; result: 'S' | 'I' | 'R' | '' }[];
-}
-
-export const serializeMcsResults = (mcsState: McsFormState) => {
-  const resultsList: { parameter: string; result: string; unit: string; range: string; flag?: string }[] = [];
-  
-  resultsList.push({ parameter: 'Macroscopy: Colour', result: mcsState.macroscopy.colour, unit: '', range: '' });
-  resultsList.push({ parameter: 'Macroscopy: Appearance', result: mcsState.macroscopy.appearance, unit: '', range: '' });
-  
-  mcsState.microscopy.forEach(m => {
-    if (m.parameter.trim()) {
-      resultsList.push({ parameter: `Microscopy: ${m.parameter}`, result: m.value, unit: '', range: '' });
-    }
-  });
-  
-  resultsList.push({ parameter: 'Culture: Growth', result: mcsState.culture.growth, unit: '', range: '' });
-  const isNoGrowth = ['no growth', 'sterile', 'no-growth'].includes(mcsState.culture.growth.trim().toLowerCase());
-  if (!isNoGrowth) {
-    resultsList.push({ parameter: 'Culture: Organism', result: mcsState.culture.organism, unit: '', range: '' });
-    resultsList.push({ parameter: 'Culture: Degree', result: mcsState.culture.degree, unit: '', range: '' });
-    resultsList.push({ parameter: 'Culture: Gram Reaction', result: mcsState.culture.gramReaction, unit: '', range: '' });
-    resultsList.push({ parameter: 'Culture: Shape', result: mcsState.culture.shape, unit: '', range: '' });
-    resultsList.push({ parameter: 'Culture: Incubation Period', result: mcsState.culture.incubationPeriod, unit: '', range: '' });
-    resultsList.push({ parameter: 'Culture: Incubation Temperature', result: mcsState.culture.incubationTemperature, unit: '', range: '' });
-    
-    mcsState.sensitivity.forEach(s => {
-      if (s.result) {
-        resultsList.push({
-          parameter: `Sensitivity: ${s.antibiotic} (${s.code})`,
-          result: s.result,
-          unit: '',
-          range: ''
-        });
-      }
-    });
-  }
-  
-  return resultsList;
-};
-
-export const deserializeMcsResults = (results: any[]): McsFormState => {
-  const mcsState: McsFormState = {
-    macroscopy: { colour: '', appearance: '' },
-    microscopy: [],
-    culture: {
-      growth: '',
-      organism: '',
-      degree: '',
-      gramReaction: '',
-      shape: '',
-      incubationPeriod: '24 hours',
-      incubationTemperature: '37°C'
-    },
-    sensitivity: []
-  };
-  
-  results.forEach(r => {
-    const param = r.parameter;
-    const val = r.result;
-    
-    if (param.startsWith('Macroscopy: ')) {
-      const field = param.replace('Macroscopy: ', '');
-      if (field === 'Colour') mcsState.macroscopy.colour = val;
-      if (field === 'Appearance') mcsState.macroscopy.appearance = val;
-    } else if (param.startsWith('Microscopy: ')) {
-      const pName = param.replace('Microscopy: ', '');
-      mcsState.microscopy.push({ parameter: pName, value: val });
-    } else if (param.startsWith('Culture: ')) {
-      const field = param.replace('Culture: ', '');
-      if (field === 'Growth') mcsState.culture.growth = val;
-      if (field === 'Organism') mcsState.culture.organism = val;
-      if (field === 'Degree') mcsState.culture.degree = val;
-      if (field === 'Gram Reaction') mcsState.culture.gramReaction = val;
-      if (field === 'Shape') mcsState.culture.shape = val;
-      if (field === 'Incubation Period') mcsState.culture.incubationPeriod = val;
-      if (field === 'Incubation Temperature') mcsState.culture.incubationTemperature = val;
-    } else if (param.startsWith('Sensitivity: ')) {
-      const match = param.match(/Sensitivity:\s+(.+)\s+\((.+)\)/);
-      if (match) {
-        const antibiotic = match[1];
-        const code = match[2];
-        mcsState.sensitivity.push({ antibiotic, code, result: val });
-      }
-    }
-  });
-  
-  if (mcsState.microscopy.length === 0) {
-    mcsState.microscopy = [
-      { parameter: 'Pus Cells', value: '' },
-      { parameter: 'Epithelial Cells', value: '' },
-      { parameter: 'RBCs', value: '' }
-    ];
-  }
-  
-  return mcsState;
-};
-
-export function isWidalTest(testId: string, testName: string) {
-  const id = testId.toLowerCase();
-  const name = testName.toLowerCase();
-  return id === 'widal' || id.includes('widal') || name.includes('widal');
-}
-
-export function isMPsTest(testId: string, testName: string) {
-  const id = testId.toLowerCase();
-  const name = testName.toLowerCase();
-  return (
-    id === 'mps' ||
-    id === 'mp' ||
-    id.includes('mps') ||
-    id.startsWith('mp_') ||
-    id.includes('_mp') ||
-    name.includes('mps') ||
-    name.includes('mp ') ||
-    name.includes('mp+') ||
-    name.includes('mp +') ||
-    name.includes('malaria parasite') ||
-    name.includes('malaria film') ||
-    name.includes('malaria')
-  );
-}
-
-
-export interface WidalFormState {
-  typhiO: string;
-  typhiH: string;
-  paratyphiAO: string;
-  paratyphiAH: string;
-  paratyphiBO: string;
-  paratyphiBH: string;
-  paratyphiCO: string;
-  paratyphiCH: string;
-}
-
-export const serializeWidalResults = (widalState: WidalFormState) => {
-  return [
-    { parameter: 'Widal: S. Typhi O', result: widalState.typhiO || 'Negative', unit: 'Titer', range: '<1:80' },
-    { parameter: 'Widal: S. Typhi H', result: widalState.typhiH || 'Negative', unit: 'Titer', range: '<1:80' },
-    { parameter: 'Widal: S. Paratyphi A O', result: widalState.paratyphiAO || 'Negative', unit: 'Titer', range: '<1:80' },
-    { parameter: 'Widal: S. Paratyphi A H', result: widalState.paratyphiAH || 'Negative', unit: 'Titer', range: '<1:80' },
-    { parameter: 'Widal: S. Paratyphi B O', result: widalState.paratyphiBO || 'Negative', unit: 'Titer', range: '<1:80' },
-    { parameter: 'Widal: S. Paratyphi B H', result: widalState.paratyphiBH || 'Negative', unit: 'Titer', range: '<1:80' },
-    { parameter: 'Widal: S. Paratyphi C O', result: widalState.paratyphiCO || 'Negative', unit: 'Titer', range: '<1:80' },
-    { parameter: 'Widal: S. Paratyphi C H', result: widalState.paratyphiCH || 'Negative', unit: 'Titer', range: '<1:80' },
-  ];
-};
-
-export const deserializeWidalResults = (results: any[]): WidalFormState => {
-  const state: WidalFormState = {
-    typhiO: 'Negative', typhiH: 'Negative',
-    paratyphiAO: 'Negative', paratyphiAH: 'Negative',
-    paratyphiBO: 'Negative', paratyphiBH: 'Negative',
-    paratyphiCO: 'Negative', paratyphiCH: 'Negative',
-  };
-  results.forEach(r => {
-    const param = r.parameter;
-    const val = r.result;
-    if (param === 'Widal: S. Typhi O') state.typhiO = val;
-    if (param === 'Widal: S. Typhi H') state.typhiH = val;
-    if (param === 'Widal: S. Paratyphi A O') state.paratyphiAO = val;
-    if (param === 'Widal: S. Paratyphi A H') state.paratyphiAH = val;
-    if (param === 'Widal: S. Paratyphi B O') state.paratyphiBO = val;
-    if (param === 'Widal: S. Paratyphi B H') state.paratyphiBH = val;
-    if (param === 'Widal: S. Paratyphi C O') state.paratyphiCO = val;
-    if (param === 'Widal: S. Paratyphi C H') state.paratyphiCH = val;
-  });
-  return state;
-};
-
-export interface MpsFormState {
-  parasiteSeen: 'Seen' | 'Not Seen' | '';
-  densityPlus: '+' | '++' | '+++' | '++++' | 'Nil' | '';
-  densityCount: string;
-  species: string;
-  stage: string;
-  comment: string;
-}
-
-export const serializeMpsResults = (mpsState: MpsFormState) => {
-  return [
-    { parameter: 'MPs: Parasites', result: mpsState.parasiteSeen || 'Not Seen', unit: '', range: 'Not Seen' },
-    { parameter: 'MPs: Density (Plus)', result: mpsState.densityPlus || 'Nil', unit: '', range: 'Nil' },
-    { parameter: 'MPs: Density (Count)', result: mpsState.densityCount || 'Nil', unit: 'p/µL', range: 'Nil' },
-    { parameter: 'MPs: Species', result: mpsState.species || 'Nil', unit: '', range: '' },
-    { parameter: 'MPs: Stage', result: mpsState.stage || 'Nil', unit: '', range: '' },
-    { parameter: 'MPs: Comment', result: mpsState.comment || 'Nil', unit: '', range: '' },
-  ];
-};
-
-export const deserializeMpsResults = (results: any[]): MpsFormState => {
-  const state: MpsFormState = {
-    parasiteSeen: 'Not Seen',
-    densityPlus: 'Nil',
-    densityCount: 'Nil',
-    species: 'Nil',
-    stage: 'Nil',
-    comment: 'Nil'
-  };
-  results.forEach(r => {
-    const param = r.parameter;
-    const val = r.result;
-    if (param === 'MPs: Parasites') state.parasiteSeen = val as any;
-    if (param === 'MPs: Density (Plus)') state.densityPlus = val as any;
-    if (param === 'MPs: Density (Count)') state.densityCount = val;
-    if (param === 'MPs: Species') state.species = val;
-    if (param === 'MPs: Stage') state.stage = val;
-    if (param === 'MPs: Comment') state.comment = val;
-  });
-  return state;
-};
 
 export default function DepartmentPage({ department }: Props) {
   const { profile, organization, signOut } = useAuth();
@@ -486,62 +229,21 @@ export default function DepartmentPage({ department }: Props) {
 
     if (mcsCheck) {
       const existingResults = test.results || [];
-      if (existingResults.length > 0) {
-        setMcsState(deserializeMcsResults(existingResults));
-      } else {
-        setMcsState({
-          macroscopy: { colour: 'Yellow', appearance: 'Clear' },
-          microscopy: [
-            { parameter: 'Pus Cells', value: '' },
-            { parameter: 'Epithelial Cells', value: '' },
-            { parameter: 'RBCs', value: '' }
-          ],
-          culture: {
-            growth: 'Growth',
-            organism: '',
-            degree: '',
-            gramReaction: '',
-            shape: '',
-            incubationPeriod: '24 hours',
-            incubationTemperature: '37°C'
-          },
-          sensitivity: []
-        });
-      }
+      setMcsState(existingResults.length > 0 ? deserializeMcsResults(existingResults) : emptyMcsState());
     } else {
       setMcsState(null);
     }
 
     if (widalCheck) {
       const existingResults = test.results || [];
-      if (existingResults.length > 0) {
-        setWidalState(deserializeWidalResults(existingResults));
-      } else {
-        setWidalState({
-          typhiO: 'Negative', typhiH: 'Negative',
-          paratyphiAO: 'Negative', paratyphiAH: 'Negative',
-          paratyphiBO: 'Negative', paratyphiBH: 'Negative',
-          paratyphiCO: 'Negative', paratyphiCH: 'Negative',
-        });
-      }
+      setWidalState(existingResults.length > 0 ? deserializeWidalResults(existingResults) : emptyWidalState());
     } else {
       setWidalState(null);
     }
 
     if (mpsCheck) {
       const existingResults = test.results || [];
-      if (existingResults.length > 0) {
-        setMpsState(deserializeMpsResults(existingResults));
-      } else {
-        setMpsState({
-          parasiteSeen: 'Not Seen',
-          densityPlus: 'Nil',
-          densityCount: 'Nil',
-          species: 'Nil',
-          stage: 'Nil',
-          comment: 'Nil'
-        });
-      }
+      setMpsState(existingResults.length > 0 ? deserializeMpsResults(existingResults) : emptyMpsState());
     } else {
       setMpsState(null);
     }
@@ -576,9 +278,7 @@ export default function DepartmentPage({ department }: Props) {
 
     if ((widalCheck || mpsCheck) && extraParams.length > 0) {
       if (test.results && test.results.length > 0) {
-        const extraResults = test.results.filter(r =>
-          !r.parameter.startsWith('Widal:') && !r.parameter.startsWith('MPs:')
-        );
+        const extraResults = stripMatrixRows(test.results);
         if (extraResults.length > 0) {
           setResults(extraResults.map(r => ({ ...r, flag: r.flag || '' })));
         } else {
@@ -613,13 +313,13 @@ export default function DepartmentPage({ department }: Props) {
     if (isMcs && mcsState) {
       finalResults = serializeMcsResults(mcsState) as any;
     } else if (isWidal && widalState && isMPs && mpsState) {
-      const extraResults = results.filter(r => !r.parameter.startsWith('Widal:') && !r.parameter.startsWith('MPs:'));
+      const extraResults = stripMatrixRows(results);
       finalResults = [...serializeMpsResults(mpsState), ...serializeWidalResults(widalState), ...extraResults] as any;
     } else if (isWidal && widalState) {
-      const extraResults = results.filter(r => !r.parameter.startsWith('Widal:') && !r.parameter.startsWith('MPs:'));
+      const extraResults = stripMatrixRows(results);
       finalResults = [...serializeWidalResults(widalState), ...extraResults] as any;
     } else if (isMPs && mpsState) {
-      const extraResults = results.filter(r => !r.parameter.startsWith('Widal:') && !r.parameter.startsWith('MPs:'));
+      const extraResults = stripMatrixRows(results);
       finalResults = [...serializeMpsResults(mpsState), ...extraResults] as any;
     } else if (radiologyState) {
       finalResults = serializeRadiologyResults(radiologyState) as any;
@@ -1572,7 +1272,7 @@ export default function DepartmentPage({ department }: Props) {
 
   const renderMcsEntryForm = () => {
     if (!mcsState) return null;
-    const isNoGrowth = ['no growth', 'sterile', 'no-growth'].includes(mcsState.culture.growth.trim().toLowerCase());
+    const noGrowth = isNoGrowth(mcsState.culture.growth);
 
     const cardStyle: React.CSSProperties = {
       background: 'white',
@@ -1821,7 +1521,7 @@ export default function DepartmentPage({ department }: Props) {
               )}
             </div>
             
-            {!isNoGrowth && (
+            {!noGrowth && (
               <>
                 <div>
                   <label style={labelStyle}>Organism Isolated</label>
@@ -1940,7 +1640,7 @@ export default function DepartmentPage({ department }: Props) {
         </div>
         
         {/* ROW 3: Sensitivity Table */}
-        {!isNoGrowth && (
+        {!noGrowth && (
           <div style={cardStyle}>
             <h3 style={cardHeaderStyle}>Antibiotic Sensitivity Testing (AST)</h3>
             <div style={{ padding: '1rem' }}>
