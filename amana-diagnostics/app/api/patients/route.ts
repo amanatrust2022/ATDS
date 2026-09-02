@@ -145,7 +145,11 @@ export async function POST(request: Request) {
         finalPaymentStatus = 'paid';
       }
 
-      db.exec('BEGIN TRANSACTION');
+      // IMMEDIATE, not the default deferred: registration reads a wallet balance
+      // and writes it back, and a deferred transaction only takes the write lock
+      // at the first write, leaving room for a concurrent registration to read
+      // the same balance first.
+      db.exec('BEGIN IMMEDIATE');
       try {
         // If it's a new patient profile, we insert it
         if (!patientProfileId) {

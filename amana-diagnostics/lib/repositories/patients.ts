@@ -6,6 +6,7 @@ import {
   toPatient, toPatientProfile, toProfileRow, toPatientRow, toPatientRowWithBilling,
   toTestRows, toTestRowsWithBilling,
 } from './patientMappers';
+import { isMissingFunction, parseInsufficientFunds, formatNaira } from './rpcErrors';
 import type { Patient, PatientProfile, PatientTest } from '@/lib/store';
 
 type NewPatient = Omit<Patient, 'id' | 'tests'> & { id?: number };
@@ -91,7 +92,12 @@ const REALTIME_TABLES = [
   'external_department_charges',
 ];
 
-export const cloudPatientsRepository: PatientsRepository = {
+/** The fallback write path is not part of the interface; only this implementation has one. */
+type CloudPatientsRepository = PatientsRepository & {
+  addWithReferralSequentially(patient: NewPatient, tests: NewTest[], organizationId: string): Promise<void>;
+};
+
+export const cloudPatientsRepository: CloudPatientsRepository = {
   async nextSlipNumber(organizationId) {
     const supabase = createClient();
     const today = new Date();
@@ -147,7 +153,67 @@ export const cloudPatientsRepository: PatientsRepository = {
     if (tError) throw tError;
   },
 
+  /**
+   * Creates the visit and takes payment in one transaction, via the
+   * `register_patient_with_wallet` Postgres function (supabase_wallet_atomicity.sql).
+   *
+   * If that function is not deployed yet, falls back to the previous sequential
+   * writes so an app release cannot outrun the migration. The fallback is NOT
+   * atomic: a failure after the debit charges a patient for a visit that was
+   * never created.
+   */
   async addWithReferral(patient, tests, organizationId) {
+    const supabase = createClient();
+    const patientId = patient.id || generatePatientId();
+    const isReturningPatient = !!patient.patientProfileId;
+    const profileId = patient.patientProfileId || generatePatientId();
+    const payingFromWallet = patient.paymentMethod === 'wallet' && !!patient.billingAccountId;
+    const now = new Date().toISOString();
+
+    const { error } = await supabase.rpc('register_patient_with_wallet', {
+      p_profile: isReturningPatient ? null : toProfileRow(patient, profileId, organizationId),
+      p_patient: toPatientRowWithBilling(patient, patientId, profileId, organizationId),
+      p_tests: toTestRowsWithBilling(tests, patientId, organizationId),
+      p_ledger: payingFromWallet ? {
+        id: crypto.randomUUID(),
+        organization_id: organizationId,
+        billing_account_id: patient.billingAccountId,
+        patient_id: patientId,
+        type: 'charge',
+        amount: -(patient.netAmount || 0),
+        description: `Diagnostics Charge - Slip: ${patient.slipNumber}`,
+        reference_id: patient.slipNumber,
+        payment_method: 'wallet',
+        created_by: 'Reception Desk',
+        created_at: now,
+      } : null,
+    });
+
+    if (!error) return;
+
+    if (isMissingFunction(error)) {
+      console.warn(
+        '[patients] register_patient_with_wallet is not deployed; falling back to ' +
+        'non-atomic writes. Apply supabase_wallet_atomicity.sql to fix this.',
+      );
+      return cloudPatientsRepository.addWithReferralSequentially(patient, tests, organizationId);
+    }
+
+    const shortfall = parseInsufficientFunds(error);
+    if (shortfall) {
+      throw new Error(`Insufficient wallet balance on "${shortfall.name}". Available: ${formatNaira(shortfall.available)}`);
+    }
+    if (/BILLING_ACCOUNT_NOT_FOUND/.test(error.message || '')) {
+      throw new Error('Billing account not found');
+    }
+    throw new Error(error.message || 'Failed to register patient');
+  },
+
+  /**
+   * The pre-atomicity write path, kept only as the fallback for a database
+   * where the function has not been applied yet.
+   */
+  async addWithReferralSequentially(patient: NewPatient, tests: NewTest[], organizationId: string) {
     const supabase = createClient();
     const patientId = patient.id || generatePatientId();
     let profileId = patient.patientProfileId;

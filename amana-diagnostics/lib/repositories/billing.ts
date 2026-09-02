@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase';
 import { RuntimeMode, RUNTIME_MODE } from '@/lib/runtimeMode';
 import { postJson } from './localHttp';
+import { isMissingFunction, parseInsufficientFunds, formatNaira, RpcError } from './rpcErrors';
 import type { BillingAccount, BillingLedgerTransaction, ExternalDepartmentCharge } from '@/lib/store';
 
 /**
@@ -36,26 +37,10 @@ export interface BillingRepository {
 
 const ENDPOINT = '/api/billing';
 
-/**
- * True when the failure is "this function is not in the database", rather than
- * a real error from inside it. PostgREST answers PGRST202 when the name is not
- * in its schema cache; Postgres answers 42883 for an undefined function.
- */
-const isMissingFunction = (error: { code?: string; message?: string }): boolean =>
-  error.code === 'PGRST202' ||
-  error.code === '42883' ||
-  /could not find the function|schema cache/i.test(error.message || '');
-
-/**
- * The function reports a shortfall as `INSUFFICIENT_FUNDS:<available>` so the
- * amount can be formatted here, keeping the message identical to the one the
- * client produced before the check moved into the database.
- */
-const toBillingError = (error: { message?: string }): Error => {
-  const shortfall = /INSUFFICIENT_FUNDS:([\d.]+)/.exec(error.message || '');
+const toBillingError = (error: RpcError): Error => {
+  const shortfall = parseInsufficientFunds(error);
   if (shortfall) {
-    const available = Number(shortfall[1]);
-    return new Error(`Insufficient wallet balance. Available credit: ₦${available.toLocaleString('en-NG')}`);
+    return new Error(`Insufficient wallet balance. Available credit: ${formatNaira(shortfall.available)}`);
   }
   if (/BILLING_ACCOUNT_NOT_FOUND/.test(error.message || '')) {
     return new Error('Billing account not found');

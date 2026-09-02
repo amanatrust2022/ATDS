@@ -76,8 +76,10 @@ begin
     -- down to that limit, but no further.
     if v_available < v_amount then
       -- Machine-readable on purpose; the client formats this for the user so
-      -- the wording stays identical to the pre-existing message.
-      raise exception 'INSUFFICIENT_FUNDS:%', v_available;
+      -- the wording stays identical to the pre-existing message. JSON because
+      -- register_patient_with_wallet below also needs the account name, and one
+      -- error protocol across both functions is easier to keep right.
+      raise exception 'INSUFFICIENT_FUNDS:%', json_build_object('available', v_available)::text;
     end if;
 
     update public.billing_accounts
@@ -94,10 +96,90 @@ begin
 end;
 $$;
 
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Registration: create the visit and take payment from the wallet together.
+--
+-- Same problem, larger blast radius. The client wrote the profile, debited the
+-- wallet, inserted the patient, wrote the ledger entry and inserted the tests
+-- as five separate requests. A failure after the debit charged a patient for a
+-- visit that was never created, with no ledger row to explain it.
+--
+-- Only the cloud path needed this: the local hub already wraps registration in
+-- a SQLite transaction.
+--
+-- Insert order matters and matches the previous client order, because the
+-- ledger and test rows reference the patient.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+create or replace function public.register_patient_with_wallet(
+  p_profile jsonb,   -- patient_profiles row, or null for a returning patient
+  p_patient jsonb,   -- patients row
+  p_tests   jsonb,   -- array of patient_tests rows
+  p_ledger  jsonb    -- billing_ledger_transactions row, or null when not paying by wallet
+)
+returns void
+language plpgsql
+as $$
+declare
+  v_account_id text    := p_patient ->> 'billing_account_id';
+  v_method     text    := p_patient ->> 'payment_method';
+  v_net        numeric := coalesce((p_patient ->> 'net_amount')::numeric, 0);
+  v_at         text    := p_patient ->> 'registered_at';
+  v_balance    numeric;
+  v_credit     numeric;
+  v_available  numeric;
+  v_name       text;
+begin
+  if p_profile is not null and p_profile <> 'null'::jsonb then
+    insert into public.patient_profiles
+    select * from jsonb_populate_record(null::public.patient_profiles, p_profile);
+  end if;
+
+  if v_method = 'wallet' and v_account_id is not null then
+    select coalesce(balance, 0), coalesce(credit_limit, 0), name
+      into v_balance, v_credit, v_name
+      from public.billing_accounts
+     where id::text = v_account_id
+     for update;
+
+    if not found then
+      raise exception 'BILLING_ACCOUNT_NOT_FOUND';
+    end if;
+
+    v_available := v_balance + v_credit;
+    if v_available < v_net then
+      raise exception 'INSUFFICIENT_FUNDS:%',
+        json_build_object('available', v_available, 'name', v_name)::text;
+    end if;
+
+    update public.billing_accounts
+       set balance    = v_balance - v_net,
+           updated_at = coalesce(v_at, now()::text)
+     where id::text = v_account_id;
+  end if;
+
+  insert into public.patients
+  select * from jsonb_populate_record(null::public.patients, p_patient);
+
+  if v_method = 'wallet' and v_account_id is not null
+     and p_ledger is not null and p_ledger <> 'null'::jsonb then
+    insert into public.billing_ledger_transactions
+    select * from jsonb_populate_record(null::public.billing_ledger_transactions, p_ledger);
+  end if;
+
+  if p_tests is not null and jsonb_array_length(p_tests) > 0 then
+    insert into public.patient_tests
+    select * from jsonb_populate_recordset(null::public.patient_tests, p_tests);
+  end if;
+end;
+$$;
+
 -- Since 2026-04-28 new objects in the public schema are not automatically
 -- exposed to the Data API, so grant execute explicitly. The argument list may
--- be omitted because the function name is unique.
+-- be omitted because each function name is unique.
 grant execute on function public.log_external_department_charge to authenticated;
+grant execute on function public.register_patient_with_wallet to authenticated;
 
 -- PostgREST caches the schema; without this the first call 404s.
 notify pgrst, 'reload schema';

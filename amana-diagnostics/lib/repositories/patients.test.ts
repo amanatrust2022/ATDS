@@ -276,3 +276,130 @@ describe('Cloud realtime subscription', () => {
     expect(removeChannel).toHaveBeenCalledWith('channel-handle');
   });
 });
+
+/**
+ * Registration takes payment, so it goes through the register_patient_with_wallet
+ * Postgres function: the profile, the debit, the visit, the ledger entry and the
+ * tests commit together or not at all.
+ *
+ * The balance rules live in SQL now and cannot be asserted from here — see the
+ * VERIFY block in supabase_wallet_atomicity.sql. What is asserted is the payload
+ * the function receives, and how its refusals reach the receptionist.
+ */
+describe('Registering a patient who pays from a wallet', () => {
+  const walletPatient = {
+    slipNumber: 'ATD/20260727/0001', firstName: 'Musa', surname: 'Bello',
+    age: '35yrs', sex: 'Male' as const, phone: '0803', address: 'Kano',
+    paymentMethod: 'wallet', billingAccountId: 'acc-1', netAmount: 14450,
+  };
+  const someTests = [{ testId: 'fbc', testName: 'FBC', department: 'lab' as const, status: 'pending' as const, price: 5000 }];
+
+  const rpcStub = (error: any = null) => {
+    const calls: Array<{ fn: string; args: any }> = [];
+    createClientMock.mockReturnValue({
+      rpc: (fn: string, args: any) => { calls.push({ fn, args }); return Promise.resolve({ data: null, error }); },
+      from: () => { throw new Error('should not write directly when the function is available'); },
+    });
+    return calls;
+  };
+
+  it('sends the whole registration to the database in one call', async () => {
+    const calls = rpcStub();
+
+    await cloudPatientsRepository.addWithReferral(walletPatient as any, someTests, 'org-1');
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].fn).toBe('register_patient_with_wallet');
+  });
+
+  it('sends the ledger entry as a negative charge against the wallet', async () => {
+    const calls = rpcStub();
+
+    await cloudPatientsRepository.addWithReferral(walletPatient as any, someTests, 'org-1');
+
+    expect(calls[0].args.p_ledger).toMatchObject({
+      type: 'charge', amount: -14450, billing_account_id: 'acc-1',
+      description: 'Diagnostics Charge - Slip: ATD/20260727/0001',
+    });
+  });
+
+  it('sends no ledger entry when the visit is not paid from a wallet', async () => {
+    const calls = rpcStub();
+
+    await cloudPatientsRepository.addWithReferral(
+      { ...walletPatient, paymentMethod: 'cash' } as any, someTests, 'org-1',
+    );
+
+    expect(calls[0].args.p_ledger).toBeNull();
+  });
+
+  it('sends a new profile for a first-time patient', async () => {
+    const calls = rpcStub();
+
+    await cloudPatientsRepository.addWithReferral(walletPatient as any, someTests, 'org-1');
+
+    expect(calls[0].args.p_profile).toMatchObject({ first_name: 'Musa', organization_id: 'org-1' });
+  });
+
+  // A returning patient already has a profile; creating a second would split their history.
+  it('sends no profile for a returning patient', async () => {
+    const calls = rpcStub();
+
+    await cloudPatientsRepository.addWithReferral(
+      { ...walletPatient, patientProfileId: 42 } as any, someTests, 'org-1',
+    );
+
+    expect(calls[0].args.p_profile).toBeNull();
+    expect(calls[0].args.p_patient.patient_profile_id).toBe(42);
+  });
+
+  it('sends one test row per selected test, tied to the new visit', async () => {
+    const calls = rpcStub();
+
+    await cloudPatientsRepository.addWithReferral(walletPatient as any, someTests, 'org-1');
+
+    expect(calls[0].args.p_tests).toHaveLength(1);
+    expect(calls[0].args.p_tests[0]).toMatchObject({ test_id: 'fbc', price: 5000 });
+    expect(calls[0].args.p_tests[0].patient_id).toBe(calls[0].args.p_patient.id);
+  });
+
+  it('names the account when the wallet cannot cover the bill', async () => {
+    rpcStub({ message: 'INSUFFICIENT_FUNDS:{"available":5000,"name":"Bello Family"}' });
+
+    await expect(cloudPatientsRepository.addWithReferral(walletPatient as any, someTests, 'org-1'))
+      .rejects.toThrow('Insufficient wallet balance on "Bello Family". Available: ₦5,000');
+  });
+
+  it('reports an unknown account plainly', async () => {
+    rpcStub({ message: 'BILLING_ACCOUNT_NOT_FOUND' });
+
+    await expect(cloudPatientsRepository.addWithReferral(walletPatient as any, someTests, 'org-1'))
+      .rejects.toThrow('Billing account not found');
+  });
+
+  it('passes any other database failure through', async () => {
+    rpcStub({ message: 'duplicate key value violates unique constraint' });
+
+    await expect(cloudPatientsRepository.addWithReferral(walletPatient as any, someTests, 'org-1'))
+      .rejects.toThrow(/duplicate key/);
+  });
+
+  it('falls back to sequential writes when the function is not deployed, and warns', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const writes: string[] = [];
+    const builder: any = { then: (r: any) => r({ data: { balance: 999999, credit_limit: 0, name: 'W' }, error: null }) };
+    for (const m of ['select', 'eq', 'insert', 'update', 'single']) {
+      builder[m] = () => builder;
+    }
+    createClientMock.mockReturnValue({
+      rpc: () => Promise.resolve({ data: null, error: { code: 'PGRST202', message: 'Could not find the function' } }),
+      from: (table: string) => { writes.push(table); return builder; },
+    });
+
+    await cloudPatientsRepository.addWithReferral(walletPatient as any, someTests, 'org-1');
+
+    expect(writes).toContain('patients');
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('supabase_wallet_atomicity.sql'));
+    warn.mockRestore();
+  });
+});

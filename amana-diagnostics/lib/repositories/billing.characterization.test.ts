@@ -307,7 +307,7 @@ describe('Charging a wallet for an outside department', () => {
   // receptionist sees must not have changed.
   it('reports a refused charge in the same words as before', async () => {
     createClientMock.mockReturnValue(
-      supabaseWith([], { error: { message: 'INSUFFICIENT_FUNDS:1500' } }).client,
+      supabaseWith([], { error: { message: 'INSUFFICIENT_FUNDS:{"available":1500}' } }).client,
     );
 
     await expect(logExternalCharge(walletCharge as any))
