@@ -29,12 +29,17 @@ interface RegistrationTabProps {
   billingAccounts: BillingAccount[];
   organization: Organization | null;
   setShowSlipModal: React.Dispatch<React.SetStateAction<Patient | null>>;
+  /**
+   * Called with the patient that was just saved, so the queue can show them at
+   * once. Registration must not wait on a refetch to feel finished.
+   */
+  onRegistered: (patient: Patient) => void;
 }
 
 export default function RegistrationTab({
   patients, patientProfiles, doctors, setDoctors, facilities, setFacilities,
   testPrices, catalogue, billingAccounts, organization,
-  setShowSlipModal
+  setShowSlipModal, onRegistered
 }: RegistrationTabProps) {
   // Ephemeral UI state — domain state lives in useRegistrationStore
   const [patientSearchQuery, setPatientSearchQuery] = useState('');
@@ -311,15 +316,18 @@ export default function RegistrationTab({
         patientProfileId: selectedPatientProfileId || undefined,
       };
 
-      await addPatientWithReferral(patientData, tests, organization?.id || '');
+      const newId = await addPatientWithReferral(patientData, tests, organization?.id || '');
 
-      const tempPatient: Patient = {
-        id: 0,
+      const registered: Patient = {
+        ...patientData,
+        id: newId as number,
         tests: tests as any,
-        ...patientData
       };
 
-      setShowSlipModal(tempPatient);
+      // Straight onto the queue, from what we already have in hand. Waiting for
+      // a round trip here is what made a new patient appear only after a reload.
+      onRegistered(registered);
+      setShowSlipModal(registered);
       setForm({ firstName: '', surname: '', middleName: '', age: '', sex: 'Male', phone: '', email: '', address: '', referredBy: '', referringFacility: '' });
       clearTests();
       setSelectedDoctorId('');

@@ -550,6 +550,7 @@ export default function ReceptionPage() {
             billingAccounts={billingAccounts}
             organization={organization}
             setShowSlipModal={setShowSlipModal}
+            onRegistered={p => setPatients(prev => [p, ...prev])}
           />
         )}
 

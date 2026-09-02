@@ -17,8 +17,12 @@ export interface PatientsRepository {
   list(organizationId: string): Promise<Patient[]>;
   listProfiles(organizationId: string): Promise<PatientProfile[]>;
   add(patient: NewPatient, tests: NewTest[], organizationId: string): Promise<void>;
-  /** Registration proper: also takes payment and records the commission snapshot. */
-  addWithReferral(patient: NewPatient, tests: NewTest[], organizationId: string): Promise<void>;
+  /**
+   * Registration proper: also takes payment and records the commission snapshot.
+   * Returns the new patient's id so the caller can put the row on screen
+   * immediately instead of refetching the whole queue.
+   */
+  addWithReferral(patient: NewPatient, tests: NewTest[], organizationId: string): Promise<number | string>;
   registerAndGetId(patient: Omit<Patient, 'id' | 'tests'>, organizationId: string): Promise<number | string>;
   update(id: number | string, updates: Partial<Patient>): Promise<void>;
   updateTestResult(testId: string, updates: Partial<PatientTest>): Promise<void>;
@@ -57,7 +61,9 @@ export const localPatientsRepository: PatientsRepository = {
   },
 
   async addWithReferral(patient, tests, organizationId) {
-    await postJson(ENDPOINT, { action: 'addPatient', patient, tests, organizationId }, 'Failed to add patient referral locally');
+    const res = await postJson(ENDPOINT, { action: 'addPatient', patient, tests, organizationId }, 'Failed to add patient referral locally');
+    const data = await res.json();
+    return data.id;
   },
 
   async registerAndGetId(patient, organizationId) {
@@ -94,7 +100,7 @@ const REALTIME_TABLES = [
 
 /** The fallback write path is not part of the interface; only this implementation has one. */
 type CloudPatientsRepository = PatientsRepository & {
-  addWithReferralSequentially(patient: NewPatient, tests: NewTest[], organizationId: string): Promise<void>;
+  addWithReferralSequentially(patient: NewPatient, tests: NewTest[], organizationId: string): Promise<number | string>;
 };
 
 export const cloudPatientsRepository: CloudPatientsRepository = {
@@ -189,7 +195,7 @@ export const cloudPatientsRepository: CloudPatientsRepository = {
       } : null,
     });
 
-    if (!error) return;
+    if (!error) return patientId;
 
     if (isMissingFunction(error)) {
       console.warn(
@@ -273,6 +279,8 @@ export const cloudPatientsRepository: CloudPatientsRepository = {
       .from('patient_tests')
       .insert(toTestRowsWithBilling(tests, patientId, organizationId));
     if (tError) throw tError;
+
+    return patientId;
   },
 
   async registerAndGetId(patient, organizationId) {

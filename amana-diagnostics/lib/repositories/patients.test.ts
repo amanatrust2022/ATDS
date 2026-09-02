@@ -169,6 +169,25 @@ describe('Mapping a patient into Postgres', () => {
     expect(row.commission_status).toBeNull();
   });
 
+  /**
+   * The queue, the search box and the slip all read `patients.name`. Only
+   * `update()` used to write it, so a newly registered patient showed a blank
+   * name and could not be found by searching for it.
+   */
+  it('writes the display name that the queue and the search box read', () => {
+    expect(toPatientRowWithBilling(
+      { ...patient, firstName: 'Aisha', middleName: 'Bello', surname: 'Musa', name: undefined },
+      111, 42, 'org-1',
+    ).name).toBe('Aisha Bello Musa');
+  });
+
+  it('keeps a name the caller supplied rather than rebuilding it', () => {
+    expect(toPatientRowWithBilling(
+      { ...patient, name: 'Hajiya Aisha Musa', firstName: 'Aisha', surname: 'Musa' },
+      111, 42, 'org-1',
+    ).name).toBe('Hajiya Aisha Musa');
+  });
+
   it('defaults the money columns to zero rather than null', () => {
     const row = toPatientRowWithBilling(patient, 111, 42, 'org-1');
 
@@ -310,6 +329,20 @@ describe('Registering a patient who pays from a wallet', () => {
 
     expect(calls).toHaveLength(1);
     expect(calls[0].fn).toBe('register_patient_with_wallet');
+  });
+
+  /**
+   * Reception puts the new patient straight onto the queue from this id, rather
+   * than refetching. Returning nothing is what made a registration only appear
+   * after a manual reload.
+   */
+  it('returns the new patient id so the caller need not refetch', async () => {
+    rpcStub();
+
+    const id = await cloudPatientsRepository.addWithReferral(
+      { ...walletPatient, id: 123456 } as any, someTests, 'org-1');
+
+    expect(id).toBe(123456);
   });
 
   it('sends the ledger entry as a negative charge against the wallet', async () => {

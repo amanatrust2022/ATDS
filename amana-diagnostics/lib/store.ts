@@ -636,7 +636,7 @@ export const addPatientWithReferral = async (
   patient: Omit<Patient, 'id' | 'tests'> & { id?: number },
   tests: Omit<PatientTest, 'id' | 'patient_id'>[],
   organizationId: string
-): Promise<void> =>
+): Promise<number | string> =>
   getPatientsRepository().addWithReferral(patient, tests, organizationId);
 
 export const updatePatient = async (id: number | string, updates: Partial<Patient>): Promise<void> =>

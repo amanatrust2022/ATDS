@@ -1,6 +1,7 @@
 import React from 'react';
 import { RiTestTubeLine, RiRadarLine, RiCheckLine, RiMoreLine, RiPrinterLine, RiFileTextLine } from '@remixicon/react';
 import { Patient, PatientTest } from '@/lib/store';
+import { patientDisplayName } from '@/lib/store/patientName';
 
 const btnStyle = (variant: 'primary' | 'outline' | 'ghost' | 'danger'): React.CSSProperties => ({
   background: variant === 'primary' ? 'var(--teal-700)' : variant === 'danger' ? 'var(--red)' : variant === 'outline' ? 'white' : 'transparent',
@@ -42,8 +43,8 @@ export function PatientCard({ patient, mode, onViewSlip, onViewResult }: Patient
             background: 'var(--teal-100)', color: 'var(--teal-800)',
             padding: '0.15rem 0.5rem', borderRadius: 0, fontWeight: 600,
           }}>{patient.slipNumber}</span>
-          <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--gray-900)' }}>{patient.name}</span>
-          <span style={{ fontSize: '0.75rem', color: 'var(--gray-500)' }}>{patient.age} ? {patient.sex}</span>
+          <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--gray-900)' }}>{patientDisplayName(patient)}</span>
+          <span style={{ fontSize: '0.75rem', color: 'var(--gray-500)' }}>{patient.age} • {patient.sex}</span>
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
           {patient.tests.map((t: PatientTest) => (

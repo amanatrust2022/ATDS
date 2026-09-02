@@ -96,6 +96,11 @@ export const toProfileRow = (patient: Partial<Patient>, profileId: number, organ
 /** The identity and referral columns every patient insert writes. */
 const identityColumns = (patient: Partial<Patient>, organizationId: string) => ({
   slip_number: patient.slipNumber,
+  // The display name the queue, the search box and the slip all read. It is a
+  // real column — `update()` has always written it — but registration never did,
+  // so every patient showed a blank name until someone edited them, and a search
+  // by name matched nothing.
+  name: patient.name || [patient.firstName, patient.middleName, patient.surname].filter(Boolean).join(' '),
   first_name: patient.firstName,
   surname: patient.surname,
   age: patient.age,
@@ -116,6 +121,8 @@ export const toPatientRow = (
 ) => ({
   ...identityColumns(patient, organizationId),
   id: patientId,
+  // registered_at is deliberately not written: the column default stamps it
+  // server-side, which is proven working and does not trust a client clock.
   patient_profile_id: profileId,
   middle_name: patient.middleName,
   email: patient.email,
