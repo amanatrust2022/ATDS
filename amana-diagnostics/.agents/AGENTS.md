@@ -67,6 +67,18 @@ px tsc --noEmit\).
 - **Cascading Handlers**: Before turning a `setState(prev => …)` child into a `value` + `onChange(next)` one, check whether any single event calls the updater more than once. Functional updates compose; `onChange({ ...value, field })` twice keeps only the last. `MpsEntryForm` sets five fields when parasites are marked seen — it builds one patch, and `components/DepartmentPage.test.tsx` has the test that would catch a regression. Either build the whole next state in one call, or keep the functional signature.
 
 ## 6. Ongoing Refactoring Roadmap (Divide & Conquer)
+
+> **Release state as of 2026-09-02: none of the work below has shipped.** The last
+> tag is `v1.2.20` (6 July 2026). Everything from Phase 1 onward is on `main` and
+> unreleased, which includes the queue fix (`ebdb11a`) and the obstetric report fix.
+> Anyone diagnosing a bug the code appears to fix should check `git merge-base
+> --is-ancestor <fix> v1.2.20` before assuming the user is running it.
+>
+> **Both wallet functions are currently DROPPED from the database** (2026-09-02),
+> after the first version broke registration — see §8. The client is on its
+> non-atomic fallback, which is the pre-Phase-2 behaviour and is stable.
+> `STATUS.md` at the repo root carries the same picture in plain English.
+
 We are transitioning away from God Components (`ReceptionPage.tsx`, `DepartmentPage.tsx`) and Monolithic State (`lib/store.ts`). All future work must adhere to this phased strategy:
 - **Phase 1 (Done for Reception): Feature Extraction.** Tabs and areas of giant pages become components under `components/features/*`, with domain state in small Zustand slices.
 - **Phase 2 (Done): Sync Abstraction.** SQLite (local hub) vs Supabase (cloud) lives behind repository interfaces in `lib/repositories/`. `lib/store.ts` no longer branches on runtime mode at all.
@@ -81,6 +93,13 @@ We are transitioning away from God Components (`ReceptionPage.tsx`, `DepartmentP
 - **Money-moving changes are characterisation-tested first.** Write tests against the current behaviour through the `lib/store.ts` API, watch them pass, then change the code and re-run them unchanged. See `lib/repositories/billing.characterization.test.ts`.
 
 ## 8. Money-Moving Writes Are Atomic — Keep Them That Way
+
+> **Current state: the functions are dropped, so this is aspirational, not live.**
+> The first version broke registration in production; both functions were dropped on
+> 2026-09-02 and the client is on its non-atomic fallback. A corrected
+> `supabase_wallet_atomicity.sql` is committed but **unverified** — nobody has run it
+> against Postgres. Do not re-apply it without running its VERIFY block first.
+
 A wallet debit and the rows that explain it must commit together, or a patient is charged with no record of why.
 
 - **Cloud**: both paths call a Postgres function from `supabase_wallet_atomicity.sql` — `log_external_department_charge` and `register_patient_with_wallet`. A function body is one transaction, and each takes the account row with `SELECT … FOR UPDATE` so concurrent charges queue instead of racing.
