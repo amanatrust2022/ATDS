@@ -91,3 +91,10 @@ conversation; it only reads, it changes nothing.
   at the end of an obstetric report instead of replacing the line already there. It
   is recorded and understood, but deliberately left alone — deciding the correct
   behaviour is a clinical judgement, not a technical one.
+
+---
+
+## Bug history
+
+Every bug found and fixed is logged in [BUGFIXES.md](BUGFIXES.md), newest first —
+what you would have seen, what caused it, and whether it has reached the clinic yet.
