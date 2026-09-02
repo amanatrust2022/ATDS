@@ -79,5 +79,12 @@ We are transitioning away from God Components (`ReceptionPage.tsx`, `DepartmentP
 - **Reads and writes fail differently, on purpose.** Reads log and return `[]`/`null` so a screen degrades rather than crashes; writes throw so the user is told. Preserve that asymmetry.
 - **Money-moving changes are characterisation-tested first.** Write tests against the current behaviour through the `lib/store.ts` API, watch them pass, then change the code and re-run them unchanged. See `lib/repositories/billing.characterization.test.ts`.
 
-### Known limitation: non-atomic wallet writes
-`billing.logExternalCharge` and `patients.addWithReferral` each debit a wallet and then write further rows without a transaction. A failure mid-sequence leaves the wallet debited with no matching record. Fixing this needs a Postgres function so the debit and inserts commit together. Do not paper over it with retries.
+## 8. Money-Moving Writes Are Atomic — Keep Them That Way
+A wallet debit and the rows that explain it must commit together, or a patient is charged with no record of why.
+
+- **Cloud**: both paths call a Postgres function from `supabase_wallet_atomicity.sql` — `log_external_department_charge` and `register_patient_with_wallet`. A function body is one transaction, and each takes the account row with `SELECT … FOR UPDATE` so concurrent charges queue instead of racing.
+- **Local**: the API route wraps the writes in `inTransaction()` (`lib/localDb.ts`), which uses `BEGIN IMMEDIATE` so the write lock is taken before the balance is read. **Throw inside it, never `return`** — returning out of an open transaction leaves it open. `HttpError` carries the status so a rejected charge still answers 400/404.
+- **Never add a fourth wallet write path.** Extend a function; do not write a new sequence of client-side writes.
+- **The functions are optional at runtime, on purpose.** A release can reach a database where the SQL has not been applied, so the client detects `PGRST202`/`42883`, warns, and falls back to the old sequential writes. That fallback is not atomic. Keep it working, keep it warning, and do not make it the primary path.
+- **Refusals use one protocol**: `INSUFFICIENT_FUNDS:{json}`, parsed in `lib/repositories/rpcErrors.ts`, so the wording the receptionist sees stays identical to what the client produced before the checks moved into the database.
+- **Applying the SQL is a manual step.** There is no Supabase CLI, MCP server or migrations directory in this project; SQL files live at the repo root and are run in the Supabase SQL editor. `supabase_wallet_atomicity.sql` is idempotent and ends with verification queries.
