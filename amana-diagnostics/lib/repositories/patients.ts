@@ -324,7 +324,6 @@ export const cloudPatientsRepository: CloudPatientsRepository = {
       address: updates.address,
       referred_by: updates.referredBy,
       referring_facility: updates.referringFacility,
-      name: updates.name,
     }).eq('id', id);
     if (error) throw error;
   },

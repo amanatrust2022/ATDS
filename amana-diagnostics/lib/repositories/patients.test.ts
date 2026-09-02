@@ -170,22 +170,19 @@ describe('Mapping a patient into Postgres', () => {
   });
 
   /**
-   * The queue, the search box and the slip all read `patients.name`. Only
-   * `update()` used to write it, so a newly registered patient showed a blank
-   * name and could not be found by searching for it.
+   * `patients` has no `name` column — only the parts. Writing one is rejected
+   * outright with "Could not find the 'name' column of 'patients' in the schema
+   * cache", which stops registration for everyone. The display name is derived
+   * at read time by `patientDisplayName`; nothing writes it.
    */
-  it('writes the display name that the queue and the search box read', () => {
-    expect(toPatientRowWithBilling(
-      { ...patient, firstName: 'Aisha', middleName: 'Bello', surname: 'Musa', name: undefined },
+  it('never sends a name column, which does not exist on patients', () => {
+    const row = toPatientRowWithBilling(
+      { ...patient, firstName: 'Aisha', middleName: 'Bello', surname: 'Musa' },
       111, 42, 'org-1',
-    ).name).toBe('Aisha Bello Musa');
-  });
+    );
 
-  it('keeps a name the caller supplied rather than rebuilding it', () => {
-    expect(toPatientRowWithBilling(
-      { ...patient, name: 'Hajiya Aisha Musa', firstName: 'Aisha', surname: 'Musa' },
-      111, 42, 'org-1',
-    ).name).toBe('Hajiya Aisha Musa');
+    expect(Object.keys(row)).not.toContain('name');
+    expect(row).toMatchObject({ first_name: 'Aisha', middle_name: 'Bello', surname: 'Musa' });
   });
 
   it('defaults the money columns to zero rather than null', () => {

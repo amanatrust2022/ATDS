@@ -89,6 +89,27 @@ describe('Feature: Patient Queue Management', () => {
     expect(screen.queryByText('Jane Smith')).not.toBeInTheDocument();
   });
 
+  /**
+   * `patients` has no `name` column, so every real row arrives without one and
+   * the display name is built from the parts. Searching used to read `p.name`
+   * directly, which meant no patient could be found by name at all.
+   */
+  it('finds and shows a patient whose row carries no name, only the parts', () => {
+    renderQueue([
+      patient({ name: '', firstName: 'John', middleName: 'Adeola', surname: 'Doe' }),
+      patient({ id: 2, slipNumber: 'ATD-0002', name: '', firstName: 'Jane', surname: 'Smith' }),
+    ]);
+
+    expect(screen.getByText('John Adeola Doe')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByPlaceholderText('Search by name or slip number...'), {
+      target: { value: 'adeola' },
+    });
+
+    expect(screen.getByText('John Adeola Doe')).toBeInTheDocument();
+    expect(screen.queryByText('Jane Smith')).not.toBeInTheDocument();
+  });
+
   it('finds a patient by slip number as well as by name', () => {
     renderQueue();
 

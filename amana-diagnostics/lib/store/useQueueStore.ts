@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { Patient } from '@/lib/store';
+import { patientDisplayName } from '@/lib/store/patientName';
 
 export type DateFilter = 'today' | 'seven_days' | 'thirty_days';
 export type DeptFilter = 'all' | 'lab' | 'radiology';
@@ -82,7 +83,7 @@ export const filterPatientsBySearchAndDept = (
   return patients.filter(p => {
     const q = searchQuery.toLowerCase();
     const matchSearch = q === '' || (
-      (p.name?.toLowerCase().includes(q)) || 
+      (patientDisplayName(p).toLowerCase().includes(q)) || 
       (p.slipNumber?.toLowerCase().includes(q))
     );
 
