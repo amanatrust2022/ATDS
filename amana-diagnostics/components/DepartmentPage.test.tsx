@@ -404,6 +404,46 @@ describe('Specialised entry forms', () => {
     expect(screen.queryByText('Salmonella Antigen Titers (Widal Reaction Matrix)')).toBeNull();
   });
 
+  it('saves an untouched MPs form as six negative rows', async () => {
+    await openOnly(patientTest({ testId: 'mps', testName: 'Malaria Parasite' }));
+    updateTestResult.mockClear();
+
+    fireEvent.click(screen.getByText(/Submit & Send to Reception/));
+
+    await waitFor(() => expect(updateTestResult).toHaveBeenCalledTimes(1));
+    expect(updateTestResult.mock.calls[0][1].results.map((r: any) => r.result))
+      .toEqual(['Not Seen', 'Nil', 'Nil', 'Nil', 'Nil', 'Nil']);
+  });
+
+  // Marking parasites seen sets four other fields in the same handler. Extracting
+  // this form naively — one `onChange({...value, field})` per call — would keep
+  // only the last of them.
+  it('fills in a plausible density, species and stage when parasites are marked seen', async () => {
+    await openOnly(patientTest({ testId: 'mps', testName: 'Malaria Parasite' }));
+    updateTestResult.mockClear();
+
+    fireEvent.change(screen.getByDisplayValue('Not Seen (Negative)'), { target: { value: 'Seen' } });
+    fireEvent.click(screen.getByText(/Submit & Send to Reception/));
+
+    await waitFor(() => expect(updateTestResult).toHaveBeenCalledTimes(1));
+    expect(updateTestResult.mock.calls[0][1].results.map((r: any) => r.result)).toEqual([
+      'Seen', '+', 'Nil', 'Plasmodium falciparum', 'Trophozoites (ring forms)', 'Nil',
+    ]);
+  });
+
+  it('clears density, species and stage again when parasites are marked not seen', async () => {
+    await openOnly(patientTest({ testId: 'mps', testName: 'Malaria Parasite' }));
+    updateTestResult.mockClear();
+
+    fireEvent.change(screen.getByDisplayValue('Not Seen (Negative)'), { target: { value: 'Seen' } });
+    fireEvent.change(screen.getByDisplayValue('Seen (Positive)'), { target: { value: 'Not Seen' } });
+    fireEvent.click(screen.getByText(/Submit & Send to Reception/));
+
+    await waitFor(() => expect(updateTestResult).toHaveBeenCalledTimes(1));
+    expect(updateTestResult.mock.calls[0][1].results.map((r: any) => r.result))
+      .toEqual(['Not Seen', 'Nil', 'Nil', 'Nil', 'Nil', 'Nil']);
+  });
+
   it('stacks both forms for a combined Widal + MPs test', async () => {
     await openOnly(patientTest({ testId: 'widal_mps', testName: 'Widal + MPs' }));
 
@@ -441,6 +481,107 @@ describe('Specialised entry forms', () => {
     await openOnly(patientTest({ testId: 'hist', testName: 'Histology Report' }));
 
     expect(screen.getByPlaceholderText('Describe the findings for each organ in detail...')).toBeDefined();
+  });
+
+  it('offers the obstetrics calculator only for an obstetric scan', async () => {
+    getTestById.mockReturnValue(undefined);
+    await openOnly(patientTest({
+      testId: 'us_pelvis', testName: 'Pelvic Ultrasound', department: 'radiology', specimen: '',
+    }));
+
+    expect(screen.queryByText('Obstetrics Calculator (Hadlock Fit)')).toBeNull();
+  });
+
+  it('estimates gestational age from a single measurement', async () => {
+    getTestById.mockReturnValue(undefined);
+    await openOnly(patientTest({
+      testId: 'us_obs', testName: 'Obstetric Ultrasound', department: 'radiology', specimen: '',
+    }));
+
+    expect(screen.getByText('Obstetrics Calculator (Hadlock Fit)')).toBeDefined();
+    expect(screen.getByText(/Enter BPD, FL, or CRL/)).toBeDefined();
+
+    fireEvent.change(screen.getByPlaceholderText('e.g. 35'), { target: { value: '35' } });
+
+    // 0.0012·35² + 0.22·35 + 7.5 = 16.67 weeks
+    expect(await screen.findByText('16 Weeks 4 Day(s)')).toBeDefined();
+    expect(screen.getByText('Apply & Insert into Report')).toBeDefined();
+  });
+
+  it('averages the estimates when several measurements are given', async () => {
+    getTestById.mockReturnValue(undefined);
+    await openOnly(patientTest({
+      testId: 'us_obs', testName: 'Obstetric Ultrasound', department: 'radiology', specimen: '',
+    }));
+
+    fireEvent.change(screen.getByPlaceholderText('e.g. 35'), { target: { value: '35' } });
+    fireEvent.change(screen.getByPlaceholderText('e.g. 24'), { target: { value: '24' } });
+
+    // BPD 16.67 and FL (0.0015·24² + 0.26·24 + 10.2) = 17.30 average to 16.98
+    expect(await screen.findByText('16 Weeks 6 Day(s)')).toBeDefined();
+  });
+
+  it('writes the estimate into the findings and impression when applied', async () => {
+    getTestById.mockReturnValue(undefined);
+    await openOnly(patientTest({
+      testId: 'us_obs', testName: 'Obstetric Ultrasound', department: 'radiology', specimen: '',
+    }));
+    updateTestResult.mockClear();
+
+    fireEvent.change(screen.getByPlaceholderText('e.g. 35'), { target: { value: '35' } });
+    fireEvent.click(await screen.findByText('Apply & Insert into Report'));
+    fireEvent.click(screen.getByText(/Submit & Send to Reception/));
+
+    await waitFor(() => expect(updateTestResult).toHaveBeenCalledTimes(1));
+    const rows = updateTestResult.mock.calls[0][1].results;
+    const byName = (p: string) => rows.find((r: any) => r.parameter === p)?.result;
+
+    // us_obs pre-fills a template whose biometry line is labelled this way.
+    expect(byName('Radiology: Findings'))
+      .toContain('Gestation age based on BPD, HC and FL is approximately (GA): 16 weeks 4 day(s)');
+    expect(byName('Radiology: Findings')).toMatch(/EDD: /);
+    // The rest of the report survives — see lib/store/obstetrics.ts.
+    expect(byName('Radiology: Findings')).toContain('FOETAL WEIGHT:');
+    expect(byName('Radiology: Impression')).toContain('Single live foetus at 16 weeks 4 day(s) GA.');
+    expect(byName('Measurement: EGA')).toBe('16 weeks 4 day(s)');
+    expect(byName('Measurement: BPD')).toBe('35');
+  });
+
+  it('attaches and detaches a scan image', async () => {
+    getTestById.mockReturnValue(undefined);
+    await openOnly(patientTest({
+      testId: 'us_pelvis', testName: 'Pelvic Ultrasound', department: 'radiology', specimen: '',
+    }));
+    updateTestResult.mockClear();
+
+    expect(screen.getByText('Attach Key Scan Images (Optional)')).toBeDefined();
+    const fibroid = screen.getByAltText('Uterine Fibroid');
+
+    fireEvent.click(fibroid.parentElement!);
+    expect(await screen.findByText('1 Image(s) Attached')).toBeDefined();
+
+    fireEvent.click(fibroid.parentElement!);
+    expect(screen.queryByText('1 Image(s) Attached')).toBeNull();
+  });
+
+  it('replaces findings and impression with the chosen report template', async () => {
+    getTestById.mockReturnValue(undefined);
+    await openOnly(patientTest({
+      testId: 'us_pelvis', testName: 'Pelvic Ultrasound', department: 'radiology', specimen: '',
+    }));
+
+    const search = screen.getByPlaceholderText('Type to search e.g. Appendicitis, Pelvic, Normal...');
+    fireEvent.change(search, { target: { value: 'zzzz-no-such-template' } });
+    expect(await screen.findByText('No matching templates found')).toBeDefined();
+
+    fireEvent.change(search, { target: { value: 'normal pelvic' } });
+    fireEvent.click(await screen.findByText('NORMAL PELVIC (Ad)(F)'));
+
+    // Choosing a template closes the dropdown and clears the search box.
+    expect(screen.queryByText('No matching templates found')).toBeNull();
+    expect((search as HTMLInputElement).value).toBe('');
+    expect((screen.getByPlaceholderText('Describe the findings for each organ in detail...') as HTMLTextAreaElement).value)
+      .not.toBe('');
   });
 
   it('saves free text as the Findings and Impression rows', async () => {
