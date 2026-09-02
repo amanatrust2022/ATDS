@@ -64,12 +64,13 @@ px tsc --noEmit\).
 - **Pure Calculation Modules**: Domain math that is not itself state (billing totals, discounts, commission) belongs in a plain module under `lib/store/` (e.g. `registrationBilling.ts`), not inlined in a component and not duplicated inside a store action. Stores and components both import from that one module, so a formula has exactly one implementation.
 - **Testing Requirement**: Every Zustand store or complex business logic function must have a co-located or parallel unit test in Vitest (`*.test.ts`) before being wired into the UI.
 - **Extraction Hazard**: When splitting a God Component, extractions done by script silently break in three ways TypeScript will only catch if props are typed: `useState` updater callbacks passed to a Zustand `Partial` setter (a no-op), calls to setters that no longer exist, and prop names dropped from a rewritten helper component (e.g. a `Field` that stops forwarding `actionNode`). Never type an extracted component's props as `any` — the props interface is what makes these fail loudly. Verify the extracted UI still renders every button and modal the original had.
+- **Cascading Handlers**: Before turning a `setState(prev => …)` child into a `value` + `onChange(next)` one, check whether any single event calls the updater more than once. Functional updates compose; `onChange({ ...value, field })` twice keeps only the last. `MpsEntryForm` sets five fields when parasites are marked seen — it builds one patch, and `components/DepartmentPage.test.tsx` has the test that would catch a regression. Either build the whole next state in one call, or keep the functional signature.
 
 ## 6. Ongoing Refactoring Roadmap (Divide & Conquer)
 We are transitioning away from God Components (`ReceptionPage.tsx`, `DepartmentPage.tsx`) and Monolithic State (`lib/store.ts`). All future work must adhere to this phased strategy:
 - **Phase 1 (Done for Reception): Feature Extraction.** Tabs and areas of giant pages become components under `components/features/*`, with domain state in small Zustand slices.
 - **Phase 2 (Done): Sync Abstraction.** SQLite (local hub) vs Supabase (cloud) lives behind repository interfaces in `lib/repositories/`. `lib/store.ts` no longer branches on runtime mode at all.
-- **Phase 3 (Next): Gradual Rollout.** `DepartmentPage.tsx` (Lab + Radiology) gets the Phase 1 treatment; then apply these patterns to any remaining module before adding complex new features.
+- **Phase 3 (Done): `DepartmentPage.tsx`.** 2466 → 447 lines. Result serialisation is in `lib/store/labResults.ts`, obstetric maths in `lib/store/obstetrics.ts`, and the entry forms, queue and alerts hook are under `components/features/department/`. Apply the same patterns to any remaining module before adding complex new features.
 
 ## 7. Data Access (Repositories)
 - **One place decides the back end.** `lib/runtimeMode.ts` resolves local vs cloud. Never re-derive it — several page components still carry a copy of that detection and are NOT interchangeable with it (they omit the `NODE_ENV` clause); move them here rather than copying again.
@@ -88,3 +89,21 @@ A wallet debit and the rows that explain it must commit together, or a patient i
 - **The functions are optional at runtime, on purpose.** A release can reach a database where the SQL has not been applied, so the client detects `PGRST202`/`42883`, warns, and falls back to the old sequential writes. That fallback is not atomic. Keep it working, keep it warning, and do not make it the primary path.
 - **Refusals use one protocol**: `INSUFFICIENT_FUNDS:{json}`, parsed in `lib/repositories/rpcErrors.ts`, so the wording the receptionist sees stays identical to what the client produced before the checks moved into the database.
 - **Applying the SQL is a manual step.** There is no Supabase CLI, MCP server or migrations directory in this project; SQL files live at the repo root and are run in the Supabase SQL editor. `supabase_wallet_atomicity.sql` is idempotent and ends with verification queries.
+
+## 9. Report Text Is HTML, Not Lines
+The radiology findings and impression come from the rich-text editor, and
+`convertTextToFormattedHtml` emits them **with no newline characters at all**.
+
+- **Never match "the rest of the line" with `[^\n]*`** against report text. It
+  runs to the end of the document and deletes the remainder of the report. This
+  shipped: "Apply & Insert into Report" on an obstetric scan silently dropped
+  the expected delivery date and foetal weight, and left an unclosed `</p>`.
+  A line ends at a newline **or** at the next tag: `[^\n<]*`. See
+  `lib/store/obstetrics.ts` and its tests.
+- **`convertTextToFormattedHtml` upper-cases the labels it recognises**, so a
+  matcher written against a template's plain text (`Expected date of delivery`)
+  will not match the same template once it is in the editor. Check both forms,
+  or match case-insensitively.
+- Anything that edits a stored report belongs in a pure module with tests that
+  run the real template through the real converter first — the plain-text
+  fixtures are the ones that pass while production is broken.

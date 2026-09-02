@@ -104,7 +104,11 @@ Feature tests (RTL) — copy the setup pattern from these rather than starting f
 - `components/features/registration/BillingSummary.test.tsx` — discount, payment method, wallet limits
 - `components/features/registration/PatientLookup.test.tsx`, `TestSearchPicker.test.tsx`, `RegistrationForm.test.tsx`
 
-Unit tests: `lib/store/registrationBilling.test.ts`, `useQueueStore.test.ts`, `wallet.test.ts`, `registration.test.ts`.
+- `components/DepartmentPage.test.tsx` — the whole Lab/Radiology screen: queue filtering, claiming a test, all four entry forms, what reaches `updateTestResult`. Shows how to mock `@/lib/store`, `useAuth`, `Header` and the rich-text editor in one place.
+
+Unit tests: `lib/store/registrationBilling.test.ts`, `useQueueStore.test.ts`, `wallet.test.ts`, `registration.test.ts`, `labResults.test.ts`, `obstetrics.test.ts`.
+
+**Fixtures lie about production.** `obstetrics.test.ts` runs a real template through the real `convertTextToFormattedHtml` before asserting, because the bug it covers only appears in editor HTML — every hand-written plain-text fixture passed while the live report was being truncated. When a function edits stored content, feed it the real thing at least once.
 
 **Resetting Zustand between tests.** Stores are module singletons and leak state across tests. Reset in `beforeEach`:
 ```ts
