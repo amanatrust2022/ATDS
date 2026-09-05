@@ -121,7 +121,10 @@ function serialize(els: El[], height: number): string {
       return `<img data-type="image" src="${escapeAttr(e.src)}" style="${elStyle(e)}" alt="" />`;
     }
     const inner = e.type === 'text' ? e.content : '';
-    return `<div data-type="${e.type}" style="${elStyle(e)}">${inner}</div>`;
+    // Shapes are empty divs; `data-shape` stops cleanLetterhead's "trailing empty
+    // element" tidier from deleting them before they reach the page.
+    const shapeMark = e.type === 'text' ? '' : ' data-shape="1"';
+    return `<div data-type="${e.type}"${shapeMark} style="${elStyle(e)}">${inner}</div>`;
   }).join('');
   return `<div data-letterhead-canvas="1" style="position:relative;width:${CANVAS_W}px;height:${round(height)}px;margin:0 auto">${children}</div>`;
 }
@@ -205,54 +208,60 @@ export default function LetterheadDesigner({ value, onChange }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
   const lastEmitted = useRef<string>('');
   const drag = useRef<any>(null);
+  // Refs mirror the latest state so drag listeners bound once at mousedown, and
+  // any handler, always compute from current values rather than a stale closure.
+  const elsRef = useRef<El[]>([]);
+  const heightRef = useRef<number>(DEFAULT_H);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
 
   // Load from value (and pull in external changes) without fighting live edits.
+  // Setting state here must NOT emit — legacy letterheads stay untouched until
+  // the user actually edits.
   useEffect(() => {
     if (value === lastEmitted.current) return;
     const { els: e, height: h } = deserialize(value);
+    elsRef.current = e; heightRef.current = h;
     setEls(e); setHeight(h); lastEmitted.current = value;
   }, [value]);
 
-  const emit = useCallback((next: El[], nextH: number) => {
-    const html = serialize(next, nextH);
+  // The single write path: update state AND emit, both outside any React
+  // updater so the parent reliably receives the change.
+  const apply = useCallback((next: El[], nextH?: number) => {
+    const h = nextH ?? heightRef.current;
+    elsRef.current = next; heightRef.current = h;
+    setEls(next); setHeight(h);
+    const html = serialize(next, h);
     lastEmitted.current = html;
-    onChange(html);
-  }, [onChange]);
-
-  const commit = useCallback((updater: (prev: El[]) => El[], nextH?: number) => {
-    setEls((prev) => {
-      const next = updater(prev);
-      emit(next, nextH ?? height);
-      return next;
-    });
-  }, [emit, height]);
+    onChangeRef.current(html);
+  }, []);
 
   const sel = els.find((e) => e.id === selId) || null;
 
-  const update = (id: string, patch: Partial<El>) =>
-    commit((prev) => prev.map((e) => (e.id === id ? { ...e, ...patch } : e)));
+  const update = useCallback((id: string, patch: Partial<El>) =>
+    apply(elsRef.current.map((e) => (e.id === id ? { ...e, ...patch } : e))), [apply]);
 
   const addEl = (type: ElType, extra?: Partial<El>) => {
-    const z = (els.reduce((m, e) => Math.max(m, e.z), 0) || 0) + 1;
+    const z = (elsRef.current.reduce((m, e) => Math.max(m, e.z), 0) || 0) + 1;
     let e = { ...baseEl(type, z), ...extra };
     if (type === 'line') e = { ...e, w: 300, h: 4, x: 60, y: 90, fill: '#000000' };
     if (type === 'text') e = { ...e, w: 320, h: 48, x: 60, y: 40, content: 'Double-click to edit' };
     if (type === 'circle') e = { ...e, w: 100, h: 100 };
     if (type === 'triangle') e = { ...e, w: 120, h: 100 };
-    commit((prev) => [...prev, e]);
+    apply([...elsRef.current, e]);
     setSelId(e.id);
   };
 
-  const removeEl = (id: string) => { commit((prev) => prev.filter((e) => e.id !== id)); setSelId(null); };
+  const removeEl = (id: string) => { apply(elsRef.current.filter((e) => e.id !== id)); setSelId(null); };
 
-  const bringFront = (id: string) => commit((prev) => {
-    const max = prev.reduce((m, e) => Math.max(m, e.z), 0);
-    return prev.map((e) => (e.id === id ? { ...e, z: max + 1 } : e));
-  });
-  const sendBack = (id: string) => commit((prev) => {
-    const min = prev.reduce((m, e) => Math.min(m, e.z), 0);
-    return prev.map((e) => (e.id === id ? { ...e, z: min - 1 } : e));
-  });
+  const bringFront = (id: string) => {
+    const max = elsRef.current.reduce((m, e) => Math.max(m, e.z), 0);
+    apply(elsRef.current.map((e) => (e.id === id ? { ...e, z: max + 1 } : e)));
+  };
+  const sendBack = (id: string) => {
+    const min = elsRef.current.reduce((m, e) => Math.min(m, e.z), 0);
+    apply(elsRef.current.map((e) => (e.id === id ? { ...e, z: min - 1 } : e)));
+  };
 
   // ── Pointer interactions ───────────────────────────────────────────────────
   const pt = (ev: MouseEvent | React.MouseEvent) => {
@@ -328,7 +337,7 @@ export default function LetterheadDesigner({ value, onChange }: Props) {
     ev.target.value = '';
   };
 
-  const setHeightSafe = (h: number) => { const v = Math.max(80, Math.min(1000, h)); setHeight(v); emit(els, v); };
+  const setHeightSafe = (h: number) => { const v = Math.max(80, Math.min(1000, h)); apply(elsRef.current, v); };
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
