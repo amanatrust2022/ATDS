@@ -20,6 +20,11 @@ export const formatSlipNumber = (date: Date, sequence: number): string => {
 export const slipPrefixFor = (date: Date): string => formatSlipNumber(date, 0).slice(0, -4);
 
 /** Patient ids are client-generated 8-digit numbers, not database sequences. */
+/**
+ * The old random id. Kept ONLY as the fallback in patientIds.ts for a database
+ * where allocate_numeric_id has not been applied yet — it collides at around
+ * 11,000 records (D-04). Nothing else should call this.
+ */
 export const generatePatientId = (): number => Math.floor(10000000 + Math.random() * 90000000);
 
 export const toPatientTest = (t: any): PatientTest => ({

@@ -42,8 +42,16 @@ export function getJwtSecret(): string {
     cachedSecret = newSecret;
     return cachedSecret;
   } catch (err) {
-    console.error('Failed to retrieve or generate JWT secret in SQLite, falling back:', err);
-    return process.env.JWT_SECRET || 'amana-diagnostics-local-fallback-secret-2026';
+    // There used to be a literal secret here. Every hub that reached this path
+    // shared one signing key, so a portal token minted on any of them was valid
+    // on all of them. A hub that cannot reach its own secret must refuse to
+    // sign rather than sign with a known one.
+    console.error('Failed to retrieve or generate the portal signing secret:', err);
+    if (process.env.JWT_SECRET) {
+      cachedSecret = process.env.JWT_SECRET;
+      return cachedSecret;
+    }
+    throw new Error('Portal signing secret unavailable; refusing to issue or accept portal sessions.');
   }
 }
 
@@ -113,55 +121,5 @@ export function verifyToken(token: string): Record<string, any> | null {
     return payload;
   } catch {
     return null;
-  }
-}
-
-/**
- * Generates a stateless, cryptographically signed token representing an OTP challenge.
- * Returns the base64-encoded string containing email, expiration timestamp, and signature hash.
- */
-export function signOtp(email: string, otp: string, expires: number): string {
-  const secret = getJwtSecret();
-  const normalizedEmail = email.trim().toLowerCase();
-  
-  const hash = crypto
-    .createHmac('sha256', secret)
-    .update(`${normalizedEmail}|${otp}|${expires}`)
-    .digest('hex');
-    
-  return Buffer.from(`${normalizedEmail}|${expires}|${hash}`).toString('base64');
-}
-
-/**
- * Verifies a stateless OTP challenge against the provided OTP and state token.
- */
-export function verifyOtp(email: string, otp: string, stateToken: string): boolean {
-  try {
-    const decoded = Buffer.from(stateToken, 'base64').toString('utf8');
-    const [tokenEmail, tokenExpiresStr, tokenHash] = decoded.split('|');
-    if (!tokenEmail || !tokenExpiresStr || !tokenHash) return false;
-    
-    const expires = parseInt(tokenExpiresStr, 10);
-    const normalizedEmail = email.trim().toLowerCase();
-    
-    // 1. Check email match
-    if (tokenEmail !== normalizedEmail) return false;
-    
-    // 2. Check expiration
-    if (Date.now() > expires) return false;
-    
-    // 3. Verify signature hash with timing-safe comparison
-    const secret = getJwtSecret();
-    const expectedHash = crypto
-      .createHmac('sha256', secret)
-      .update(`${normalizedEmail}|${otp.trim()}|${expires}`)
-      .digest('hex');
-      
-    return crypto.timingSafeEqual(
-      Buffer.from(tokenHash, 'hex'),
-      Buffer.from(expectedHash, 'hex')
-    );
-  } catch {
-    return false;
   }
 }

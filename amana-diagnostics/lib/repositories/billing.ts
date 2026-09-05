@@ -125,6 +125,12 @@ type CloudBillingRepository = BillingRepository & {
     chargeId: string,
     now: string,
   ): Promise<void>;
+  depositSequentially(
+    accountId: string,
+    amount: number,
+    ledger: Record<string, any>,
+    now: string,
+  ): Promise<void>;
 };
 
 export const cloudBillingRepository: CloudBillingRepository = {
@@ -193,9 +199,64 @@ export const cloudBillingRepository: CloudBillingRepository = {
     }
   },
 
+  /**
+   * Adds to the wallet and records the deposit in one transaction, via the
+   * `deposit_to_wallet` Postgres function (supabase_deposit_atomicity.sql).
+   *
+   * If that function is not deployed yet, falls back to the previous sequential
+   * writes so an app release cannot outrun the migration. The fallback is NOT
+   * safe against two deposits at the same moment — that is what the function
+   * exists to fix.
+   */
   async deposit(accountId, amount, description, paymentMethod, createdBy, organizationId, patientId) {
     const supabase = createClient();
     const now = new Date().toISOString();
+
+    const depositAmount = Number(amount);
+    if (!Number.isFinite(depositAmount) || depositAmount <= 0) {
+      throw new Error('Deposit amount must be a positive number');
+    }
+
+    const ledger = {
+      id: crypto.randomUUID(),
+      organization_id: organizationId,
+      billing_account_id: accountId,
+      patient_id: patientId || null,
+      type: 'deposit',
+      amount: depositAmount,
+      description,
+      payment_method: paymentMethod,
+      created_by: createdBy,
+      created_at: now,
+    };
+
+    const { error } = await supabase.rpc('deposit_to_wallet', {
+      p_account: { id: accountId, organization_id: organizationId, amount: depositAmount, updated_at: now },
+      p_ledger: ledger,
+    });
+
+    if (!error) return;
+
+    if (isMissingFunction(error)) {
+      console.warn(
+        '[billing] deposit_to_wallet is not deployed; falling back to non-atomic ' +
+        'writes. Apply supabase_deposit_atomicity.sql to fix this.',
+      );
+      return cloudBillingRepository.depositSequentially(accountId, depositAmount, ledger, now);
+    }
+
+    if (/INVALID_DEPOSIT_AMOUNT/.test(error.message || '')) {
+      throw new Error('Deposit amount must be a positive number');
+    }
+    if (/BILLING_ACCOUNT_NOT_FOUND/.test(error.message || '')) {
+      throw new Error('Billing account not found');
+    }
+    throw new Error(error.message || 'Failed to record deposit');
+  },
+
+  /** The pre-atomicity write path, kept only as the fallback. */
+  async depositSequentially(accountId: string, amount: number, ledger: Record<string, any>, now: string) {
+    const supabase = createClient();
 
     const { data: acc, error: accErr } = await supabase
       .from('billing_accounts')
@@ -210,18 +271,7 @@ export const cloudBillingRepository: CloudBillingRepository = {
       .eq('id', accountId);
     if (upErr) throw upErr;
 
-    const { error: ledErr } = await supabase.from('billing_ledger_transactions').insert([{
-      id: crypto.randomUUID(),
-      organization_id: organizationId,
-      billing_account_id: accountId,
-      patient_id: patientId || null,
-      type: 'deposit',
-      amount,
-      description,
-      payment_method: paymentMethod,
-      created_by: createdBy,
-      created_at: now,
-    }]);
+    const { error: ledErr } = await supabase.from('billing_ledger_transactions').insert([ledger]);
     if (ledErr) throw ledErr;
   },
 

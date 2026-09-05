@@ -1,11 +1,12 @@
 'use client';
+import RequireRole from '@/components/RequireRole';
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/components/AuthProvider';
 import { createClient } from '@/lib/supabase';
 import Header from '@/components/Header';
 import { RiUserSettingsLine, RiCheckLine, RiSave3Line, RiUploadCloud2Line } from '@remixicon/react';
 
-export default function UserSettings() {
+function UserSettings() {
   const { profile, user, organization } = useAuth();
   const supabase = createClient();
 
@@ -246,5 +247,14 @@ export default function UserSettings() {
         </div>
       </div>
     </div>
+  );
+}
+
+/** Only these roles may open this screen — see components/RequireRole.tsx. */
+export default function GuardedUserSettings(props: any) {
+  return (
+    <RequireRole allow={['admin', 'reception', 'lab', 'lab_tech', 'radiology']}>
+      <UserSettings {...props} />
+    </RequireRole>
   );
 }

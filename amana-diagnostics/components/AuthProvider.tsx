@@ -1,5 +1,5 @@
 'use client';
-import { createContext, useContext, useEffect, useState, useRef } from 'react';
+import { createContext, useContext, useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { createClient } from '@/lib/supabase';
 import { buildFallbackProfile, clearPersistedAuthState } from '@/lib/workspace';
 import { User, Session } from '@supabase/supabase-js';
@@ -186,31 +186,54 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
-      // ── Last resort: upsert profile from user_metadata ──────────────────
+      // ── Last resort: ask the server to create the profile ───────────────
+      //
+      // This used to build the profile here, in the browser, taking `role` and
+      // `organization_id` straight from `user_metadata` and upserting it. That
+      // field is writable by the account holder through the ordinary client
+      // SDK, and `profiles_insert_self` permits the write because the row id
+      // matches — so anyone with a fresh account could name themselves
+      // administrator of any workspace and have it written down as fact.
+      //
+      // Standing in a clinic is now decided server-side. `/api/auth/profile`
+      // takes only the caller's own details; it grants admin solely when the
+      // workspace has no members yet, which is the sign-up case.
       if (!prof && sourceUser?.id) {
         try {
           const { data: { session: liveSession } } = await supabase.auth.getSession();
-          if (liveSession) {
-            const fallback = buildFallbackProfile(sourceUser, {
-              email: sourceUser.email || '',
-              full_name: sourceUser.user_metadata?.full_name || sourceUser.user_metadata?.name || '',
-              role: sourceUser.user_metadata?.role || 'reception',
-              organization_id: sourceUser.user_metadata?.organization_id || null,
+          if (liveSession?.access_token) {
+            const res = await fetch('/api/auth/profile', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${liveSession.access_token}`,
+              },
+              body: JSON.stringify({
+                profile: {
+                  full_name: sourceUser.user_metadata?.full_name || sourceUser.user_metadata?.name || '',
+                  organization_id: sourceUser.user_metadata?.organization_id || null,
+                },
+              }),
             });
-            if (fallback) {
-              const { error: upsertErr } = await supabase
+
+            if (res.ok) {
+              // Read back what the server actually decided, rather than
+              // assuming it agreed with what was asked for.
+              const { data: written } = await supabase
                 .from('profiles')
-                .upsert(fallback, { onConflict: 'id' });
-              if (!upsertErr) {
-                prof = fallback;
-                console.log('[AuthProvider] profile upserted from user_metadata');
-              } else {
-                console.error('[AuthProvider] profile upsert failed:', upsertErr.message);
+                .select('*')
+                .eq('id', sourceUser.id)
+                .maybeSingle();
+              if (written) {
+                prof = written as Profile;
+                console.log('[AuthProvider] profile created server-side, role:', prof.role);
               }
+            } else {
+              console.error('[AuthProvider] server-side profile creation refused:', res.status);
             }
           }
         } catch (e) {
-          console.warn('[AuthProvider] metadata upsert threw:', e);
+          console.warn('[AuthProvider] server-side profile creation threw:', e);
         }
       }
 
@@ -260,12 +283,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const refreshOrg = async () => {
+  const refreshOrg = useCallback(async () => {
     if (user) {
       lastFetchedUserId.current = null; // force refresh
       await fetchProfileAndOrg(user.id, user, true);
     }
-  };
+  }, [user]);
 
   // ── Main auth effect ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -353,7 +376,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const signOut = async () => {
+  const signOut = useCallback(async () => {
     clearPersistedAuthState();
     lastFetchedUserId.current = null;
     isFetching.current = false;
@@ -365,14 +388,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     supabase.auth.signOut().catch((e: unknown) =>
       console.warn('[AuthProvider] signOut error:', e)
     );
-  };
+  }, []);
+
+  // A fresh object here re-rendered every screen in the app on every render of
+  // this provider — including the 2,000-line reception page — whether or not
+  // anything about the session had actually changed.
+  const value = useMemo(
+    () => ({ user, profile, organization, session, loading, authReady, profileReady, signOut, refreshOrg }),
+    [user, profile, organization, session, loading, authReady, profileReady, signOut, refreshOrg],
+  );
 
   return (
-    <AuthContext.Provider value={{
-      user, profile, organization, session,
-      loading, authReady, profileReady,
-      signOut, refreshOrg,
-    }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );

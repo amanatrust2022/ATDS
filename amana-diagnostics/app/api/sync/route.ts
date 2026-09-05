@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/localDb';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
+import { pushOutbox, countPending, countDeadLetters, requeueDeadLetters } from '@/lib/sync/outbox';
+import { getPullCursor, setPullCursor } from '@/lib/sync/cursors';
 
 // Helper to create a client using the user's access token (for RLS enforcement),
 // falling back to the service role key or anon key.
@@ -85,21 +87,25 @@ export async function GET(request: Request) {
     }
 
     const db = getDb();
-    
-    // Check pending outbox count
-    const outboxCountRow = db.prepare('SELECT COUNT(*) as count FROM sync_outbox').get() as { count: number };
-    const pendingCount = outboxCountRow.count;
 
-    // Get last pull timestamp
-    const lastPullKey = `last_pull_timestamp:${orgId}`;
-    const metaStmt = db.prepare(`SELECT value FROM sync_metadata WHERE key = ?`);
-    const metaRow = metaStmt.get(lastPullKey) as { value: string } | undefined;
-    const lastPull = metaRow ? metaRow.value : 'Never';
+    // Rows still queued, and rows set aside because the cloud kept refusing
+    // them. The second number is the one that needs a human — it does not
+    // clear itself.
+    const pendingCount = countPending(db);
+    const deadLetterCount = countDeadLetters(db);
+
+    const deadLetters = deadLetterCount > 0
+      ? db.prepare(
+          'SELECT id, table_name, action, record_id, attempts, last_error, last_attempt_at FROM sync_outbox WHERE dead = 1 ORDER BY id ASC LIMIT 50',
+        ).all()
+      : [];
 
     return NextResponse.json({
-      status: pendingCount > 0 ? 'pending_sync' : 'synced',
+      status: deadLetterCount > 0 ? 'needs_attention' : pendingCount > 0 ? 'pending_sync' : 'synced',
       pendingCount,
-      lastPullTimestamp: lastPull
+      deadLetterCount,
+      deadLetters,
+      lastPullTimestamp: getPullCursor(db, orgId, 'patients'),
     });
   } catch (error: any) {
     console.error('API GET /api/sync error:', error);
@@ -113,13 +119,22 @@ export async function POST(request: Request) {
     const accessToken = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null;
 
     const body = await request.json();
-    const { organizationId } = body;
+    const { organizationId, action } = body;
 
     if (!organizationId) {
       return NextResponse.json({ error: 'Missing organizationId' }, { status: 400 });
     }
 
     const db = getDb();
+
+    // The way out of a poisoned queue without a developer: once whatever the
+    // cloud was objecting to has been dealt with, put the set-aside rows back.
+    if (action === 'requeueDeadLetters') {
+      const requeued = requeueDeadLetters(db);
+      console.warn(`[Sync] Re-queued ${requeued} set-aside outbox rows on request.`);
+      return NextResponse.json({ status: 'requeued', requeued, pendingCount: countPending(db) });
+    }
+
     const supabase = getSyncSupabaseClient(accessToken);
 
     // 1. Heartbeat Connection Check (pinging organizations table)
@@ -130,138 +145,57 @@ export async function POST(request: Request) {
       }
     } catch (connError) {
       // Offline, stop sync and return pending count
-      const countRow = db.prepare('SELECT COUNT(*) as count FROM sync_outbox').get() as { count: number };
       return NextResponse.json({
         status: 'offline',
-        pendingCount: countRow.count,
+        pendingCount: countPending(db),
+        deadLetterCount: countDeadLetters(db),
         message: 'Supabase cloud unreachable'
       });
     }
 
-    // 2. PUSH SYNC: Process local outbox items
-    const outboxStmt = db.prepare('SELECT * FROM sync_outbox ORDER BY id ASC');
-    const outboxItems = outboxStmt.all() as any[];
+    // 2. PUSH SYNC: send the local outbox up, oldest first.
+    // Rows are deleted only once the cloud has accepted them; a row that keeps
+    // failing is set aside rather than deleted or left to block the queue.
+    const push = await pushOutbox(db, supabase);
 
-    for (const item of outboxItems) {
-      const { id: outboxId, table_name, action, record_id, payload } = item;
-      const data = JSON.parse(payload);
-      let success = false;
-      let skipStall = false;
-
-      try {
-        if (action === 'DELETE') {
-          let deleteQuery;
-          if (table_name === 'test_prices') {
-            const [orgId, testId] = record_id.split(':');
-            deleteQuery = supabase.from(table_name).delete().eq('organization_id', orgId).eq('test_id', testId);
-          } else if (table_name === 'custom_tests') {
-            const [orgId, testId] = record_id.split(':');
-            deleteQuery = supabase.from(table_name).delete().eq('organization_id', orgId).eq('id', testId);
-          } else {
-            deleteQuery = supabase.from(table_name).delete().eq('id', record_id);
-          }
-          const { error } = await deleteQuery;
-          if (error) {
-            console.error(`Supabase DELETE error for outbox item ${outboxId}:`, error);
-            if (error.code === '42P01') skipStall = true;
-          } else {
-            success = true;
-          }
-        } else if (action === 'UPDATE') {
-          // Ensure results are handled as actual JSON objects in Supabase
-          if (table_name === 'patient_tests' && data.results && typeof data.results === 'string') {
-            data.results = JSON.parse(data.results);
-          }
-          if (table_name === 'custom_tests' && data.parameters && typeof data.parameters === 'string') {
-            data.parameters = JSON.parse(data.parameters);
-          }
-          
-          // Map boolean values for Supabase
-          if (table_name === 'patients' && 'commission_assigned' in data) {
-            data.commission_assigned = data.commission_assigned === 1 || data.commission_assigned === true;
-          }
-          if (table_name === 'referring_doctors' && 'is_active' in data) {
-            data.is_active = data.is_active === 1 || data.is_active === true;
-          }
-          if (table_name === 'referring_facilities' && 'is_active' in data) {
-            data.is_active = data.is_active === 1 || data.is_active === true;
-          }
-          if (table_name === 'custom_tests' && 'is_active' in data) {
-            data.is_active = data.is_active === 1 || data.is_active === true;
-          }
-
-          let updateQuery;
-          if (table_name === 'test_prices') {
-            const [orgId, testId] = record_id.split(':');
-            updateQuery = supabase.from(table_name).update(data).eq('organization_id', orgId).eq('test_id', testId);
-          } else if (table_name === 'custom_tests') {
-            const [orgId, testId] = record_id.split(':');
-            updateQuery = supabase.from(table_name).update(data).eq('organization_id', orgId).eq('id', testId);
-          } else {
-            updateQuery = supabase.from(table_name).update(data).eq('id', record_id);
-          }
-          const { error } = await updateQuery;
-          if (error) {
-            console.error(`Supabase UPDATE error for outbox item ${outboxId}:`, error);
-            if (error.code === '42P01') skipStall = true;
-          } else {
-            success = true;
-          }
-        } else {
-          // action === 'INSERT'
-          // Ensure results are handled as actual JSON objects in Supabase
-          if (table_name === 'patient_tests' && data.results && typeof data.results === 'string') {
-            data.results = JSON.parse(data.results);
-          }
-          if (table_name === 'custom_tests' && data.parameters && typeof data.parameters === 'string') {
-            data.parameters = JSON.parse(data.parameters);
-          }
-          
-          // Map boolean values for Supabase
-          if (table_name === 'patients' && 'commission_assigned' in data) {
-            data.commission_assigned = data.commission_assigned === 1 || data.commission_assigned === true;
-          }
-          if (table_name === 'referring_doctors' && 'is_active' in data) {
-            data.is_active = data.is_active === 1 || data.is_active === true;
-          }
-          if (table_name === 'referring_facilities' && 'is_active' in data) {
-            data.is_active = data.is_active === 1 || data.is_active === true;
-          }
-          if (table_name === 'custom_tests' && 'is_active' in data) {
-            data.is_active = data.is_active === 1 || data.is_active === true;
-          }
-
-          const { error } = await supabase.from(table_name).upsert(data);
-          if (error) {
-            console.error(`Supabase INSERT (upsert) error for outbox item ${outboxId}:`, error);
-            if (error.code === '42P01') skipStall = true;
-          } else {
-            success = true;
-          }
-        }
-      } catch (err) {
-        console.error(`Replication failed for outbox item ${outboxId}:`, err);
-      }
-
-      if (success || skipStall) {
-        db.prepare('DELETE FROM sync_outbox WHERE id = ?').run(outboxId);
-      } else {
-        // Stop sequential processing if an item fails to preserve dependency ordering (e.g. patients before tests)
-        const countRow = db.prepare('SELECT COUNT(*) as count FROM sync_outbox').get() as { count: number };
-        return NextResponse.json({
-          status: 'sync_stalled',
-          pendingCount: countRow.count,
-          failedOutboxId: outboxId
-        });
-      }
+    if (push.stalledOutboxId !== undefined) {
+      return NextResponse.json({
+        status: 'sync_stalled',
+        pendingCount: countPending(db),
+        deadLetterCount: countDeadLetters(db),
+        failedOutboxId: push.stalledOutboxId,
+        message: push.stalledReason,
+      });
     }
 
-    // 3. PULL SYNC: Retrieve remote changes since last pull timestamp
-    const lastPullKey = `last_pull_timestamp:${organizationId}`;
-    const metaStmt = db.prepare(`SELECT value FROM sync_metadata WHERE key = ?`);
-    const metaRow = metaStmt.get(lastPullKey) as { value: string } | undefined;
-    const lastPull = metaRow ? metaRow.value : '1970-01-01T00:00:00.000Z';
+    // 3. PULL SYNC: retrieve remote changes, each table since its own cursor.
+    //
+    // Captured before any read: a cursor set to a time after the read began
+    // could skip a row written during it. Overlapping costs a repeat upsert.
     const nowStr = new Date().toISOString();
+
+    /** Tables whose fetch failed this run. Their cursors are left where they were. */
+    const pullFailures: { table: string; error: string }[] = [];
+
+    /**
+     * Fetches one table's changes since its own cursor.
+     * Returns null if the fetch failed — the caller then leaves the cursor
+     * alone, so those rows are asked for again next sync instead of being
+     * skipped for good.
+     */
+    const pullSince = async (table: string, filterCol: 'updated_at' | 'created_at' = 'updated_at') => {
+      try {
+        return await fetchAllRemoteRows(supabase, table, organizationId, getPullCursor(db, organizationId, table), filterCol);
+      } catch (err: any) {
+        const error = err?.message || String(err);
+        console.error(`[Sync] Pull failed for ${table}; cursor held: ${error}`);
+        pullFailures.push({ table, error });
+        return null;
+      }
+    };
+
+    /** Moves a table's cursor up. Only called once that table's rows are written. */
+    const commitPull = (table: string) => setPullCursor(db, organizationId, table, nowStr);
 
     // Pull Organization
     const { data: orgData } = await supabase.from('organizations').select('*').eq('id', organizationId).maybeSingle();
@@ -292,7 +226,7 @@ export async function POST(request: Request) {
     }
 
     // Pull Profiles
-    const profilesData = await fetchAllRemoteRows(supabase, 'profiles', organizationId, lastPull);
+    const profilesData = await pullSince('profiles');
     if (profilesData && profilesData.length > 0) {
       const insertProfile = db.prepare(`
         INSERT INTO profiles (id, full_name, title, first_name, surname, last_name, signature_url, role, organization_id, email)
@@ -323,9 +257,10 @@ export async function POST(request: Request) {
         );
       });
     }
+    if (profilesData) commitPull('profiles');
 
     // Pull Referring Facilities
-    const facs = await fetchAllRemoteRows(supabase, 'referring_facilities', organizationId, lastPull);
+    const facs = await pullSince('referring_facilities');
     if (facs && facs.length > 0) {
       const insertFac = db.prepare(`
         INSERT INTO referring_facilities (id, organization_id, name, address, phone, email, commission_type, commission_value, is_active, created_at, updated_at)
@@ -344,9 +279,10 @@ export async function POST(request: Request) {
         insertFac.run(f.id, f.organization_id, f.name, f.address, f.phone, f.email, f.commission_type, f.commission_value, f.is_active ? 1 : 0, f.created_at, f.updated_at);
       });
     }
+    if (facs) commitPull('referring_facilities');
 
     // Pull Referring Doctors
-    const docs = await fetchAllRemoteRows(supabase, 'referring_doctors', organizationId, lastPull);
+    const docs = await pullSince('referring_doctors');
     if (docs && docs.length > 0) {
       const insertDoc = db.prepare(`
         INSERT INTO referring_doctors (id, organization_id, facility_id, name, phone, email, commission_type, commission_value, is_active, created_at, updated_at)
@@ -365,9 +301,10 @@ export async function POST(request: Request) {
         insertDoc.run(d.id, d.organization_id, d.facility_id, d.name, d.phone, d.email, d.commission_type, d.commission_value, d.is_active ? 1 : 0, d.created_at, d.updated_at);
       });
     }
+    if (docs) commitPull('referring_doctors');
 
     // Pull Test Prices (Note: pull all as it is very small)
-    const prices = await fetchAllRemoteRows(supabase, 'test_prices', organizationId, lastPull);
+    const prices = await pullSince('test_prices');
     if (prices && prices.length > 0) {
       const insertPrice = db.prepare(`
         INSERT INTO test_prices (organization_id, test_id, test_name, price, commission_type, commission_value)
@@ -381,9 +318,10 @@ export async function POST(request: Request) {
         insertPrice.run(p.organization_id, p.test_id, p.test_name, p.price, p.commission_type || 'percentage', p.commission_value ?? 0);
       });
     }
+    if (prices) commitPull('test_prices');
 
     // Pull Custom Tests
-    const cTests = await fetchAllRemoteRows(supabase, 'custom_tests', organizationId, lastPull);
+    const cTests = await pullSince('custom_tests');
     if (cTests && cTests.length > 0) {
       const insertCTest = db.prepare(`
         INSERT INTO custom_tests (id, organization_id, name, department, category, specimen, parameters, is_active, updated_at)
@@ -411,9 +349,10 @@ export async function POST(request: Request) {
         );
       });
     }
+    if (cTests) commitPull('custom_tests');
 
     // Pull Radiology Templates
-    const templates = await fetchAllRemoteRows(supabase, 'radiology_templates', organizationId, lastPull);
+    const templates = await pullSince('radiology_templates');
     if (templates && templates.length > 0) {
       const insertTemplate = db.prepare(`
         INSERT INTO radiology_templates (id, organization_id, key, name, findings, impression, created_at, created_by, updated_at)
@@ -429,9 +368,10 @@ export async function POST(request: Request) {
         insertTemplate.run(t.id, t.organization_id, t.key, t.name, t.findings, t.impression, t.created_at, t.created_by, t.updated_at);
       });
     }
+    if (templates) commitPull('radiology_templates');
 
     // Pull Patient Profiles
-    const patientProfiles = await fetchAllRemoteRows(supabase, 'patient_profiles', organizationId, lastPull);
+    const patientProfiles = await pullSince('patient_profiles');
     if (patientProfiles && patientProfiles.length > 0) {
       const insertProfile = db.prepare(`
         INSERT INTO patient_profiles (
@@ -453,9 +393,10 @@ export async function POST(request: Request) {
         );
       });
     }
+    if (patientProfiles) commitPull('patient_profiles');
 
     // Pull Patients
-    const patients = await fetchAllRemoteRows(supabase, 'patients', organizationId, lastPull);
+    const patients = await pullSince('patients');
     if (patients && patients.length > 0) {
       const insertPatient = db.prepare(`
         INSERT INTO patients (
@@ -508,9 +449,10 @@ export async function POST(request: Request) {
         );
       });
     }
+    if (patients) commitPull('patients');
 
     // Pull Patient Tests
-    const patientTests = await fetchAllRemoteRows(supabase, 'patient_tests', organizationId, lastPull);
+    const patientTests = await pullSince('patient_tests');
     if (patientTests && patientTests.length > 0) {
       const insertTest = db.prepare(`
         INSERT INTO patient_tests (
@@ -547,10 +489,11 @@ export async function POST(request: Request) {
         );
       });
     }
+    if (patientTests) commitPull('patient_tests');
 
-    // Pull Billing Accounts (Safe Try-Catch)
+    // Pull Billing Accounts
     try {
-      const accounts = await fetchAllRemoteRows(supabase, 'billing_accounts', organizationId, lastPull);
+      const accounts = await pullSince('billing_accounts');
       if (accounts && accounts.length > 0) {
         const insertAcc = db.prepare(`
           INSERT INTO billing_accounts (id, organization_id, name, owner_patient_id, balance, credit_limit, type, created_at, updated_at)
@@ -567,13 +510,16 @@ export async function POST(request: Request) {
           insertAcc.run(a.id, a.organization_id, a.name, a.owner_patient_id, a.balance, a.credit_limit, a.type, a.created_at, a.updated_at);
         });
       }
+      if (accounts) commitPull('billing_accounts');
     } catch (pullAccError: any) {
-      console.warn('[Sync] Skipping pull for billing_accounts:', pullAccError.message);
+      // Cursor deliberately not advanced, so these rows are pulled again.
+      console.error('[Sync] Failed to store billing_accounts:', pullAccError.message);
+      pullFailures.push({ table: 'billing_accounts', error: pullAccError.message });
     }
 
-    // Pull Billing Ledger Transactions (Safe Try-Catch)
+    // Pull Billing Ledger Transactions
     try {
-      const txs = await fetchAllRemoteRows(supabase, 'billing_ledger_transactions', organizationId, lastPull, 'created_at');
+      const txs = await pullSince('billing_ledger_transactions', 'created_at');
       if (txs && txs.length > 0) {
         const insertTx = db.prepare(`
           INSERT INTO billing_ledger_transactions (id, organization_id, billing_account_id, patient_id, type, amount, description, reference_id, payment_method, created_by, created_at)
@@ -591,13 +537,16 @@ export async function POST(request: Request) {
           insertTx.run(t.id, t.organization_id, t.billing_account_id, t.patient_id || null, t.type, t.amount, t.description, t.reference_id || null, t.payment_method || null, t.created_by || null, t.created_at);
         });
       }
+      if (txs) commitPull('billing_ledger_transactions');
     } catch (pullTxError: any) {
-      console.warn('[Sync] Skipping pull for billing_ledger_transactions:', pullTxError.message);
+      // Cursor deliberately not advanced, so these rows are pulled again.
+      console.error('[Sync] Failed to store billing_ledger_transactions:', pullTxError.message);
+      pullFailures.push({ table: 'billing_ledger_transactions', error: pullTxError.message });
     }
 
-    // Pull External Department Charges (Safe Try-Catch)
+    // Pull External Department Charges
     try {
-      const charges = await fetchAllRemoteRows(supabase, 'external_department_charges', organizationId, lastPull, 'created_at');
+      const charges = await pullSince('external_department_charges', 'created_at');
       if (charges && charges.length > 0) {
         const insertCharge = db.prepare(`
           INSERT INTO external_department_charges (id, organization_id, patient_id, billing_account_id, department, receipt_number, amount, payment_method, status, description, created_by, created_at)
@@ -617,20 +566,25 @@ export async function POST(request: Request) {
           insertCharge.run(c.id, c.organization_id, c.patient_id, c.billing_account_id || null, c.department, c.receipt_number, c.amount, c.payment_method, c.status || 'paid', c.description || null, c.created_by || null, c.created_at);
         });
       }
+      if (charges) commitPull('external_department_charges');
     } catch (pullChargeError: any) {
-      console.warn('[Sync] Skipping pull for external_department_charges:', pullChargeError.message);
+      // Cursor deliberately not advanced, so these rows are pulled again.
+      console.error('[Sync] Failed to store external_department_charges:', pullChargeError.message);
+      pullFailures.push({ table: 'external_department_charges', error: pullChargeError.message });
     }
 
-    // Update metadata last pull timestamp
-    db.prepare(`
-      INSERT INTO sync_metadata (key, value)
-      VALUES (?, ?)
-      ON CONFLICT(key) DO UPDATE SET value = excluded.value
-    `).run(lastPullKey, nowStr);
+    // Each table's cursor was moved as it finished. There is deliberately no
+    // organisation-wide "we are up to date" write here: that is what let a
+    // failed pull be skipped for good.
+    const deadLetterCount = countDeadLetters(db);
 
     return NextResponse.json({
-      status: 'synced',
-      pendingCount: 0,
+      status: pullFailures.length > 0 ? 'partial_sync' : 'synced',
+      pendingCount: countPending(db),
+      deadLetterCount,
+      // Named so the front desk can be told which data may be behind, rather
+      // than being shown a clean tick over a sync that did not finish.
+      failedTables: pullFailures.map(f => f.table),
       lastPullTimestamp: nowStr
     });
   } catch (error: any) {

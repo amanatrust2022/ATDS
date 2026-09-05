@@ -1,4 +1,5 @@
 'use client';
+import RequireRole from '@/components/RequireRole';
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase';
 import { useAuth } from '@/components/AuthProvider';
@@ -35,7 +36,7 @@ async function withTimeout(promise: any, ms: number, onWarning: () => void): Pro
   }
 }
 
-export default function StaffManagement() {
+function StaffManagement() {
   const { profile, organization } = useAuth();
   const params = useParams();
   const slug = params?.slug as string;
@@ -1676,5 +1677,14 @@ export default function StaffManagement() {
         </div>
       )}
     </div>
+  );
+}
+
+/** Only these roles may open this screen — see components/RequireRole.tsx. */
+export default function GuardedStaffManagement(props: any) {
+  return (
+    <RequireRole allow={['admin']}>
+      <StaffManagement {...props} />
+    </RequireRole>
   );
 }

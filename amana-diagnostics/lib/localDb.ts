@@ -54,7 +54,11 @@ function initDb(db: any) {
       action TEXT NOT NULL, -- 'INSERT', 'UPDATE', 'DELETE'
       record_id TEXT NOT NULL,
       payload TEXT NOT NULL, -- JSON string
-      timestamp INTEGER NOT NULL
+      timestamp INTEGER NOT NULL,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      last_error TEXT,
+      last_attempt_at INTEGER,
+      dead INTEGER NOT NULL DEFAULT 0 -- set aside after MAX_ATTEMPTS; never deleted unsent
     );
   `);
 
@@ -397,6 +401,58 @@ function initDb(db: any) {
   try {
     db.exec(`ALTER TABLE profiles ADD COLUMN email TEXT;`);
   } catch (e) {}
+
+  // Outbox retry bookkeeping. A row that the cloud will not accept is counted
+  // and eventually set aside (dead = 1) instead of blocking every change behind
+  // it — see lib/sync/outbox.ts.
+  try {
+    db.exec(`ALTER TABLE sync_outbox ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0;`);
+  } catch (e) {}
+  try {
+    db.exec(`ALTER TABLE sync_outbox ADD COLUMN last_error TEXT;`);
+  } catch (e) {}
+  try {
+    db.exec(`ALTER TABLE sync_outbox ADD COLUMN last_attempt_at INTEGER;`);
+  } catch (e) {}
+  try {
+    db.exec(`ALTER TABLE sync_outbox ADD COLUMN dead INTEGER NOT NULL DEFAULT 0;`);
+  } catch (e) {}
+
+  // Indexes. There were none at all: every lookup by clinic, every lookup of a
+  // patient's tests, and every ordering by registration date was a full scan.
+  // They cover exactly the columns the queries above filter and sort on.
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_patients_org_registered ON patients (organization_id, registered_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_patients_org_billing ON patients (organization_id, billing_account_id);
+    CREATE INDEX IF NOT EXISTS idx_patients_profile ON patients (patient_profile_id);
+    CREATE INDEX IF NOT EXISTS idx_patient_tests_patient ON patient_tests (patient_id);
+    CREATE INDEX IF NOT EXISTS idx_patient_tests_org_dept ON patient_tests (organization_id, department, status);
+    CREATE INDEX IF NOT EXISTS idx_patient_profiles_org ON patient_profiles (organization_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_ledger_account ON billing_ledger_transactions (billing_account_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_ledger_org ON billing_ledger_transactions (organization_id);
+    CREATE INDEX IF NOT EXISTS idx_billing_accounts_org ON billing_accounts (organization_id);
+    CREATE INDEX IF NOT EXISTS idx_charges_org ON external_department_charges (organization_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_charges_account ON external_department_charges (billing_account_id);
+    CREATE INDEX IF NOT EXISTS idx_outbox_live ON sync_outbox (dead, id);
+  `);
+
+  // Two desks counting today's registrations at the same moment both arrive at
+  // the same next slip number (D-06). The API settles the number under the
+  // write lock; this is the guarantee behind it.
+  //
+  // Deliberately separate from the block above: if a database already holds
+  // duplicate slip numbers this will fail, and it must not take the other
+  // indexes down with it. The warning is the signal to go and settle them.
+  try {
+    db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_patients_org_slip ON patients (organization_id, slip_number) WHERE slip_number IS NOT NULL;`);
+  } catch (e: any) {
+    console.warn(
+      '[localDb] Could not make slip numbers unique — this database already has duplicates. ' +
+      'Find them with: SELECT organization_id, slip_number, COUNT(*) FROM patients ' +
+      'WHERE slip_number IS NOT NULL GROUP BY 1,2 HAVING COUNT(*) > 1;',
+      e?.message,
+    );
+  }
 }
 
 

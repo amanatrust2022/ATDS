@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
 import { sendEmail } from '@/lib/brevo';
 import { getPatientByEmail } from '@/lib/portalDb';
-import { signOtp, verifyOtp, signToken } from '@/lib/portalAuth';
-
-function generateOtp(): string {
-  return Math.floor(100000 + Math.random() * 900000).toString();
-}
+import { signToken } from '@/lib/portalAuth';
+import {
+  generateOtp, createChallenge, consumeChallenge, recentChallengeCount,
+  pruneChallenges, MAX_CHALLENGES_PER_WINDOW,
+} from '@/lib/portalOtp';
 
 // Request OTP code
 export async function POST(request: Request) {
@@ -19,21 +19,34 @@ export async function POST(request: Request) {
     const normalizedEmail = email.trim().toLowerCase();
 
     // Check if patient exists in SQLite or Supabase depending on mode
-    const patient = await getPatientByEmail(normalizedEmail);
+    void pruneChallenges();
 
-    if (!patient) {
-      // For security, don't reveal if email exists — return success to prevent enumeration
-      return NextResponse.json({ 
-        success: true, 
-        message: 'If this email is registered, an OTP has been sent.' 
-      });
+    // Capping how many codes an address can be sent stops the endpoint being
+    // used to flood someone's inbox, and stops a caller minting fresh
+    // challenges to keep guessing past the per-challenge attempt limit.
+    if (await recentChallengeCount(normalizedEmail) >= MAX_CHALLENGES_PER_WINDOW) {
+      return NextResponse.json(
+        { error: 'Too many codes requested for this address. Please wait a few minutes and try again.' },
+        { status: 429 },
+      );
     }
 
+    const patient = await getPatientByEmail(normalizedEmail);
     const otp = generateOtp();
-    const expires = Date.now() + 10 * 60 * 1000; // 10 minutes
 
-    // Generate stateless verification state token containing signature hash
-    const stateToken = signOtp(normalizedEmail, otp, expires);
+    // A challenge is created either way, so that the reply for an unknown
+    // address is indistinguishable from the reply for a known one. The previous
+    // version said it was preventing enumeration and then returned the state
+    // token only when the patient existed, which gave the answer away.
+    const stateToken = await createChallenge(normalizedEmail, otp);
+
+    if (!patient) {
+      return NextResponse.json({
+        success: true,
+        state: stateToken,
+        message: 'If this email is registered, an OTP has been sent.',
+      });
+    }
 
     const patientName = `${patient.first_name || ''} ${patient.surname || ''}`.trim() || 'Patient';
 
@@ -63,10 +76,10 @@ export async function POST(request: Request) {
       `,
     });
 
-    return NextResponse.json({ 
-      success: true, 
-      state: stateToken, 
-      message: 'OTP sent successfully.' 
+    return NextResponse.json({
+      success: true,
+      state: stateToken,
+      message: 'If this email is registered, an OTP has been sent.',
     });
   } catch (error: any) {
     console.error('Portal OTP error:', error);
@@ -85,10 +98,14 @@ export async function PUT(request: Request) {
 
     const normalizedEmail = email.trim().toLowerCase();
 
-    // Verify OTP using timing-safe signature comparison
-    const isValid = verifyOtp(normalizedEmail, otp, state);
+    // Spends one of this challenge's few attempts, whether or not the code was
+    // right, and can only ever succeed once.
+    const verifiedEmail = await consumeChallenge(state, otp);
 
-    if (!isValid) {
+    if (!verifiedEmail || verifiedEmail !== normalizedEmail) {
+      // One message for every kind of failure. Telling the caller which of
+      // "wrong code", "out of attempts" and "no such challenge" happened would
+      // help them more than it helps the patient.
       return NextResponse.json({ error: 'Invalid or expired code. Please try again.' }, { status: 400 });
     }
 

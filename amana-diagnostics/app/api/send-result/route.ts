@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server';
+import { requireUser, authErrorResponse } from '@/lib/apiAuth';
+import crypto from 'crypto';
 import { sendEmailWithAttachment } from '@/lib/brevo';
 import { buildReportPdfDefinition } from '@/lib/pdf-report';
 import path from 'path';
@@ -27,9 +29,38 @@ function getChromePath() {
   return 'chrome'; // Fallback to path
 }
 
+/**
+ * Whether an image URL is one this server is willing to go and fetch.
+ *
+ * These URLs arrive in the request body and the fetch runs server-side, so
+ * without a restriction a caller could point it at anything the server can
+ * reach and read the response back. Only the configured Supabase project.
+ */
+function isFetchableImageUrl(raw: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== 'https:') return false;
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!supabaseUrl) return false;
+  try {
+    return parsed.host === new URL(supabaseUrl).host;
+  } catch {
+    return false;
+  }
+}
+
 async function fetchImageAsBase64(url: string): Promise<string> {
   if (!url) return '';
   if (url.startsWith('data:')) return url; // Already base64
+  if (!isFetchableImageUrl(url)) {
+    console.warn('[send-result] refusing to fetch an image from an unexpected host:', url);
+    return '';
+  }
   try {
     const res = await fetch(url);
     if (!res.ok) throw new Error(`Failed to fetch image: ${res.statusText}`);
@@ -46,7 +77,10 @@ async function fetchImageAsBase64(url: string): Promise<string> {
 async function convertHtmlToPdfUsingChrome(htmlContent: string): Promise<Buffer> {
   const chromePath = getChromePath();
   const tempDir = os.tmpdir();
-  const uuid = Math.random().toString(36).substring(7);
+  // Was Math.random().toString(36).substring(7) — a few characters, and the
+  // empty string for some values, so two reports printed at the same moment
+  // could share one path and one patient's results could be emailed to another.
+  const uuid = crypto.randomUUID();
   const tempHtmlPath = path.join(tempDir, `report-${uuid}.html`);
   const tempPdfPath = path.join(tempDir, `report-${uuid}.pdf`);
 
@@ -54,8 +88,11 @@ async function convertHtmlToPdfUsingChrome(htmlContent: string): Promise<Buffer>
   await fs.promises.writeFile(tempHtmlPath, htmlContent, 'utf8');
 
   try {
-    // Run chrome to print to PDF
-    const cmd = `"${chromePath}" --headless=new --no-sandbox --no-pdf-header-footer --print-to-pdf="${tempPdfPath}" "file:///${tempHtmlPath.replace(/\\/g, '/')}"`;
+    // Run chrome to print to PDF.
+    // Deliberately without --no-sandbox: this renders app-authored HTML from a
+    // file:// URL, and the sandbox is what stops a script in that page reading
+    // the machine it is printed on.
+    const cmd = `"${chromePath}" --headless=new --disable-gpu --disable-extensions --no-pdf-header-footer --print-to-pdf="${tempPdfPath}" "file:///${tempHtmlPath.replace(/\\/g, '/')}"`;
     await execPromise(cmd);
 
     // Read PDF file
@@ -74,6 +111,11 @@ async function convertHtmlToPdfUsingChrome(htmlContent: string): Promise<Buffer>
 
 export async function POST(request: Request) {
   try {
+    // This sends mail from the clinic's verified sender, with a caller-supplied
+    // attachment, to a caller-supplied address. Unauthenticated, that is an
+    // open relay wearing the clinic's identity.
+    await requireUser(request);
+
     const { patient, completedTests, org, pdfBase64: clientPdfBase64 } = await request.json();
 
     if (!patient.email) {
@@ -186,6 +228,9 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
+    const denied = authErrorResponse(error);
+    if (denied) return NextResponse.json({ error: denied.error }, { status: denied.status });
+
     console.error('Result email error:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

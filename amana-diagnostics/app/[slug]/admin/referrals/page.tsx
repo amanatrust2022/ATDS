@@ -1,4 +1,5 @@
 'use client';
+import RequireRole from '@/components/RequireRole';
 
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/components/AuthProvider';
@@ -12,7 +13,7 @@ import {
 } from '@remixicon/react';
 import Link from 'next/link';
 
-export default function ReferralsOverviewPage() {
+function ReferralsOverviewPage() {
   const { organization } = useAuth();
   const params = useParams();
   const slug = params?.slug as string;
@@ -127,5 +128,14 @@ export default function ReferralsOverviewPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+/** Only these roles may open this screen — see components/RequireRole.tsx. */
+export default function GuardedReferralsOverviewPage(props: any) {
+  return (
+    <RequireRole allow={['admin']}>
+      <ReferralsOverviewPage {...props} />
+    </RequireRole>
   );
 }

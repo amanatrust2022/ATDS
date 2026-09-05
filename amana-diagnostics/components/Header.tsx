@@ -4,7 +4,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { 
   RiMicroscopeLine, RiArrowLeftLine, RiUserLine, RiSettings3Line, 
   RiTeamLine, RiLogoutCircleLine, RiDashboardLine,
-  RiCloudLine, RiCloudOffLine, RiRefreshLine,
+  RiCloudLine, RiCloudOffLine, RiRefreshLine, RiErrorWarningLine,
   RiHospitalLine, RiTestTubeLine, RiRadarLine, RiDownloadLine
 } from '@remixicon/react';
 import { useAuth } from '@/components/AuthProvider';
@@ -33,7 +33,14 @@ export default function Header({ title, subtitle, icon = <RiMicroscopeLine size=
     : (process.env.NEXT_PUBLIC_LOCAL_SERVER_MODE === 'true');
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const [syncStatus, setSyncStatus] = useState<{ status: string; pendingCount: number } | null>(null);
+  const [syncStatus, setSyncStatus] = useState<{
+    status: string;
+    pendingCount: number;
+    /** Rows the cloud kept refusing. These do not clear themselves. */
+    deadLetterCount?: number;
+    /** Tables whose pull did not finish, so their data here is behind. */
+    failedTables?: string[];
+  } | null>(null);
   const [installPrompt, setInstallPrompt] = useState<any>(null);
   const [showInstallBtn, setShowInstallBtn] = useState(false);
   const [showInstructionsModal, setShowInstructionsModal] = useState(false);
@@ -94,8 +101,14 @@ export default function Header({ title, subtitle, icon = <RiMicroscopeLine size=
     if (!isLocalMode) return;
 
     let active = true;
+    // A sync used to fire every 15 seconds whether or not the last one had
+    // finished, so a slow run overlapped the next and the two raced each other
+    // over the same outbox rows.
+    let running = false;
 
     const runSync = async () => {
+      if (running) return;
+      running = true;
       try {
         const headers: Record<string, string> = {
           'Content-Type': 'application/json'
@@ -112,13 +125,20 @@ export default function Header({ title, subtitle, icon = <RiMicroscopeLine size=
         if (!res.ok) throw new Error('Sync failed');
         const data = await res.json();
         if (active) {
-          setSyncStatus({ status: data.status, pendingCount: data.pendingCount });
+          setSyncStatus({
+            status: data.status,
+            pendingCount: data.pendingCount,
+            deadLetterCount: data.deadLetterCount,
+            failedTables: data.failedTables,
+          });
         }
       } catch (err) {
         console.error('Background sync failed:', err);
         if (active) {
-          setSyncStatus(prev => ({ status: 'offline', pendingCount: prev?.pendingCount || 0 }));
+          setSyncStatus(prev => ({ ...prev, status: 'offline', pendingCount: prev?.pendingCount || 0 }));
         }
+      } finally {
+        running = false;
       }
     };
 
@@ -167,6 +187,21 @@ export default function Header({ title, subtitle, icon = <RiMicroscopeLine size=
     : (typeof window !== 'undefined' && pathname !== getWorkspacePath());
 
   const userInitials = profile?.full_name ? profile.full_name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() : 'U';
+
+  /**
+   * A sync that did not finish must not read as a green tick.
+   *
+   * Either some rows have been set aside because the cloud kept refusing them,
+   * or a table could not be fetched and its data here is behind. Both were
+   * previously invisible — the badge said "Synced" and the only trace was a
+   * line in a log nobody reads.
+   */
+  const syncNeedsAttention = !!syncStatus && (
+    (syncStatus.deadLetterCount ?? 0) > 0 ||
+    (syncStatus.failedTables?.length ?? 0) > 0 ||
+    syncStatus.status === 'partial_sync' ||
+    syncStatus.status === 'needs_attention'
+  );
 
   return (
     <header style={{
@@ -270,8 +305,17 @@ export default function Header({ title, subtitle, icon = <RiMicroscopeLine size=
               borderRadius: 0,
             }}
             title={
-              syncStatus.status === 'offline' 
-                ? 'Local Server Offline (No Internet Connection)' 
+              syncStatus.status === 'offline'
+                ? 'Local Server Offline (No Internet Connection)'
+                : syncNeedsAttention
+                ? [
+                    syncStatus.deadLetterCount
+                      ? `${syncStatus.deadLetterCount} change(s) the cloud will not accept. They are saved here and will not be sent until someone looks at them.`
+                      : '',
+                    syncStatus.failedTables?.length
+                      ? `Could not fetch: ${syncStatus.failedTables.join(', ')}. That data may be out of date; it will be retried.`
+                      : '',
+                  ].filter(Boolean).join(' ')
                 : syncStatus.status === 'pending_sync' || syncStatus.status === 'sync_stalled'
                 ? `Syncing: ${syncStatus.pendingCount} updates pending`
                 : 'Synced to Supabase Cloud'
@@ -281,6 +325,11 @@ export default function Header({ title, subtitle, icon = <RiMicroscopeLine size=
               <>
                 <RiCloudOffLine size={14} style={{ color: '#ef4444' }} />
                 <span>Offline ({syncStatus.pendingCount})</span>
+              </>
+            ) : syncNeedsAttention ? (
+              <>
+                <RiErrorWarningLine size={14} style={{ color: '#d97706' }} />
+                <span>Sync incomplete</span>
               </>
             ) : syncStatus.status === 'pending_sync' || syncStatus.status === 'sync_stalled' ? (
               <>

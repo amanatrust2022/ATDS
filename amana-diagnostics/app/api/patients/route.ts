@@ -3,6 +3,50 @@ import { getDb, queueSync } from '@/lib/localDb';
 import { sendEmail } from '@/lib/brevo';
 import { getNextNumericID } from '@/lib/idGenerator';
 
+/**
+ * Decodes a stored result blob, returning an empty result rather than throwing.
+ *
+ * A single corrupt value should cost one test its results on screen, not cost
+ * the whole clinic its patient list.
+ */
+function parseResults(raw: unknown, testId: unknown): any[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw as string);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    console.error(`[patients] Unreadable results on test ${testId}; returning empty.`);
+    return [];
+  }
+}
+
+/**
+ * Settles the slip number inside the write lock.
+ *
+ * The browser works one out by counting today's registrations and adding one,
+ * so two desks counting at the same moment arrive at the same number (D-06).
+ * Rather than trusting what arrived, this takes the next free one — it holds
+ * the transaction, so nothing can take it in between.
+ */
+function resolveSlipNumber(db: any, organizationId: string, requested: string): string {
+  const taken = db.prepare('SELECT 1 FROM patients WHERE organization_id = ? AND slip_number = ?');
+  if (!requested || !taken.get(organizationId, requested)) return requested;
+
+  // ATD/YYYYMMDD/NNNN — keep the prefix, walk the counter up.
+  const match = /^(.*\/)(\d+)$/.exec(requested);
+  if (!match) return requested;
+  const [, prefix, digits] = match;
+
+  for (let n = Number(digits) + 1; n < Number(digits) + 1000; n++) {
+    const candidate = prefix + String(n).padStart(digits.length, '0');
+    if (!taken.get(organizationId, candidate)) {
+      console.warn(`[patients] Slip ${requested} was already issued; using ${candidate}.`);
+      return candidate;
+    }
+  }
+  throw new Error(`Could not find a free slip number after ${requested}`);
+}
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -14,6 +58,22 @@ export async function GET(request: Request) {
     }
 
     const db = getDb();
+
+    // A cheap stamp the screens poll to decide whether anything changed, so
+    // the hub stops rebuilding the entire queue every five seconds per screen
+    // when nothing has happened.
+    if (action === 'version') {
+      const stamp = db.prepare(`
+        SELECT
+          (SELECT COUNT(*) FROM patients WHERE organization_id = ?) AS patientCount,
+          (SELECT COUNT(*) FROM patient_tests WHERE organization_id = ?) AS testCount,
+          (SELECT MAX(updated_at) FROM patients WHERE organization_id = ?) AS patientsAt,
+          (SELECT MAX(updated_at) FROM patient_tests WHERE organization_id = ?) AS testsAt
+      `).get(orgId, orgId, orgId, orgId) as any;
+      return NextResponse.json({
+        version: `${stamp.patientCount}:${stamp.testCount}:${stamp.patientsAt || ''}:${stamp.testsAt || ''}`,
+      });
+    }
 
     if (action === 'getPatientProfiles') {
       const profilesStmt = db.prepare(`
@@ -38,20 +98,53 @@ export async function GET(request: Request) {
       return NextResponse.json(formatted);
     }
     
-    // Fetch patients
-    const patientsStmt = db.prepare(`
-      SELECT * FROM patients 
-      WHERE organization_id = ? 
-      ORDER BY registered_at DESC
-    `);
-    const patients = patientsStmt.all(orgId) as any[];
+    // Bounds the screens ask for, applied here rather than in the browser.
+    // See PatientQuery in lib/repositories/patients.ts.
+    const since = searchParams.get('since');
+    const until = searchParams.get('until');
+    const department = searchParams.get('department');
+    const withBillingAccount = searchParams.get('withBillingAccount') === '1';
+    const search = searchParams.get('search')?.trim();
+    const limit = Number(searchParams.get('limit')) || 0;
+    const patientProfileId = searchParams.get('patientProfileId');
 
-    // Fetch tests
-    const testsStmt = db.prepare(`
-      SELECT * FROM patient_tests 
+    const where: string[] = ['p.organization_id = ?'];
+    const args: any[] = [orgId];
+
+    if (since) { where.push('p.registered_at >= ?'); args.push(since); }
+    if (until) { where.push('p.registered_at <= ?'); args.push(until); }
+    if (withBillingAccount) where.push('p.billing_account_id IS NOT NULL');
+    if (patientProfileId) { where.push('p.patient_profile_id = ?'); args.push(Number(patientProfileId)); }
+    if (department) {
+      where.push('EXISTS (SELECT 1 FROM patient_tests t WHERE t.patient_id = p.id AND t.department = ?)');
+      args.push(department);
+    }
+    if (search) {
+      const like = `%${search.toLowerCase()}%`;
+      where.push(`(
+        LOWER(COALESCE(p.first_name, '') || ' ' || COALESCE(p.middle_name, '') || ' ' || COALESCE(p.surname, '')) LIKE ?
+        OR COALESCE(p.phone, '') LIKE ?
+      )`);
+      args.push(like, like);
+    }
+
+    const patients = db.prepare(`
+      SELECT p.* FROM patients p
+      WHERE ${where.join(' AND ')}
+      ORDER BY p.registered_at DESC
+      ${limit > 0 ? 'LIMIT ?' : ''}
+    `).all(...args, ...(limit > 0 ? [limit] : [])) as any[];
+
+    // Only the tests belonging to the patients just selected. Loading every
+    // test in the organisation to attach a handful of them was the single
+    // most expensive thing this endpoint did.
+    const patientIds = patients.map(p => p.id);
+    const tests = patientIds.length === 0 ? [] : db.prepare(`
+      SELECT * FROM patient_tests
       WHERE organization_id = ?
-    `);
-    const tests = testsStmt.all(orgId) as any[];
+        AND patient_id IN (${patientIds.map(() => '?').join(',')})
+        ${department ? 'AND department = ?' : ''}
+    `).all(...[orgId, ...patientIds, ...(department ? [department] : [])]) as any[];
 
     // Map tests to patients
     const testsByPatientId = new Map<number | string, any[]>();
@@ -67,7 +160,10 @@ export async function GET(request: Request) {
         department: t.department,
         status: t.status,
         specimen: t.specimen,
-        results: t.results ? JSON.parse(t.results) : [],
+        // One unreadable blob — an interrupted write, a restored backup — used
+        // to take the whole queue down for every user. That test now comes
+        // back empty and everyone else's work stays on screen.
+        results: parseResults(t.results, t.id),
         completedBy: t.completed_by,
         completedBySignatureUrl: t.completed_by_signature_url,
         completedByTitle: t.completed_by_title,
@@ -149,8 +245,15 @@ export async function POST(request: Request) {
       // and writes it back, and a deferred transaction only takes the write lock
       // at the first write, leaving room for a concurrent registration to read
       // the same balance first.
+      // Declared out here so it can be handed back to the desk that is about
+      // to print the slip.
+      let slipNumber: string = patient.slipNumber;
+
       db.exec('BEGIN IMMEDIATE');
       try {
+        // Settled under the write lock, not on whatever the browser counted.
+        slipNumber = resolveSlipNumber(db, organizationId, patient.slipNumber);
+
         // If it's a new patient profile, we insert it
         if (!patientProfileId) {
           patientProfileId = getNextNumericID(db, 'patient_profiles', 1);
@@ -236,7 +339,7 @@ export async function POST(request: Request) {
         patientStmt.run(
           patientId,
           patientProfileId,
-          patient.slipNumber,
+          slipNumber,
           patient.registeredAt || nowStr,
           patient.firstName,
           patient.surname,
@@ -272,7 +375,7 @@ export async function POST(request: Request) {
         queueSync(db, 'patients', 'INSERT', String(patientId), {
           id: patientId,
           patient_profile_id: patientProfileId,
-          slip_number: patient.slipNumber,
+          slip_number: slipNumber,
           registered_at: patient.registeredAt || nowStr,
           first_name: patient.firstName,
           surname: patient.surname,
@@ -319,8 +422,8 @@ export async function POST(request: Request) {
             patientId,
             'charge',
             -patient.netAmount,
-            `Diagnostics Charge - Slip: ${patient.slipNumber}`,
-            patient.slipNumber,
+            `Diagnostics Charge - Slip: ${slipNumber}`,
+            slipNumber,
             'wallet',
             'Reception Desk',
             nowStr
@@ -334,8 +437,8 @@ export async function POST(request: Request) {
             patient_id: patientId,
             type: 'charge',
             amount: -patient.netAmount,
-            description: `Diagnostics Charge - Slip: ${patient.slipNumber}`,
-            reference_id: patient.slipNumber,
+            description: `Diagnostics Charge - Slip: ${slipNumber}`,
+            reference_id: slipNumber,
             payment_method: 'wallet',
             created_by: 'Reception Desk',
             created_at: nowStr
@@ -431,7 +534,7 @@ export async function POST(request: Request) {
         }
       }
 
-      return NextResponse.json({ success: true, id: patientId });
+      return NextResponse.json({ success: true, id: patientId, slipNumber });
     }
 
     if (action === 'updateTestResult') {

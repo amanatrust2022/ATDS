@@ -1,4 +1,5 @@
 'use client';
+import RequireRole from '@/components/RequireRole';
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/components/AuthProvider';
@@ -10,7 +11,7 @@ import {
   RiTimeLine
 } from '@remixicon/react';import { printHtml } from '@/lib/templates';
 
-export default function CommissionsPage() {
+function CommissionsPage() {
   const { organization } = useAuth();
   const [entries, setEntries] = useState<CommissionEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -623,3 +624,12 @@ const modalBoxStyle: React.CSSProperties = { background: 'white', width: '100%',
 const closeBtnStyle: React.CSSProperties = { background: 'rgba(255,255,255,0.15)', border: 'none', color: 'white', cursor: 'pointer', width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' };
 const btnPrimaryStyle: React.CSSProperties = { flex: 1, padding: '0.55rem', background: 'var(--teal-700)', color: 'white', border: 'none', fontWeight: 600, cursor: 'pointer', textAlign: 'center', fontSize: '0.8rem' };
 const btnOutlineStyle: React.CSSProperties = { flex: 1, padding: '0.55rem', background: 'white', border: '1px solid var(--gray-300)', color: 'var(--gray-700)', fontWeight: 600, cursor: 'pointer', textAlign: 'center', fontSize: '0.8rem' };
+
+/** Only these roles may open this screen — see components/RequireRole.tsx. */
+export default function GuardedCommissionsPage(props: any) {
+  return (
+    <RequireRole allow={['admin']}>
+      <CommissionsPage {...props} />
+    </RequireRole>
+  );
+}

@@ -12,7 +12,8 @@ import { getRadiologyTemplatesRepository } from './repositories/radiologyTemplat
 import { getCustomTestsRepository } from './repositories/customTests';
 import { getCommissionsRepository } from './repositories/commissions';
 import { buildCommissionReport } from './store/commissionReport';
-import { getPatientsRepository } from './repositories/patients';
+import { getPatientsRepository, type PatientQuery } from './repositories/patients';
+export type { PatientQuery } from './repositories/patients';
 import { getBillingRepository } from './repositories/billing';
 
 export type Department = 'lab' | 'radiology';
@@ -497,8 +498,11 @@ export const TEST_CATALOGUE: Test[] = [
 export const generateSlipNumber = async (organizationId: string): Promise<string> =>
   getPatientsRepository().nextSlipNumber(organizationId);
 
-export const fetchPatients = async (organizationId: string): Promise<Patient[]> =>
-  getPatientsRepository().list(organizationId);
+export const fetchPatients = async (
+  organizationId: string,
+  query?: PatientQuery,
+): Promise<Patient[]> =>
+  getPatientsRepository().list(organizationId, query);
 
 export const fetchPatientProfiles = async (organizationId: string): Promise<PatientProfile[]> =>
   getPatientsRepository().listProfiles(organizationId);
@@ -620,8 +624,10 @@ export interface CommissionEntry {
 }
 
 export const fetchCommissionReport = async (organizationId: string, from?: string, to?: string): Promise<CommissionEntry[]> => {
+  // Bounded by the period the report is for. This screen used to load every
+  // patient the centre had ever registered and then narrow it in the browser.
   const [patients, prices, doctors, facilities] = await Promise.all([
-    fetchPatients(organizationId),
+    fetchPatients(organizationId, { since: from, until: to }),
     fetchTestPrices(organizationId),
     fetchReferringDoctors(organizationId),
     fetchReferringFacilities(organizationId),

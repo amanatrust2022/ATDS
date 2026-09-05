@@ -170,6 +170,11 @@ test('falls back to the server profile endpoint when direct Supabase upsert is b
         throw new Error('RLS denied');
       },
     }),
+    // The endpoint identifies the caller from this token and ignores any user
+    // id in the body, so the fallback has to carry one.
+    auth: {
+      getSession: async () => ({ data: { session: { access_token: 'token-2' } } }),
+    },
   };
 
   const result = await upsertProfileForUser(supabase, 'user-2', {
@@ -182,6 +187,10 @@ test('falls back to the server profile endpoint when direct Supabase upsert is b
   expect(result).toEqual({ id: 'user-2' });
   expect(calls.length).toBe(1);
   expect(calls[0].url).toMatch(/\/api\/auth\/profile$/);
+  expect(calls[0].options.headers.Authorization).toBe('Bearer token-2');
+  // The user id is never sent: the server takes it from the token, so this
+  // endpoint cannot be asked to write somebody else's profile row.
+  expect(JSON.parse(calls[0].options.body)).not.toHaveProperty('userId');
 
   if (originalWindow === undefined) {
     delete globalThis.window;

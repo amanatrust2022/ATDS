@@ -1,10 +1,11 @@
 'use client';
+import RequireRole from '@/components/RequireRole';
 import { useAuth } from '@/components/AuthProvider';
 import { RiDashboardLine, RiTeamLine, RiHospitalLine, RiMailSendLine } from '@remixicon/react';
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase';
 
-export default function AdminOverview() {
+function AdminOverview() {
   const { organization } = useAuth();
   const supabase = createClient();
   const [stats, setStats] = useState({ staffCount: 0, pendingInvites: 0 });
@@ -124,5 +125,14 @@ export default function AdminOverview() {
         </div>
       </div>
     </div>
+  );
+}
+
+/** Only these roles may open this screen — see components/RequireRole.tsx. */
+export default function GuardedAdminOverview(props: any) {
+  return (
+    <RequireRole allow={['admin']}>
+      <AdminOverview {...props} />
+    </RequireRole>
   );
 }

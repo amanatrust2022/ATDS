@@ -1,3 +1,4 @@
+import { cleanLetterhead } from './sanitizeHtml';
 /**
  * Amana Diagnostics - Centralized Print Templates
  *
@@ -9,6 +10,7 @@
 
 import { Patient, PatientTest } from './store';
 import { deserializeRadiologyResults, convertTextToFormattedHtml } from './radiology-templates';
+import { buildDocCss } from './letterheadStyles';
 
 /** Minimal org shape needed for rendering letterheads */
 export type OrgForTemplate = {
@@ -43,26 +45,10 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
   const orgPhone = org?.phone || '+2348033390574, +2347032663898';
   const orgEmail = org?.email || 'amanatrust2022@gmail.com';
 
-  // Clean trailing empty paragraphs, line breaks, and elements (e.g. styling-enhanced empty paragraphs)
-  let cleanLetterheadHtml = org?.letterhead_html || '';
-  if (cleanLetterheadHtml) {
-    let prev = '';
-    cleanLetterheadHtml = cleanLetterheadHtml.trim();
-    while (cleanLetterheadHtml !== prev) {
-      prev = cleanLetterheadHtml;
-      // Remove trailing br tags that are followed only by closing tags or whitespace
-      cleanLetterheadHtml = cleanLetterheadHtml.replace(/(?:<br\s*\/?>\s*)+(?=(?:\s|<\/\w+>)*$)/gi, '').trim();
-      // Remove trailing empty tags (restricting nested tags to inline styles) that are followed only by closing tags or whitespace
-      cleanLetterheadHtml = cleanLetterheadHtml.replace(/<(\w+)\b[^>]*>(?:\s|&nbsp;|<br\s*\/?>|<(?:\/?(?:span|strong|em|b|i|u|font))\b[^>]*>)*<\/\1>(?=(?:\s|<\/\w+>)*$)/gi, (match) => {
-        if (match.includes('<img') || match.includes('<svg') || match.includes('<hr') || match.includes('data-shape') || match.includes('canvas')) {
-          return match;
-        }
-        const textOnly = match.replace(/<[^>]+>/g, '').replace(/&nbsp;/g, '').replace(/\s/g, '');
-        if (textOnly === '') return '';
-        return match;
-      }).trim();
-    }
-  }
+  // Sanitised, not merely tidied: this HTML is authored in the app and then
+  // injected into reports, into the page the patient is shown, and into a
+  // headless browser run without a sandbox.
+  const cleanLetterheadHtml = cleanLetterhead(org?.letterhead_html);
 
   const testSections = completedTests.map(t => {
     const isMcs = t.testId.toLowerCase().endsWith('_mcs') || t.testId.toLowerCase().includes('mcs') || t.testId.toLowerCase() === 'sfmcs' || t.testName.toLowerCase().includes('mcs') || t.testName.toLowerCase().includes('culture & sensitivity') || t.testName.toLowerCase().includes('culture and sensitivity');
@@ -462,6 +448,10 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
         }
       }
       .header { text-align: center; border-bottom: 2px solid #0563c1; padding-bottom: 0; margin-bottom: 0; margin-left: 0; margin-right: 0; padding-left: 0; padding-right: 0; }
+      /* Fallback styling so letterheads saved before style-inlining still render
+         their lists/tables/headings correctly. New letterheads carry inline styles
+         that override these. */
+      ${buildDocCss('.custom-letterhead')}
       .custom-letterhead { margin-bottom: 0px; padding-bottom: 0px; }
       .custom-letterhead p { margin: 0 0 4px 0; }
       .custom-letterhead div { margin: 0; }

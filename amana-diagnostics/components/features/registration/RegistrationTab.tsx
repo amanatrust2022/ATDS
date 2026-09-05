@@ -1,7 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { useRegistrationStore } from '@/lib/store/useRegistrationStore';
 import { Patient, PatientProfile, ReferringDoctor, ReferringFacility, TestPrice, Test, BillingAccount } from '@/lib/store';
-import { generateSlipNumber, addPatientWithReferral, addReferringDoctor, addReferringFacility, fetchReferringDoctors, fetchReferringFacilities } from '@/lib/store';
+import { generateSlipNumber, addPatientWithReferral, addReferringDoctor, addReferringFacility, fetchReferringDoctors, fetchReferringFacilities, fetchPatients } from '@/lib/store';
 import type { Organization } from '@/components/AuthProvider';
 import PatientLookup from './PatientLookup';
 import RegistrationForm from './RegistrationForm';
@@ -126,10 +126,22 @@ export default function RegistrationTab({
   const isReferral = isReferralVisit(selectedDoctorId, selectedFacilityId);
   const totalCommission = calculateTotalCommission(selectedTestDetails, isReferral);
 
-  const handleSelectProfile = (p: PatientProfile) => {
-    const latestVisitForAge = patients
-      .filter(v => v.patientProfileId === p.id)
-      .sort((a, b) => new Date(b.registeredAt).getTime() - new Date(a.registeredAt).getTime())[0];
+  const handleSelectProfile = async (p: PatientProfile) => {
+    // This patient's own visit history, fetched rather than filtered out of the
+    // queue. The queue only holds the date window on screen, and a returning
+    // patient's last visit is usually older than that — their age and their
+    // wallet would silently fail to carry forward.
+    let priorVisits: Patient[] = [];
+    try {
+      priorVisits = await fetchPatients(organization!.id, { patientProfileId: p.id });
+    } catch (e) {
+      console.warn('Could not load previous visits for this patient:', e);
+    }
+
+    const byNewestFirst = [...priorVisits].sort(
+      (a, b) => new Date(b.registeredAt).getTime() - new Date(a.registeredAt).getTime(),
+    );
+    const latestVisitForAge = byNewestFirst[0];
 
     setForm({
       firstName: p.firstName || '',
@@ -149,9 +161,9 @@ export default function RegistrationTab({
     setFacilitySearch('');
     setLoadedPatientName(`${p.firstName} ${p.surname}`);
 
-    const latestVisitWithWallet = patients
-      .filter(v => v.patientProfileId === p.id && v.billingAccountId)
-      .sort((a, b) => new Date(b.registeredAt).getTime() - new Date(a.registeredAt).getTime())[0];
+    // Losing this silently would charge a family's visit to cash instead of
+    // their wallet, so it must come from the same unbounded history.
+    const latestVisitWithWallet = byNewestFirst.find(v => v.billingAccountId);
     setSelectedPatientBillingAccountId(latestVisitWithWallet?.billingAccountId || null);
 
     setSelectedPatientProfileId(p.id);

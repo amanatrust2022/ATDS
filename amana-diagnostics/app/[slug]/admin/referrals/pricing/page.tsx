@@ -1,4 +1,5 @@
 'use client';
+import RequireRole from '@/components/RequireRole';
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/components/AuthProvider';
@@ -8,7 +9,7 @@ import {
   RiTestTubeLine, RiRadarLine,
 } from '@remixicon/react';
 
-export default function TestPricingPage() {
+function TestPricingPage() {
   const { organization } = useAuth();
   const [catalogue, setCatalogue] = useState<Test[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
@@ -327,3 +328,12 @@ export default function TestPricingPage() {
 
 const thStyle: React.CSSProperties = { padding: '0.6rem 1rem', textAlign: 'left', fontWeight: 700, fontSize: '0.7rem', color: 'var(--gray-500)', textTransform: 'uppercase' };
 const selectStyle: React.CSSProperties = { padding: '0.45rem 0.75rem', border: '1px solid var(--gray-300)', borderRadius: 0, fontSize: '0.8rem', fontFamily: 'var(--font-body)', outline: 'none', background: 'white', color: 'var(--gray-700)' };
+
+/** Only these roles may open this screen — see components/RequireRole.tsx. */
+export default function GuardedTestPricingPage(props: any) {
+  return (
+    <RequireRole allow={['admin']}>
+      <TestPricingPage {...props} />
+    </RequireRole>
+  );
+}

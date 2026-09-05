@@ -101,10 +101,17 @@ export async function upsertProfileForUser(supabase, userId, profileData = {}) {
 
   if (typeof window !== 'undefined') {
     try {
+      // The endpoint writes the caller's own row, identified from this token,
+      // and ignores any user id in the body. Without a token it refuses.
+      const sessionRes = await supabase.auth.getSession();
+      const accessToken = sessionRes?.data?.session?.access_token;
+      const headers = { 'Content-Type': 'application/json' };
+      if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+
       const response = await fetch('/api/auth/profile', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, profile: payload }),
+        headers,
+        body: JSON.stringify({ profile: payload }),
       });
 
       if (response.ok) {

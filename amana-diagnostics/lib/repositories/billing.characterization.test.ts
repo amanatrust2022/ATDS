@@ -186,47 +186,129 @@ describe('Opening an account', () => {
   });
 });
 
+/**
+ * Taking a deposit now goes through the deposit_to_wallet Postgres function, so
+ * the balance and the ledger row commit together and a second deposit waits for
+ * the first rather than reading a balance that is about to change.
+ *
+ * The arithmetic moved into SQL and can no longer be asserted from here — see
+ * the VERIFY block at the foot of supabase_deposit_atomicity.sql, which runs two
+ * concurrent deposits against a real database. What is asserted here is the
+ * payload the function receives, and the fallback for a database that has not
+ * had the function applied yet.
+ */
 describe('Depositing into an account', () => {
-  it('adds to the existing balance and records the deposit', async () => {
-    const sb = supabaseWith([
-      { data: { balance: 5000 }, error: null }, // read balance
-      { data: null, error: null },              // write balance
-      { data: null, error: null },              // ledger row
-    ]);
+  it('hands the deposit to the database in a single call', async () => {
+    const sb = supabaseWith();
+    createClientMock.mockReturnValue(sb.client);
+
+    await depositToBillingAccount('acc-1', 3000, 'Top up', 'cash', 'Reception', 'org-1', 42);
+
+    expect(sb.rpcCalls).toHaveLength(1);
+    expect(sb.rpcCalls[0].fn).toBe('deposit_to_wallet');
+    // Nothing is written directly any more; the function does it all.
+    expect(sb.sequence()).toEqual([]);
+  });
+
+  it('sends the account and the amount to add', async () => {
+    const sb = supabaseWith();
+    createClientMock.mockReturnValue(sb.client);
+
+    await depositToBillingAccount('acc-1', 3000, 'Top up', 'cash', 'Reception', 'org-1', 42);
+
+    expect(sb.rpcCalls[0].args.p_account).toMatchObject({
+      id: 'acc-1', organization_id: 'org-1', amount: 3000,
+    });
+  });
+
+  it('sends the ledger row describing the deposit', async () => {
+    const sb = supabaseWith();
+    createClientMock.mockReturnValue(sb.client);
+
+    await depositToBillingAccount('acc-1', 3000, 'Top up', 'cash', 'Reception', 'org-1', 42);
+
+    expect(sb.rpcCalls[0].args.p_ledger).toMatchObject({
+      type: 'deposit', amount: 3000, patient_id: 42, created_by: 'Reception',
+      description: 'Top up', payment_method: 'cash',
+    });
+  });
+
+  it('records a deposit not tied to a patient with a null patient id', async () => {
+    const sb = supabaseWith();
+    createClientMock.mockReturnValue(sb.client);
+
+    await depositToBillingAccount('acc-1', 1000, 'Top up', 'cash', 'Reception', 'org-1');
+
+    expect(sb.rpcCalls[0].args.p_ledger.patient_id).toBeNull();
+  });
+
+  // The browser used to be the only thing standing between a typo and the
+  // balance. It is no longer.
+  it('refuses a deposit that is not a positive number', async () => {
+    const sb = supabaseWith();
+    createClientMock.mockReturnValue(sb.client);
+
+    await expect(depositToBillingAccount('acc-1', -500, 'x', 'cash', 'R', 'org-1')).rejects.toThrow(/positive number/);
+    await expect(depositToBillingAccount('acc-1', 0, 'x', 'cash', 'R', 'org-1')).rejects.toThrow(/positive number/);
+    await expect(depositToBillingAccount('acc-1', NaN, 'x', 'cash', 'R', 'org-1')).rejects.toThrow(/positive number/);
+
+    expect(sb.rpcCalls).toHaveLength(0);
+  });
+
+  it('names an unknown account plainly', async () => {
+    const sb = supabaseWith([], { error: { message: 'BILLING_ACCOUNT_NOT_FOUND' } });
+    createClientMock.mockReturnValue(sb.client);
+
+    await expect(depositToBillingAccount('ghost', 3000, 'x', 'cash', 'R', 'org-1'))
+      .rejects.toThrow('Billing account not found');
+  });
+
+  it('falls back to sequential writes when the function is not deployed, and warns', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const sb = supabaseWith(
+      [
+        { data: { balance: 5000 }, error: null }, // read balance
+        { data: null, error: null },              // write balance
+        { data: null, error: null },              // ledger row
+      ],
+      { error: { code: 'PGRST202', message: 'Could not find the function' } },
+    );
     createClientMock.mockReturnValue(sb.client);
 
     await depositToBillingAccount('acc-1', 3000, 'Top up', 'cash', 'Reception', 'org-1', 42);
 
     expect(sb.find('billing_accounts', 'update')![0]).toMatchObject({ balance: 8000 });
-
     const [ledger] = sb.find('billing_ledger_transactions', 'insert')!;
-    expect(ledger[0]).toMatchObject({ type: 'deposit', amount: 3000, patient_id: 42, created_by: 'Reception' });
+    expect(ledger[0]).toMatchObject({ type: 'deposit', amount: 3000, patient_id: 42 });
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('supabase_deposit_atomicity.sql'));
+    warn.mockRestore();
   });
 
-  it('treats a null starting balance as zero', async () => {
-    const sb = supabaseWith([{ data: { balance: null }, error: null }, { data: null, error: null }, { data: null, error: null }]);
+  it('treats a null starting balance as zero on the fallback path', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const sb = supabaseWith(
+      [{ data: { balance: null }, error: null }, { data: null, error: null }, { data: null, error: null }],
+      { error: { code: 'PGRST202', message: 'Could not find the function' } },
+    );
     createClientMock.mockReturnValue(sb.client);
 
     await depositToBillingAccount('acc-1', 3000, 'Top up', 'cash', 'Reception', 'org-1');
 
     expect(sb.find('billing_accounts', 'update')![0].balance).toBe(3000);
+    warn.mockRestore();
   });
 
-  it('records a deposit not tied to a patient with a null patient id', async () => {
-    const sb = supabaseWith([{ data: { balance: 0 }, error: null }, { data: null, error: null }, { data: null, error: null }]);
-    createClientMock.mockReturnValue(sb.client);
-
-    await depositToBillingAccount('acc-1', 1000, 'Top up', 'cash', 'Reception', 'org-1');
-
-    expect(sb.find('billing_ledger_transactions', 'insert')![0][0].patient_id).toBeNull();
-  });
-
-  it('does not touch the balance when the account cannot be read', async () => {
-    const sb = supabaseWith([{ data: null, error: { message: 'no such account' } }]);
+  it('does not touch the balance when the account cannot be read on the fallback path', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const sb = supabaseWith(
+      [{ data: null, error: { message: 'no such account' } }],
+      { error: { code: 'PGRST202', message: 'Could not find the function' } },
+    );
     createClientMock.mockReturnValue(sb.client);
 
     await expect(depositToBillingAccount('ghost', 3000, 'x', 'cash', 'R', 'org-1')).rejects.toBeTruthy();
     expect(sb.find('billing_accounts', 'update')).toBeUndefined();
+    warn.mockRestore();
   });
 });
 

@@ -1,4 +1,5 @@
 'use client';
+import RequireRole from '@/components/RequireRole';
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/components/AuthProvider';
@@ -18,7 +19,7 @@ const EMPTY_FORM = {
   commission_value: 0, is_active: true, organization_id: '',
 };
 
-export default function ReferringDoctorsPage() {
+function ReferringDoctorsPage() {
   const { organization } = useAuth();
   const [doctors, setDoctors] = useState<ReferringDoctor[]>([]);
   const [facilities, setFacilities] = useState<ReferringFacility[]>([]);
@@ -240,3 +241,12 @@ const iconBtnStyle: React.CSSProperties = { background: 'var(--gray-100)', borde
 const overlayStyle: React.CSSProperties = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem' };
 const modalStyle: React.CSSProperties = { background: 'white', width: '100%', maxWidth: 540, overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.2)', animation: 'fadeIn 0.2s ease' };
 const closeBtnStyle: React.CSSProperties = { background: 'rgba(255,255,255,0.15)', border: 'none', color: 'white', cursor: 'pointer', width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' };
+
+/** Only these roles may open this screen — see components/RequireRole.tsx. */
+export default function GuardedReferringDoctorsPage(props: any) {
+  return (
+    <RequireRole allow={['admin']}>
+      <ReferringDoctorsPage {...props} />
+    </RequireRole>
+  );
+}

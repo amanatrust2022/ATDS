@@ -194,71 +194,80 @@ export async function POST(request: Request) {
     if (action === 'deposit') {
       const { accountId, amount, description, paymentMethod, createdBy, organizationId, patientId } = body;
 
-      // 1. Fetch current balance
-      const currentStmt = db.prepare(`SELECT balance FROM billing_accounts WHERE id = ?`);
-      const acc = currentStmt.get(accountId) as { balance: number } | undefined;
-      if (!acc) return NextResponse.json({ error: 'Billing account not found' }, { status: 404 });
-
-      const newBalance = (acc.balance || 0) + amount;
-
-      // 2. Update balance
-      const upStmt = db.prepare(`
-        UPDATE billing_accounts 
-        SET balance = ?, updated_at = ? 
-        WHERE id = ?
-      `);
-      upStmt.run(newBalance, nowStr, accountId);
-
-      // Queue sync for billing account update
-      const fullAcc = db.prepare('SELECT * FROM billing_accounts WHERE id = ?').get(accountId) as any;
-      if (fullAcc) {
-        queueSync(db, 'billing_accounts', 'UPDATE', accountId, {
-          ...fullAcc,
-          balance: newBalance,
-          updated_at: nowStr
-        });
+      // The browser checks this too. The browser is not where money is decided:
+      // this handler used to add whatever number it was given, including a
+      // negative one, straight onto the balance.
+      const depositAmount = Number(amount);
+      if (!Number.isFinite(depositAmount) || depositAmount <= 0) {
+        return NextResponse.json({ error: 'Deposit amount must be a positive number' }, { status: 400 });
+      }
+      if (!organizationId) {
+        return NextResponse.json({ error: 'Missing organizationId' }, { status: 400 });
       }
 
-      // 3. Log transaction
       const txId = crypto.randomUUID();
-      const txStmt = db.prepare(`
-        INSERT INTO billing_ledger_transactions (
-          id, organization_id, billing_account_id, patient_id, type, amount, description, reference_id, payment_method, created_by, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `);
-      txStmt.run(
-        txId,
-        organizationId,
-        accountId,
-        patientId || null,
-        'deposit',
-        amount,
-        description || 'Top-up deposit',
-        null,
-        paymentMethod,
-        createdBy || null,
-        nowStr
-      );
 
-      // Queue sync for transaction
-      queueSync(db, 'billing_ledger_transactions', 'INSERT', txId, {
-        id: txId,
-        organization_id: organizationId,
-        billing_account_id: accountId,
-        patient_id: patientId || null,
-        type: 'deposit',
-        amount,
-        description: description || 'Top-up deposit',
-        reference_id: null,
-        payment_method: paymentMethod,
-        created_by: createdBy || null,
-        created_at: nowStr
-      });
+      // Read, add, write and log inside one write lock. Without it two
+      // receptionists taking money at the same moment both read the same
+      // starting balance and one deposit vanishes; and a crash between the
+      // balance and the ledger moved money with nothing to say why.
+      let newBalance = 0;
+      try {
+        newBalance = inTransaction(db, () => {
+          const acc = db
+            .prepare('SELECT balance FROM billing_accounts WHERE id = ? AND organization_id = ?')
+            .get(accountId, organizationId) as { balance: number } | undefined;
+          if (!acc) throw new HttpError('Billing account not found', 404);
+
+          const updated = (acc.balance || 0) + depositAmount;
+
+          db.prepare('UPDATE billing_accounts SET balance = ?, updated_at = ? WHERE id = ?')
+            .run(updated, nowStr, accountId);
+
+          db.prepare(`
+            INSERT INTO billing_ledger_transactions (
+              id, organization_id, billing_account_id, patient_id, type, amount, description, reference_id, payment_method, created_by, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `).run(
+            txId, organizationId, accountId, patientId || null, 'deposit', depositAmount,
+            description || 'Top-up deposit', null, paymentMethod, createdBy || null, nowStr,
+          );
+
+          const fullAcc = db.prepare('SELECT * FROM billing_accounts WHERE id = ?').get(accountId) as any;
+          if (fullAcc) {
+            queueSync(db, 'billing_accounts', 'UPDATE', accountId, {
+              ...fullAcc,
+              balance: updated,
+              updated_at: nowStr,
+            });
+          }
+
+          queueSync(db, 'billing_ledger_transactions', 'INSERT', txId, {
+            id: txId,
+            organization_id: organizationId,
+            billing_account_id: accountId,
+            patient_id: patientId || null,
+            type: 'deposit',
+            amount: depositAmount,
+            description: description || 'Top-up deposit',
+            reference_id: null,
+            payment_method: paymentMethod,
+            created_by: createdBy || null,
+            created_at: nowStr,
+          });
+
+          return updated;
+        });
+      } catch (err: any) {
+        if (err instanceof HttpError) {
+          return NextResponse.json({ error: err.message }, { status: err.status });
+        }
+        throw err;
+      }
 
       return NextResponse.json({ success: true, newBalance });
     }
 
-    
     if (action === 'updateLimit') {
       const { accountId, newLimit } = body;
       const upStmt = db.prepare('UPDATE billing_accounts SET credit_limit = ?, updated_at = ? WHERE id = ?');

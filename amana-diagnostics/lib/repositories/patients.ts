@@ -2,19 +2,62 @@ import { createClient } from '@/lib/supabase';
 import { RuntimeMode, RUNTIME_MODE } from '@/lib/runtimeMode';
 import { postJson } from './localHttp';
 import {
-  formatSlipNumber, slipPrefixFor, generatePatientId,
+  formatSlipNumber, slipPrefixFor,
   toPatient, toPatientProfile, toProfileRow, toPatientRow, toPatientRowWithBilling,
   toTestRows, toTestRowsWithBilling,
 } from './patientMappers';
 import { isMissingFunction, parseInsufficientFunds, formatNaira } from './rpcErrors';
+import { allocatePatientId, withSlipNumberRetry } from './patientIds';
 import type { Patient, PatientProfile, PatientTest } from '@/lib/store';
 
 type NewPatient = Omit<Patient, 'id' | 'tests'> & { id?: number };
 type NewTest = Omit<PatientTest, 'id' | 'patient_id'>;
 
+/**
+ * Narrows what `list` returns.
+ *
+ * Every screen used to load the entire history of the clinic and then filter it
+ * in the browser, on every change to any of five tables. The cost of that grows
+ * with how long the centre has been open rather than with how busy today is, so
+ * the system got slower every day it ran. These are the bounds the screens
+ * actually want; the database applies them.
+ *
+ * An empty query still means everything, for the callers that genuinely need it
+ * (the commission report over a chosen period, the admin patient list).
+ */
+export interface PatientQuery {
+  /** ISO timestamp. Only patients registered at or after this moment. */
+  since?: string;
+  /** ISO timestamp. Only patients registered at or before this moment. */
+  until?: string;
+  /**
+   * Only patients with at least one test in this department, carrying only
+   * that department's tests. Safe because a department screen never reads
+   * another department's tests.
+   */
+  department?: string;
+  /** Only patients attached to a wallet, of any age. Used by the billing screens. */
+  withBillingAccount?: boolean;
+  /**
+   * Free-text match on name or phone, across all patients regardless of date.
+   * The wallet screens need to find someone seen months ago, which is why they
+   * cannot simply search whatever the queue happens to be showing.
+   */
+  search?: string;
+  /** Caps the rows returned. Always set one on a search. */
+  limit?: number;
+  /**
+   * Every visit belonging to one permanent patient record, of any age.
+   * Registration needs a returning patient's history to carry their age and
+   * their wallet forward, and that history is older than any date window the
+   * queue is showing.
+   */
+  patientProfileId?: number | string;
+}
+
 export interface PatientsRepository {
   nextSlipNumber(organizationId: string): Promise<string>;
-  list(organizationId: string): Promise<Patient[]>;
+  list(organizationId: string, query?: PatientQuery): Promise<Patient[]>;
   listProfiles(organizationId: string): Promise<PatientProfile[]>;
   add(patient: NewPatient, tests: NewTest[], organizationId: string): Promise<void>;
   /**
@@ -32,6 +75,19 @@ export interface PatientsRepository {
 
 const ENDPOINT = '/api/patients';
 
+/** The one place a PatientQuery becomes a query string, so both ends agree. */
+export function patientQueryParams(organizationId: string, query: PatientQuery = {}): string {
+  const params = new URLSearchParams({ organizationId });
+  if (query.since) params.set('since', query.since);
+  if (query.until) params.set('until', query.until);
+  if (query.department) params.set('department', query.department);
+  if (query.withBillingAccount) params.set('withBillingAccount', '1');
+  if (query.search) params.set('search', query.search);
+  if (query.limit) params.set('limit', String(query.limit));
+  if (query.patientProfileId != null) params.set('patientProfileId', String(query.patientProfileId));
+  return params.toString();
+}
+
 // ─── LOCAL (on-premise hub) ───────────────────────────────────────────────────
 
 export const localPatientsRepository: PatientsRepository = {
@@ -45,8 +101,8 @@ export const localPatientsRepository: PatientsRepository = {
     return formatSlipNumber(today, issuedToday.length + 1);
   },
 
-  async list(organizationId) {
-    const res = await fetch(`${ENDPOINT}?organizationId=${organizationId}`);
+  async list(organizationId, query = {}) {
+    const res = await fetch(`${ENDPOINT}?${patientQueryParams(organizationId, query)}`);
     return res.json();
   },
 
@@ -63,6 +119,9 @@ export const localPatientsRepository: PatientsRepository = {
   async addWithReferral(patient, tests, organizationId) {
     const res = await postJson(ENDPOINT, { action: 'addPatient', patient, tests, organizationId }, 'Failed to add patient referral locally');
     const data = await res.json();
+    // The hub settles the slip number under its write lock and may have moved
+    // it on, so the slip about to be printed must be the one it recorded.
+    if (data.slipNumber) patient.slipNumber = data.slipNumber;
     return data.id;
   },
 
@@ -80,12 +139,51 @@ export const localPatientsRepository: PatientsRepository = {
     await postJson(ENDPOINT, { action: 'updateTestResult', testId, updates }, 'Failed to update test result locally');
   },
 
-  subscribe(_organizationId, callback) {
-    // No realtime channel on the hub; poll instead.
-    const interval = setInterval(callback, 5000);
-    return () => clearInterval(interval);
+  subscribe(organizationId, callback) {
+    // No realtime channel on the hub, so it polls — but it polls a cheap
+    // version stamp rather than reloading the whole queue every five seconds,
+    // which is what it used to do on every open screen, forever.
+    let lastVersion: string | null = null;
+    let stopped = false;
+
+    const check = async () => {
+      try {
+        const res = await fetch(`${ENDPOINT}?action=version&organizationId=${organizationId}`);
+        if (!res.ok || stopped) return;
+        const { version } = await res.json();
+        if (lastVersion !== null && version !== lastVersion) callback();
+        lastVersion = version;
+      } catch {
+        // Offline or the hub is restarting; the next tick tries again.
+      }
+    };
+
+    check();
+    const interval = setInterval(check, 5000);
+    return () => { stopped = true; clearInterval(interval); };
   },
 };
+
+/**
+ * Collapses a burst of changes into one call.
+ *
+ * Registering a patient with five tests writes to three tables and produces
+ * roughly seven separate realtime events. Each of those used to reload
+ * everything on every open screen in the building. They now arrive as one.
+ */
+export function debounce(fn: () => void, ms: number): (() => void) & { cancel: () => void } {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const run = () => {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(fn, ms);
+  };
+  run.cancel = () => { if (timer) clearTimeout(timer); };
+  return run;
+}
+
+/** How long to wait for a burst to finish. Long enough to catch the tail of a
+ *  registration, short enough that the queue still feels live. */
+export const REALTIME_DEBOUNCE_MS = 400;
 
 // ─── CLOUD (Supabase) ─────────────────────────────────────────────────────────
 
@@ -116,13 +214,32 @@ export const cloudPatientsRepository: CloudPatientsRepository = {
     return formatSlipNumber(today, (count || 0) + 1);
   },
 
-  async list(organizationId) {
+  async list(organizationId, query = {}) {
     const supabase = createClient();
-    const { data, error } = await supabase
+
+    // `!inner` makes the department a condition on the patient, not just a
+    // filter on the tests that come back — without it every patient would be
+    // returned, most of them carrying an empty test list.
+    let request = supabase
       .from('patients')
-      .select('*, tests:patient_tests(*)')
-      .eq('organization_id', organizationId)
-      .order('registered_at', { ascending: false });
+      .select(query.department ? '*, tests:patient_tests!inner(*)' : '*, tests:patient_tests(*)')
+      .eq('organization_id', organizationId);
+
+    if (query.department) request = request.eq('tests.department', query.department);
+    if (query.since) request = request.gte('registered_at', query.since);
+    if (query.until) request = request.lte('registered_at', query.until);
+    if (query.withBillingAccount) request = request.not('billing_account_id', 'is', null);
+    if (query.patientProfileId != null) request = request.eq('patient_profile_id', query.patientProfileId);
+    if (query.search) {
+      // Commas and parentheses would be read as more filter clauses.
+      const term = query.search.replace(/[,()]/g, ' ').trim();
+      request = request.or(`first_name.ilike.%${term}%,surname.ilike.%${term}%,phone.ilike.%${term}%`);
+    }
+
+    request = request.order('registered_at', { ascending: false });
+    if (query.limit) request = request.limit(query.limit);
+
+    const { data, error } = await request;
     if (error) { console.error('Error fetching patients:', error); return []; }
     return (data || []).map(toPatient);
   },
@@ -140,12 +257,12 @@ export const cloudPatientsRepository: CloudPatientsRepository = {
 
   async add(patient, tests, organizationId) {
     const supabase = createClient();
-    const patientId = patient.id || generatePatientId();
+    const patientId = patient.id || await allocatePatientId(supabase, organizationId, 'patients');
     let profileId = patient.patientProfileId;
 
     // A returning patient already has a profile; a new one needs creating first.
     if (!profileId) {
-      profileId = generatePatientId();
+      profileId = await allocatePatientId(supabase, organizationId, 'patient_profiles');
       const { error } = await supabase.from('patient_profiles').insert([toProfileRow(patient, profileId, organizationId)]);
       if (error) throw error;
     }
@@ -170,30 +287,55 @@ export const cloudPatientsRepository: CloudPatientsRepository = {
    */
   async addWithReferral(patient, tests, organizationId) {
     const supabase = createClient();
-    const patientId = patient.id || generatePatientId();
     const isReturningPatient = !!patient.patientProfileId;
-    const profileId = patient.patientProfileId || generatePatientId();
     const payingFromWallet = patient.paymentMethod === 'wallet' && !!patient.billingAccountId;
-    const now = new Date().toISOString();
 
-    const { error } = await supabase.rpc('register_patient_with_wallet', {
-      p_profile: isReturningPatient ? null : toProfileRow(patient, profileId, organizationId),
-      p_patient: toPatientRowWithBilling(patient, patientId, profileId, organizationId),
-      p_tests: toTestRowsWithBilling(tests, patientId, organizationId),
-      p_ledger: payingFromWallet ? {
-        id: crypto.randomUUID(),
-        organization_id: organizationId,
-        billing_account_id: patient.billingAccountId,
-        patient_id: patientId,
-        type: 'charge',
-        amount: -(patient.netAmount || 0),
-        description: `Diagnostics Charge - Slip: ${patient.slipNumber}`,
-        reference_id: patient.slipNumber,
-        payment_method: 'wallet',
-        created_by: 'Reception Desk',
-        created_at: now,
-      } : null,
-    });
+    // Allocated rather than drawn at random, so two registrations cannot be
+    // handed the same id. Both at once: it is one wait, not two.
+    const [patientId, profileId] = await Promise.all([
+      patient.id ? Promise.resolve(patient.id) : allocatePatientId(supabase, organizationId, 'patients'),
+      isReturningPatient
+        ? Promise.resolve(patient.patientProfileId!)
+        : allocatePatientId(supabase, organizationId, 'patient_profiles'),
+    ]);
+
+    // The whole registration is one transaction, so a refused slip number
+    // leaves nothing behind and retrying with the next one is safe.
+    const error = await withSlipNumberRetry(
+      patient.slipNumber,
+      () => cloudPatientsRepository.nextSlipNumber(organizationId),
+      async (slip) => {
+        const withSlip = { ...patient, slipNumber: slip };
+        const now = new Date().toISOString();
+
+        const { error: rpcError } = await supabase.rpc('register_patient_with_wallet', {
+          p_profile: isReturningPatient ? null : toProfileRow(withSlip, profileId, organizationId),
+          p_patient: toPatientRowWithBilling(withSlip, patientId, profileId, organizationId),
+          p_tests: toTestRowsWithBilling(tests, patientId, organizationId),
+          p_ledger: payingFromWallet ? {
+            id: crypto.randomUUID(),
+            organization_id: organizationId,
+            billing_account_id: withSlip.billingAccountId,
+            patient_id: patientId,
+            type: 'charge',
+            amount: -(withSlip.netAmount || 0),
+            description: `Diagnostics Charge - Slip: ${slip}`,
+            reference_id: slip,
+            payment_method: 'wallet',
+            created_by: 'Reception Desk',
+            created_at: now,
+          } : null,
+        });
+
+        // A duplicate slip must reach the retry as a throw; everything else is
+        // handled below exactly as before.
+        if (rpcError && /23505|slip_number|patients_org_slip_number_key/i.test(`${rpcError.code} ${rpcError.message}`)) {
+          throw rpcError;
+        }
+        patient.slipNumber = slip;
+        return rpcError;
+      },
+    );
 
     if (!error) return patientId;
 
@@ -221,11 +363,11 @@ export const cloudPatientsRepository: CloudPatientsRepository = {
    */
   async addWithReferralSequentially(patient: NewPatient, tests: NewTest[], organizationId: string) {
     const supabase = createClient();
-    const patientId = patient.id || generatePatientId();
+    const patientId = patient.id || await allocatePatientId(supabase, organizationId, 'patients');
     let profileId = patient.patientProfileId;
 
     if (!profileId) {
-      profileId = generatePatientId();
+      profileId = await allocatePatientId(supabase, organizationId, 'patient_profiles');
       const { error } = await supabase.from('patient_profiles').insert([toProfileRow(patient, profileId, organizationId)]);
       if (error) throw error;
     }
@@ -253,10 +395,20 @@ export const cloudPatientsRepository: CloudPatientsRepository = {
       if (upErr) throw upErr;
     }
 
-    const { error: pError } = await supabase
-      .from('patients')
-      .insert([toPatientRowWithBilling(patient, patientId, profileId, organizationId)]);
-    if (pError) throw pError;
+    // Retried around the insert alone, deliberately. This path is not atomic:
+    // the wallet has already been debited above, so re-running the whole
+    // registration would charge the patient a second time.
+    await withSlipNumberRetry(
+      patient.slipNumber,
+      () => cloudPatientsRepository.nextSlipNumber(organizationId),
+      async (slip) => {
+        const { error: pError } = await supabase
+          .from('patients')
+          .insert([toPatientRowWithBilling({ ...patient, slipNumber: slip }, patientId, profileId, organizationId)]);
+        if (pError) throw pError;
+        patient.slipNumber = slip;
+      },
+    );
 
     if (payingFromWallet) {
       const { error: txError } = await supabase.from('billing_ledger_transactions').insert([{
@@ -348,15 +500,16 @@ export const cloudPatientsRepository: CloudPatientsRepository = {
 
   subscribe(organizationId, callback) {
     const supabase = createClient();
+    const onChange = debounce(callback, REALTIME_DEBOUNCE_MS);
     const channel = REALTIME_TABLES.reduce(
       (ch, table) => ch.on(
         'postgres_changes' as any,
         { event: '*', schema: 'public', table, filter: `organization_id=eq.${organizationId}` },
-        callback,
+        onChange,
       ),
       supabase.channel(`patients-org-${organizationId}`) as any,
     ).subscribe();
-    return () => { supabase.removeChannel(channel); };
+    return () => { onChange.cancel(); supabase.removeChannel(channel); };
   },
 };
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { filterPatientsByDate, filterPatientsBySearchAndDept, selectPendingPatients, selectCompletedPatients } from './useQueueStore';
+import { filterPatientsByDate, filterPatientsBySearchAndDept, selectPendingPatients, selectCompletedPatients, windowStartFor, windowStartIso } from './useQueueStore';
 import { Patient } from '@/lib/store';
 
 describe('useQueueStore filters', () => {
@@ -153,5 +153,41 @@ describe('Tab badge counts', () => {
 
   it('leaves a fully completed patient out of the outstanding count', () => {
     expect(selectPendingPatients([doneToday], 'today')).toEqual([]);
+  });
+});
+
+/**
+ * The window boundary is now sent to the database as well as being applied in
+ * the browser. These pin the two to the same definition — if they ever
+ * disagree, the queue silently shows the wrong days.
+ */
+describe('The date window handed to the query', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 6, 27, 12, 0, 0)); // Monday 27 July 2026, midday
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it('starts "today" at midnight, not at the current moment', () => {
+    expect(windowStartFor('today')).toEqual(new Date(2026, 6, 27, 0, 0, 0));
+  });
+
+  it('counts seven days back from the start of today', () => {
+    expect(windowStartFor('seven_days')).toEqual(new Date(2026, 6, 20, 0, 0, 0));
+  });
+
+  it('counts thirty days back from the start of today', () => {
+    expect(windowStartFor('thirty_days')).toEqual(new Date(2026, 5, 27, 0, 0, 0));
+  });
+
+  it('hands the query the same boundary the browser filter uses', () => {
+    for (const filter of ['today', 'seven_days', 'thirty_days'] as const) {
+      const boundary = windowStartFor(filter).getTime();
+      const justInside = { id: 1, registeredAt: new Date(boundary).toISOString(), tests: [] } as unknown as Patient;
+      const justOutside = { id: 2, registeredAt: new Date(boundary - 1000).toISOString(), tests: [] } as unknown as Patient;
+
+      expect(new Date(windowStartIso(filter)).getTime()).toBe(boundary);
+      expect(filterPatientsByDate([justInside, justOutside], filter).map(p => p.id)).toEqual([1]);
+    }
   });
 });

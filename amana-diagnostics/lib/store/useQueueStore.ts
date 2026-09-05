@@ -39,25 +39,33 @@ export const useQueueStore = create<QueueState>((set) => ({
   setResultModalPatientId: (id) => set({ resultModalPatientId: id }),
 }));
 
-// Helper functions for filtering that can be used across components
-export const filterPatientsByDate = (patients: Patient[], filterType: DateFilter) => {
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const sevenDaysAgo = today - (7 * 24 * 60 * 60 * 1000);
-  const thirtyDaysAgo = today - (30 * 24 * 60 * 60 * 1000);
+/**
+ * The moment a date window begins.
+ *
+ * This is what the database is now asked to filter on, and it is also what the
+ * in-browser filter below uses — deliberately the same function, so the two can
+ * never drift into disagreeing about what "the last 7 days" means.
+ */
+export const windowStartFor = (filterType: DateFilter, now: Date = new Date()): Date => {
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const days = filterType === 'today' ? 0 : filterType === 'seven_days' ? 7 : 30;
+  return new Date(startOfToday.getTime() - days * 24 * 60 * 60 * 1000);
+};
 
+/** The same boundary as an ISO string, for handing to a query. */
+export const windowStartIso = (filterType: DateFilter, now?: Date): string =>
+  windowStartFor(filterType, now).toISOString();
+
+/**
+ * Kept as a second line of defence and for the badge counts. The rows have
+ * already been bounded by the query; this catches anything that arrives from a
+ * realtime update outside the current window.
+ */
+export const filterPatientsByDate = (patients: Patient[], filterType: DateFilter) => {
+  const start = windowStartFor(filterType).getTime();
   return patients.filter(p => {
     if (!p.registeredAt) return false;
-    const pDate = new Date(p.registeredAt).getTime();
-    
-    if (filterType === 'today') {
-      return pDate >= today;
-    } else if (filterType === 'seven_days') {
-      return pDate >= sevenDaysAgo;
-    } else if (filterType === 'thirty_days') {
-      return pDate >= thirtyDaysAgo;
-    }
-    return true;
+    return new Date(p.registeredAt).getTime() >= start;
   });
 };
 

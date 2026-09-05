@@ -1,9 +1,10 @@
 'use client';
+import RequireRole from '@/components/RequireRole';
 import { useAuth } from '@/components/AuthProvider';
 import { RiFileList2Line } from '@remixicon/react';
 import TestManager from '@/components/TestManager';
 
-export default function AdminTestsPage() {
+function AdminTestsPage() {
   const { organization } = useAuth();
 
   return (
@@ -27,5 +28,14 @@ export default function AdminTestsPage() {
         )}
       </div>
     </div>
+  );
+}
+
+/** Only these roles may open this screen — see components/RequireRole.tsx. */
+export default function GuardedAdminTestsPage(props: any) {
+  return (
+    <RequireRole allow={['admin']}>
+      <AdminTestsPage {...props} />
+    </RequireRole>
   );
 }

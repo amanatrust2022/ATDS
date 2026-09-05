@@ -611,7 +611,16 @@ describe('Data loading', () => {
 
     expect(fetchCustomTests).toHaveBeenCalledWith('org-1');
     expect(setCustomCatalogueCache).toHaveBeenCalled();
-    expect(fetchPatients).toHaveBeenCalledWith('org-1');
+    // Bounded to this bench's own work. The screen never reads another
+    // department's tests, and it used to download every patient the centre had
+    // ever registered to show one queue.
+    expect(fetchPatients).toHaveBeenCalledWith('org-1', { department: 'lab' });
+  });
+
+  it('asks only for its own department, so a radiology screen never loads lab work', async () => {
+    await renderPage('radiology');
+
+    expect(fetchPatients).toHaveBeenCalledWith('org-1', { department: 'radiology' });
   });
 
   it('subscribes to patient changes and unsubscribes on unmount', async () => {

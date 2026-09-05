@@ -256,20 +256,32 @@ describe('Local patients repository', () => {
     await expect(localPatientsRepository.add({} as any, [], 'org-1')).rejects.toThrow('Slip already exists');
   });
 
-  it('polls for changes and stops when unsubscribed', () => {
-    vi.useFakeTimers();
-    const callback = vi.fn();
+  // The hub has no realtime channel, so it polls — but it polls a cheap
+  // version stamp and only calls back when something actually changed. It used
+  // to rebuild the entire queue every five seconds on every open screen.
+  it('only calls back when the hub reports a change', async () => {
+    const versions = ['3:5::', '3:5::', '4:7::'];
+    let i = 0;
+    fetchMock.mockImplementation(async () => ({ ok: true, json: async () => ({ version: versions[Math.min(i++, versions.length - 1)] }) }));
 
+    const callback = vi.fn();
     const unsubscribe = localPatientsRepository.subscribe('org-1', callback);
-    vi.advanceTimersByTime(11000);
-    expect(callback).toHaveBeenCalledTimes(2);
+
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(fetchMock.mock.calls[0][0]).toContain('action=version');
+
+    // First reading is the baseline, second is unchanged: nothing to redraw.
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2), { timeout: 8000 });
+    expect(callback).not.toHaveBeenCalled();
+
+    // Third reading differs, so the screen is told once.
+    await vi.waitFor(() => expect(callback).toHaveBeenCalledTimes(1), { timeout: 8000 });
 
     unsubscribe();
-    vi.advanceTimersByTime(10000);
-    expect(callback).toHaveBeenCalledTimes(2);
-
-    vi.useRealTimers();
-  });
+    const callsAfterStop = fetchMock.mock.calls.length;
+    await new Promise(r => setTimeout(r, 100));
+    expect(fetchMock.mock.calls.length).toBeLessThanOrEqual(callsAfterStop + 1);
+  }, 20000);
 });
 
 describe('Cloud realtime subscription', () => {
@@ -310,22 +322,40 @@ describe('Registering a patient who pays from a wallet', () => {
   };
   const someTests = [{ testId: 'fbc', testName: 'FBC', department: 'lab' as const, status: 'pending' as const, price: 5000 }];
 
+  /**
+   * Answers each database function by name.
+   *
+   * Registration now asks for its patient and profile ids before it writes
+   * anything, so a stub that returned one canned answer to every call would
+   * hand the same reply to the allocator and to the registration itself.
+   */
   const rpcStub = (error: any = null) => {
     const calls: Array<{ fn: string; args: any }> = [];
+    let nextId = 10000001;
     createClientMock.mockReturnValue({
-      rpc: (fn: string, args: any) => { calls.push({ fn, args }); return Promise.resolve({ data: null, error }); },
+      rpc: (fn: string, args: any) => {
+        calls.push({ fn, args });
+        if (fn === 'allocate_numeric_id') return Promise.resolve({ data: nextId++, error: null });
+        return Promise.resolve({ data: null, error });
+      },
       from: () => { throw new Error('should not write directly when the function is available'); },
     });
     return calls;
   };
+
+  /** The one registration call, ignoring the id allocations that precede it. */
+  const registerCall = (calls: Array<{ fn: string; args: any }>) =>
+    calls.find(c => c.fn === 'register_patient_with_wallet')!;
 
   it('sends the whole registration to the database in one call', async () => {
     const calls = rpcStub();
 
     await cloudPatientsRepository.addWithReferral(walletPatient as any, someTests, 'org-1');
 
-    expect(calls).toHaveLength(1);
-    expect(calls[0].fn).toBe('register_patient_with_wallet');
+    // One call writes the whole registration. The two before it only reserve
+    // the patient and profile ids and write nothing.
+    expect(calls.filter(c => c.fn === 'register_patient_with_wallet')).toHaveLength(1);
+    expect(calls.filter(c => c.fn === 'allocate_numeric_id')).toHaveLength(2);
   });
 
   /**
@@ -347,7 +377,7 @@ describe('Registering a patient who pays from a wallet', () => {
 
     await cloudPatientsRepository.addWithReferral(walletPatient as any, someTests, 'org-1');
 
-    expect(calls[0].args.p_ledger).toMatchObject({
+    expect(registerCall(calls).args.p_ledger).toMatchObject({
       type: 'charge', amount: -14450, billing_account_id: 'acc-1',
       description: 'Diagnostics Charge - Slip: ATD/20260727/0001',
     });
@@ -360,7 +390,7 @@ describe('Registering a patient who pays from a wallet', () => {
       { ...walletPatient, paymentMethod: 'cash' } as any, someTests, 'org-1',
     );
 
-    expect(calls[0].args.p_ledger).toBeNull();
+    expect(registerCall(calls).args.p_ledger).toBeNull();
   });
 
   it('sends a new profile for a first-time patient', async () => {
@@ -368,7 +398,7 @@ describe('Registering a patient who pays from a wallet', () => {
 
     await cloudPatientsRepository.addWithReferral(walletPatient as any, someTests, 'org-1');
 
-    expect(calls[0].args.p_profile).toMatchObject({ first_name: 'Musa', organization_id: 'org-1' });
+    expect(registerCall(calls).args.p_profile).toMatchObject({ first_name: 'Musa', organization_id: 'org-1' });
   });
 
   // A returning patient already has a profile; creating a second would split their history.
@@ -379,8 +409,8 @@ describe('Registering a patient who pays from a wallet', () => {
       { ...walletPatient, patientProfileId: 42 } as any, someTests, 'org-1',
     );
 
-    expect(calls[0].args.p_profile).toBeNull();
-    expect(calls[0].args.p_patient.patient_profile_id).toBe(42);
+    expect(registerCall(calls).args.p_profile).toBeNull();
+    expect(registerCall(calls).args.p_patient.patient_profile_id).toBe(42);
   });
 
   it('sends one test row per selected test, tied to the new visit', async () => {
@@ -388,9 +418,9 @@ describe('Registering a patient who pays from a wallet', () => {
 
     await cloudPatientsRepository.addWithReferral(walletPatient as any, someTests, 'org-1');
 
-    expect(calls[0].args.p_tests).toHaveLength(1);
-    expect(calls[0].args.p_tests[0]).toMatchObject({ test_id: 'fbc', price: 5000 });
-    expect(calls[0].args.p_tests[0].patient_id).toBe(calls[0].args.p_patient.id);
+    expect(registerCall(calls).args.p_tests).toHaveLength(1);
+    expect(registerCall(calls).args.p_tests[0]).toMatchObject({ test_id: 'fbc', price: 5000 });
+    expect(registerCall(calls).args.p_tests[0].patient_id).toBe(registerCall(calls).args.p_patient.id);
   });
 
   it('names the account when the wallet cannot cover the bill', async () => {
@@ -430,6 +460,100 @@ describe('Registering a patient who pays from a wallet', () => {
 
     expect(writes).toContain('patients');
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('supabase_wallet_atomicity.sql'));
+    warn.mockRestore();
+  });
+
+  // ─── D-04: ids come from a counter, not from chance ──────────────────────
+
+  it('reserves the patient and profile ids before writing anything', async () => {
+    const calls = rpcStub();
+
+    await cloudPatientsRepository.addWithReferral(walletPatient as any, someTests, 'org-1');
+
+    const entities = calls.filter(c => c.fn === 'allocate_numeric_id').map(c => c.args.p_entity);
+    expect(entities.sort()).toEqual(['patient_profiles', 'patients']);
+    expect(calls[calls.length - 1].fn).toBe('register_patient_with_wallet');
+  });
+
+  it('writes the reserved id, not a random one', async () => {
+    const calls = rpcStub();
+
+    const id = await cloudPatientsRepository.addWithReferral(walletPatient as any, someTests, 'org-1');
+
+    expect(id).toBe(10000001);
+    expect(registerCall(calls).args.p_patient.id).toBe(10000001);
+  });
+
+  it('reserves no profile id for a returning patient, who already has one', async () => {
+    const calls = rpcStub();
+
+    await cloudPatientsRepository.addWithReferral(
+      { ...walletPatient, patientProfileId: 77 } as any, someTests, 'org-1',
+    );
+
+    expect(calls.filter(c => c.fn === 'allocate_numeric_id')).toHaveLength(1);
+    expect(registerCall(calls).args.p_patient.patient_profile_id).toBe(77);
+  });
+
+  // ─── D-06: a slip taken by another desk is moved along ───────────────────
+
+  it('takes the next slip number when another desk has just used this one', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const slipsTried: string[] = [];
+    let nextId = 10000001;
+    let attempts = 0;
+
+    createClientMock.mockReturnValue({
+      rpc: (fn: string, args: any) => {
+        if (fn === 'allocate_numeric_id') return Promise.resolve({ data: nextId++, error: null });
+        slipsTried.push(args.p_patient.slip_number);
+        attempts += 1;
+        return Promise.resolve(attempts === 1
+          ? { data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint "patients_org_slip_number_key"' } }
+          : { data: null, error: null });
+      },
+      from: () => ({
+        select: () => ({ eq: () => ({ gte: () => ({ then: (r: any) => r({ count: 7 }) }) }) }),
+      }),
+    });
+
+    const patient: any = { ...walletPatient, slipNumber: 'ATD/20260727/0001' };
+    await cloudPatientsRepository.addWithReferral(patient, someTests, 'org-1');
+
+    expect(slipsTried).toHaveLength(2);
+    expect(slipsTried[0]).toBe('ATD/20260727/0001');
+    expect(slipsTried[1]).not.toBe('ATD/20260727/0001');
+    // The slip about to be printed must be the one that was actually recorded.
+    expect(patient.slipNumber).toBe(slipsTried[1]);
+    warn.mockRestore();
+  });
+
+  it('does not reserve a second pair of ids when it retries the slip', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const calls: Array<{ fn: string; args: any }> = [];
+    let nextId = 10000001;
+    let attempts = 0;
+
+    createClientMock.mockReturnValue({
+      rpc: (fn: string, args: any) => {
+        calls.push({ fn, args });
+        if (fn === 'allocate_numeric_id') return Promise.resolve({ data: nextId++, error: null });
+        attempts += 1;
+        return Promise.resolve(attempts === 1
+          ? { data: null, error: { code: '23505', message: 'unique constraint "patients_org_slip_number_key"' } }
+          : { data: null, error: null });
+      },
+      from: () => ({
+        select: () => ({ eq: () => ({ gte: () => ({ then: (r: any) => r({ count: 7 }) }) }) }),
+      }),
+    });
+
+    await cloudPatientsRepository.addWithReferral({ ...walletPatient } as any, someTests, 'org-1');
+
+    // A retry must not burn a fresh id, or the numbering would gap on every clash.
+    expect(calls.filter(c => c.fn === 'allocate_numeric_id')).toHaveLength(2);
+    const ids = calls.filter(c => c.fn === 'register_patient_with_wallet').map(c => c.args.p_patient.id);
+    expect(new Set(ids).size).toBe(1);
     warn.mockRestore();
   });
 });

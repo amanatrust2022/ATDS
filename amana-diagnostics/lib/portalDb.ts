@@ -12,7 +12,7 @@ export function isLocalMode(): boolean {
  * Gets a server-side Supabase client using the service role key (to bypass RLS for patient retrieval)
  * or falls back to anon key.
  */
-function getPortalSupabaseClient() {
+export function getPortalSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   if (!url) {
     throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL environment variable.');
@@ -51,7 +51,7 @@ export async function getPatientByEmail(email: string): Promise<{ id: string; fi
     return row || null;
   }
 
-  const supabase = getPortalSupabaseClient();
+  const supabase = getPortalSupabase();
   const { data, error } = await supabase
     .from('patients')
     .select('id, first_name, surname, organization_id')
@@ -80,7 +80,7 @@ export async function getPatientByIdAndEmail(patientId: string, email: string): 
     return row || null;
   }
 
-  const supabase = getPortalSupabaseClient();
+  const supabase = getPortalSupabase();
   const { data, error } = await supabase
     .from('patients')
     .select('*')
@@ -141,7 +141,7 @@ export async function getPatientHistoryByEmail(email: string): Promise<{ patient
     return { patients, tests: testsByPatient };
   }
 
-  const supabase = getPortalSupabaseClient();
+  const supabase = getPortalSupabase();
   const { data: patients, error } = await supabase
     .from('patients')
     .select('*, patient_tests(*)')
@@ -203,7 +203,7 @@ export async function getCompletedTestsByPatientId(patientId: string): Promise<a
     });
   }
 
-  const supabase = getPortalSupabaseClient();
+  const supabase = getPortalSupabase();
   const { data: tests, error } = await supabase
     .from('patient_tests')
     .select('*')
@@ -227,7 +227,7 @@ export async function getOrganizationById(orgId: string): Promise<any | null> {
     return db.prepare('SELECT * FROM organizations WHERE id = ? LIMIT 1').get(orgId) || null;
   }
 
-  const supabase = getPortalSupabaseClient();
+  const supabase = getPortalSupabase();
   const { data, error } = await supabase
     .from('organizations')
     .select('*')

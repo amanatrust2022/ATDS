@@ -1,4 +1,5 @@
 'use client';
+import RequireRole from '@/components/RequireRole';
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/components/AuthProvider';
@@ -10,7 +11,7 @@ import {
   RiUserHeartLine,
 } from '@remixicon/react';
 
-export default function PatientDatabasePage() {
+function PatientDatabasePage() {
   const { organization } = useAuth();
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
@@ -403,3 +404,12 @@ const dateStyle: React.CSSProperties = {
   fontSize: '0.78rem', fontFamily: 'var(--font-body)', color: 'var(--gray-700)',
   outline: 'none', background: 'white',
 };
+
+/** Only these roles may open this screen — see components/RequireRole.tsx. */
+export default function GuardedPatientDatabasePage(props: any) {
+  return (
+    <RequireRole allow={['admin']}>
+      <PatientDatabasePage {...props} />
+    </RequireRole>
+  );
+}

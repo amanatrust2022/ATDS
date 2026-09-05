@@ -11,7 +11,7 @@ import RegistrationTab from './features/registration/RegistrationTab';
 import WalletTab from './features/wallet/WalletTab';
 import { QueueTab } from './features/queue/QueueTab';
 import { ResultsTab } from './features/queue/ResultsTab';
-import { useQueueStore, selectPendingPatients, selectCompletedPatients } from '@/lib/store/useQueueStore';
+import { useQueueStore, selectPendingPatients, selectCompletedPatients, windowStartIso } from '@/lib/store/useQueueStore';
 import {
   Patient, PatientTest, TEST_CATALOGUE, fetchPatients, generateSlipNumber, subscribeToPatients,
   ReferringDoctor, ReferringFacility, TestPrice,
@@ -28,9 +28,43 @@ import { RiLogoutCircleLine } from '@remixicon/react';
 
 type Tab = 'register' | 'queue' | 'results' | 'wallet';
 
+/**
+ * Looks a patient up in the database as the user types.
+ *
+ * The wallet screens need to find someone who may have last been seen months
+ * ago, so they cannot search whatever the queue happens to be holding. Waits
+ * for a pause in typing rather than querying on every keystroke.
+ */
+function usePatientSearch(organizationId: string | undefined, query: string) {
+  const [results, setResults] = useState<Patient[]>([]);
+
+  useEffect(() => {
+    const term = query.trim();
+    if (!organizationId || term.length < 2) { setResults([]); return; }
+
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const found = await fetchPatients(organizationId, { search: term, limit: 25 });
+        if (!cancelled) setResults(found);
+      } catch (e) {
+        console.warn('Patient search failed:', e);
+        if (!cancelled) setResults([]);
+      }
+    }, 250);
+
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [organizationId, query]);
+
+  return results;
+}
+
 export default function ReceptionPage() {
   const [tab, setTab] = useState<Tab>('register');
   const [patients, setPatients] = useState<Patient[]>([]);
+  // Everyone attached to a wallet, whenever they were registered. The queue
+  // above is bounded to the chosen date window; account membership is not.
+  const [walletPatients, setWalletPatients] = useState<Patient[]>([]);
   const [patientProfiles, setPatientProfiles] = useState<PatientProfile[]>([]);
 
   // Searchable dropdown states for open billing account modal
@@ -129,23 +163,60 @@ export default function ReceptionPage() {
   });
 
   const { profile, organization, signOut } = useAuth();
+
+  const ownerSearchResults = usePatientSearch(organization?.id, ownerSearchQuery);
+  const depSearchResults = usePatientSearch(organization?.id, depSearchQuery);
+
+  /**
+   * People chosen from a search, kept so their name still shows on the form
+   * after the dropdown closes — they may not be in the queue or on a wallet yet.
+   */
+  const [pickedPatients, setPickedPatients] = useState<Patient[]>([]);
+  const rememberPatient = useCallback((p: Patient) => {
+    setPickedPatients(prev => (prev.some(x => x.id === p.id) ? prev : [...prev, p]));
+  }, []);
+
+  /** Finds a patient anywhere this screen has already loaded one. */
+  const findKnownPatient = useCallback(
+    (id: number | string | undefined | null): Patient | undefined => {
+      if (id === undefined || id === null || id === '') return undefined;
+      const numericId = Number(id);
+      return patients.find(p => p.id === numericId)
+        ?? walletPatients.find(p => p.id === numericId)
+        ?? pickedPatients.find(p => p.id === numericId);
+    },
+    [patients, walletPatients, pickedPatients],
+  );
+
   const refresh = useCallback(async () => {
     if (!organization?.id) return;
     try {
-      const [data, profiles, accs, charges] = await Promise.all([
-        fetchPatients(organization.id),
+      // Two different sets, because the screen wants two different things.
+      //
+      // The queue wants the window the user has chosen — that filter used to
+      // run in the browser after downloading every patient the centre has ever
+      // registered.
+      //
+      // The wallet screens want every patient attached to an account, whenever
+      // they were registered: a family member seen six months ago must still
+      // be found when their wallet is opened. Bounding that set by date would
+      // have quietly emptied the account membership lists.
+      const [data, walletMembers, profiles, accs, charges] = await Promise.all([
+        fetchPatients(organization.id, { since: windowStartIso(dateFilter) }),
+        fetchPatients(organization.id, { withBillingAccount: true }),
         fetchPatientProfiles(organization.id),
         fetchBillingAccounts(organization.id),
         fetchExternalCharges(organization.id)
       ]);
       setPatients(data);
+      setWalletPatients(walletMembers);
       setPatientProfiles(profiles);
       setBillingAccounts(accs);
       setExternalCharges(charges as any[]);
     } catch (e) {
       console.warn('Failed to load data:', e);
     }
-  }, [organization?.id]);
+  }, [organization?.id, dateFilter]);
 
   // ─── BILLING WORKFLOWS ───────────────────────────────────────────────────────
 
@@ -410,7 +481,7 @@ export default function ReceptionPage() {
 
 
   const handlePrintStatement = (account: BillingAccount) => {
-    const members = patients.filter(p => p.billingAccountId === account.id);
+    const members = walletPatients.filter(p => p.billingAccountId === account.id);
     const html = getLedgerStatementTemplate(account, billingTransactions, members, organization as any);
     printHtml(html);
   };
@@ -639,7 +710,7 @@ export default function ReceptionPage() {
                     {billingAccounts
                       .filter(acc => acc.name.toLowerCase().includes(billingSearchQuery.toLowerCase()))
                       .map(acc => {
-                        const owner = patients.find(p => p.id === Number(acc.owner_patient_id));
+                        const owner = walletPatients.find(p => p.id === Number(acc.owner_patient_id));
                         const ownerName = owner ? `${owner.firstName} ${owner.surname}` : 'Unknown';
                         return (
                           <tr key={acc.id} style={{ borderBottom: '1px solid var(--gray-100)' }}>
@@ -832,7 +903,7 @@ export default function ReceptionPage() {
                     </div>
                     {/* Selected Owner Tag */}
                     {accountForm.ownerId && (() => {
-                      const owner = patients.find(x => x.id === Number(accountForm.ownerId));
+                      const owner = findKnownPatient(accountForm.ownerId);
                       if (!owner) return null;
                       return (
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.4rem 0.6rem', marginTop: '0.35rem', background: '#f0fdfa', border: '1px solid var(--teal-200)', borderRadius: 4, fontSize: '0.75rem' }}>
@@ -852,10 +923,10 @@ export default function ReceptionPage() {
                       <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'white', border: '1px solid var(--gray-300)', zIndex: 70, boxShadow: '0 4px 12px rgba(0,0,0,0.15)', borderRadius: 4, marginTop: '0.25rem', overflow: 'hidden' }}>
                         <div style={{ maxHeight: 150, overflowY: 'auto' }}>
                           {(() => {
-                            const filtered = patients.filter(p => {
-                              const q = ownerSearchQuery.toLowerCase();
-                              return `${p.firstName} ${p.middleName || ''} ${p.surname}`.toLowerCase().includes(q) || (p.phone || '').includes(q);
-                            });
+                            // Searched in the database, not in the queue: the
+                            // person being put on a wallet may have last been
+                            // seen months ago.
+                            const filtered = ownerSearchResults;
                             const PAGE_SIZE = 5;
                             const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
                             const paginated = filtered.slice(ownerSearchPage * PAGE_SIZE, (ownerSearchPage + 1) * PAGE_SIZE);
@@ -871,6 +942,7 @@ export default function ReceptionPage() {
                                         ownerId: String(p.id),
                                         name: `${p.firstName} ${p.surname} Wallet`
                                       });
+                                      rememberPatient(p);
                                       setShowOwnerSearchDrop(false);
                                       setOwnerSearchQuery('');
                                     }}
@@ -957,12 +1029,11 @@ export default function ReceptionPage() {
                         <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'white', border: '1px solid var(--gray-300)', zIndex: 70, boxShadow: '0 4px 12px rgba(0,0,0,0.15)', borderRadius: 4, marginTop: '0.25rem', overflow: 'hidden' }}>
                           <div style={{ maxHeight: 150, overflowY: 'auto' }}>
                             {(() => {
-                              const filtered = patients.filter(p => {
-                                if (p.id === Number(accountForm.ownerId)) return false;
-                                if (accountForm.linkedIds.includes(p.id)) return false;
-                                const q = depSearchQuery.toLowerCase();
-                                return `${p.firstName} ${p.middleName || ''} ${p.surname}`.toLowerCase().includes(q) || (p.phone || '').includes(q);
-                              });
+                              // Searched in the database, minus whoever is
+                              // already on this account.
+                              const filtered = depSearchResults.filter(p =>
+                                p.id !== Number(accountForm.ownerId) && !accountForm.linkedIds.includes(p.id)
+                              );
                               const PAGE_SIZE = 5;
                               const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
                               const paginated = filtered.slice(depSearchPage * PAGE_SIZE, (depSearchPage + 1) * PAGE_SIZE);
@@ -977,6 +1048,7 @@ export default function ReceptionPage() {
                                           ...accountForm,
                                           linkedIds: [...accountForm.linkedIds, p.id]
                                         });
+                                        rememberPatient(p);
                                         setShowDepSearchDrop(false);
                                         setDepSearchQuery('');
                                       }}
@@ -1026,7 +1098,7 @@ export default function ReceptionPage() {
                         <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--gray-600)' }}>Selected Dependents ({accountForm.linkedIds.length}):</div>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
                           {accountForm.linkedIds.map(id => {
-                            const dep = patients.find(x => x.id === Number(id));
+                            const dep = findKnownPatient(id);
                             if (!dep) return null;
                             return (
                               <div key={id} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', padding: '3px 8px', background: 'var(--gray-100)', border: '1px solid var(--gray-300)', borderRadius: 12, fontSize: '0.72rem', color: 'var(--gray-700)' }}>
@@ -1228,7 +1300,7 @@ export default function ReceptionPage() {
                   <button
                     type="button"
                     onClick={() => {
-                      const allVisits = patients.filter(p => p.billingAccountId === showLedgerModal.id);
+                      const allVisits = walletPatients.filter(p => p.billingAccountId === showLedgerModal.id);
                   const uniqueMembersMap = new Map();
                   allVisits.forEach(v => {
                     const key = `${v.firstName?.toLowerCase()}-${v.surname?.toLowerCase()}`;
@@ -1313,7 +1385,7 @@ export default function ReceptionPage() {
                         onChange={e => setWorkspaceExpenseForm({ ...workspaceExpenseForm, patientId: e.target.value })}
                       >
                         <option value="">-- Select Member --</option>
-                        {patients.filter(p => p.billingAccountId === showLedgerModal.id).map(p => (
+                        {walletPatients.filter(p => p.billingAccountId === showLedgerModal.id).map(p => (
                           <option key={p.id} value={p.id}>{p.firstName} {p.surname} ({p.slipNumber})</option>
                         ))}
                       </select>
@@ -1417,7 +1489,7 @@ export default function ReceptionPage() {
 
                 {/* Inner Tab contents */}
                 {workspaceTab === 'members' && (() => {
-                  const members = patients.filter(p => p.billingAccountId === showLedgerModal.id);
+                  const members = walletPatients.filter(p => p.billingAccountId === showLedgerModal.id);
                   return (
                     <div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
@@ -1989,6 +2061,7 @@ function SlipModal({ patient, onClose, org }: { patient: Patient; onClose: () =>
 
 /* ---- Result Modal ---- */
 function ResultModal({ patient, onClose, org }: { patient: Patient; onClose: () => void; org?: any }) {
+  const { session } = useAuth();
   const completedTests = patient.tests.filter(t => t.status === 'completed');
   const [sendingEmail, setSendingEmail] = useState(false);
   // Selective print: all checked by default
@@ -2029,7 +2102,11 @@ function ResultModal({ patient, onClose, org }: { patient: Patient; onClose: () 
     try {
       const res = await fetch('/api/send-result', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          // The route sends mail as the clinic, so it establishes who is asking.
+          ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+        },
         body: JSON.stringify({ patient, completedTests: testsToPrint, org }),
       });
 

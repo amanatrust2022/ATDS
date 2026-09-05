@@ -1,9 +1,12 @@
 'use client';
+import { cleanLetterhead } from '@/lib/sanitizeHtml';
+import RequireRole from '@/components/RequireRole';
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/components/AuthProvider';
 import { createClient } from '@/lib/supabase';
 import { RiSettings3Line, RiCheckLine, RiSave3Line, RiHospitalLine } from '@remixicon/react';
 import dynamic from 'next/dynamic';
+import { buildDocCss } from '@/lib/letterheadStyles';
 const RichTextEditor = dynamic(() => import('@/components/RichTextEditor'), { ssr: false });
 
 const IS_LOCAL_MODE = typeof window !== 'undefined'
@@ -16,28 +19,8 @@ const IS_LOCAL_MODE = typeof window !== 'undefined'
       : localStorage.getItem('amana_local_mode') === 'true')
   : (process.env.NEXT_PUBLIC_LOCAL_SERVER_MODE === 'true');
 
-const cleanLetterhead = (html: string) => {
-  let clean = html || '';
-  let prev = '';
-  clean = clean.trim();
-  while (clean !== prev) {
-    prev = clean;
-    // Remove trailing br tags that are followed only by closing tags or whitespace
-    clean = clean.replace(/(?:<br\s*\/?>\s*)+(?=(?:\s|<\/\w+>)*$)/gi, '').trim();
-    // Remove trailing empty tags (restricting nested tags to inline styles) that are followed only by closing tags or whitespace
-    clean = clean.replace(/<(\w+)\b[^>]*>(?:\s|&nbsp;|<br\s*\/?>|<(?:\/?(?:span|strong|em|b|i|u|font))\b[^>]*>)*<\/\1>(?=(?:\s|<\/\w+>)*$)/gi, (match) => {
-      if (match.includes('<img') || match.includes('<svg') || match.includes('<hr') || match.includes('data-shape') || match.includes('canvas')) {
-        return match;
-      }
-      const textOnly = match.replace(/<[^>]+>/g, '').replace(/&nbsp;/g, '').replace(/\s/g, '');
-      if (textOnly === '') return '';
-      return match;
-    }).trim();
-  }
-  return clean;
-};
 
-export default function OrganizationSettings() {
+function OrganizationSettings() {
   const { organization, refreshOrg } = useAuth();
   const supabase = createClient();
 
@@ -215,9 +198,10 @@ export default function OrganizationSettings() {
             {/* Letterhead Preview */}
             <div style={{ border: '2px solid #4472c4', borderRadius: 0, padding: '1.5rem', marginBottom: '2rem', background: 'white', textAlign: 'left', minHeight: '120px', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.02)' }}>
               <p style={{ fontSize: '0.65rem', fontWeight: 700, color: '#4472c4', textTransform: 'uppercase', marginBottom: '1rem', letterSpacing: '0.08em', borderBottom: '1px solid var(--gray-200)', paddingBottom: '0.25rem' }}>Live Letterhead Print Preview</p>
-              <div 
+              <style>{buildDocCss('.custom-letterhead')}</style>
+              <div
                 className="custom-letterhead"
-                dangerouslySetInnerHTML={{ __html: cleanLetterhead(formData.letterheadHtml) }} 
+                dangerouslySetInnerHTML={{ __html: cleanLetterhead(formData.letterheadHtml) }}
                 style={{ fontFamily: 'Times New Roman, serif', color: '#000' }}
               />
             </div>
@@ -328,5 +312,14 @@ export default function OrganizationSettings() {
         </div>
       </div>
     </div>
+  );
+}
+
+/** Only these roles may open this screen — see components/RequireRole.tsx. */
+export default function GuardedOrganizationSettings(props: any) {
+  return (
+    <RequireRole allow={['admin']}>
+      <OrganizationSettings {...props} />
+    </RequireRole>
   );
 }

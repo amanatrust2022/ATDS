@@ -1,168 +1,137 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
-import { useEditor, EditorContent, Extension, Node as TipTapNode } from '@tiptap/react';
+import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
-import Underline from '@tiptap/extension-underline';
-import { TextStyle } from '@tiptap/extension-text-style';
+import { Underline } from '@tiptap/extension-underline';
+import { TextStyle, FontSize, Color, BackgroundColor } from '@tiptap/extension-text-style';
+import { FontFamily } from '@tiptap/extension-font-family';
+import { TextAlign } from '@tiptap/extension-text-align';
 import { Table } from '@tiptap/extension-table';
 import TableRow from '@tiptap/extension-table-row';
 import TableCell from '@tiptap/extension-table-cell';
 import TableHeader from '@tiptap/extension-table-header';
 import Image from '@tiptap/extension-image';
-import FontFamily from '@tiptap/extension-font-family';
-import TextAlign from '@tiptap/extension-text-align';
-import { NodeSelection } from '@tiptap/pm/state';
+import { Extension, Node as TiptapNode } from '@tiptap/core';
 
-import { 
-  RiBold, RiItalic, RiUnderline, RiListUnordered, RiListOrdered,
+import {
+  RiBold, RiItalic, RiUnderline, RiStrikethrough, RiListUnordered, RiListOrdered,
   RiAlignLeft, RiAlignCenter, RiAlignRight, RiAlignJustify,
   RiTable2, RiArrowGoBackLine, RiArrowGoForwardLine,
-  RiFontColor, RiImageAddLine, RiShapesLine, RiFontSize,
-  RiLineHeight, RiHeading, RiSeparator, RiArrowDownSLine
+  RiFontColor, RiImageAddLine, RiMarkPenLine, RiLineHeight, RiSeparator,
+  RiArrowDownSLine, RiFormatClear, RiDeleteBinLine,
 } from '@remixicon/react';
 
-// ─── HELPER FUNCTIONS ────────────────────────────────────────────────────────
-function updateStyleString(styleStr: string, prop: string, val: string | null): string {
-  const styles: Record<string, string> = {};
-  (styleStr || '').split(';').forEach(s => {
-    const parts = s.split(':');
-    if (parts.length === 2) {
-      styles[parts[0].trim().toLowerCase()] = parts[1].trim();
-    }
+import { DOC_BASE, BLOCK_RULES, buildDocCss } from '@/lib/letterheadStyles';
+
+// ─── SELF-CONTAINED HTML EXPORT ──────────────────────────────────────────────
+// Bake the document styles onto every element so the saved letterhead renders
+// identically in the editor, the settings preview, and the printed report —
+// none of which share the editor's stylesheet.
+function mergeInlineStyle(el: Element, styleStr: string) {
+  const existing: Record<string, string> = {};
+  (el.getAttribute('style') || '').split(';').forEach((decl) => {
+    const i = decl.indexOf(':');
+    if (i > 0) existing[decl.slice(0, i).trim().toLowerCase()] = decl.slice(i + 1).trim();
   });
-  const property = prop.toLowerCase();
-  if (val === null || val === '') {
-    delete styles[property];
-  } else {
-    styles[property] = val;
+  styleStr.split(';').forEach((decl) => {
+    const i = decl.indexOf(':');
+    if (i <= 0) return;
+    const prop = decl.slice(0, i).trim().toLowerCase();
+    // Author-set inline styles (colour, alignment, size…) always win.
+    if (!(prop in existing)) existing[prop] = decl.slice(i + 1).trim();
+  });
+  const out = Object.entries(existing).map(([p, v]) => `${p}: ${v}`).join('; ');
+  if (out) el.setAttribute('style', out);
+}
+
+function inlineDocHtml(html: string): string {
+  if (typeof window === 'undefined' || typeof DOMParser === 'undefined') return html;
+  try {
+    const doc = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html');
+    BLOCK_RULES.forEach((rule) => {
+      doc.body.querySelectorAll(rule.selector).forEach((el) => mergeInlineStyle(el, rule.style));
+    });
+    return doc.body.innerHTML;
+  } catch {
+    return html;
   }
-  return Object.entries(styles)
-    .map(([p, v]) => `${p}: ${v}`)
+}
+
+// ─── FIDELITY PRESERVATION ───────────────────────────────────────────────────
+// TipTap only models the styles it knows about and silently drops the rest on
+// import. A letterhead designer must round-trip arbitrary HTML faithfully, so we
+// preserve two things TipTap would otherwise lose:
+//   • wrapper <div>s (and their alignment/styles)  → `Div` node
+//   • block-level colour / font-size / font on p & headings → `BlockStyle` passthrough
+// text-align and line-height are deliberately left to their own extensions so the
+// toolbar can change them cleanly; everything else is preserved verbatim.
+const OWNED_BY_OTHER_EXTENSIONS = ['text-align', 'line-height'];
+
+function filterStyle(style: string, exclude: string[]): string {
+  return (style || '')
+    .split(';')
+    .map((d) => d.trim())
+    .filter(Boolean)
+    .filter((d) => {
+      const prop = d.split(':')[0].trim().toLowerCase();
+      return !exclude.includes(prop);
+    })
     .join('; ');
 }
 
-function getStyleProperty(styleStr: string, prop: string): string {
-  if (!styleStr) return '';
-  const match = new RegExp(`(?:^|;)\\s*${prop}\\s*:\\s*([^;]+)`, 'i').exec(styleStr);
-  return match ? match[1].trim() : '';
-}
-
-// ─── CUSTOM EXTENSION: CUSTOM TEXT STYLE (Preserves All Styles Verbatim) ─────
-const CustomTextStyle = TextStyle.extend({
-  addAttributes() {
-    return {
-      style: {
-        default: null,
-        parseHTML: element => element.getAttribute('style'),
-        renderHTML: attributes => {
-          if (!attributes.style) return {};
-          return { style: attributes.style };
-        },
-      },
-      'data-shape': {
-        default: null,
-        parseHTML: element => element.getAttribute('data-shape'),
-        renderHTML: attributes => {
-          if (!attributes['data-shape']) return {};
-          return { 'data-shape': attributes['data-shape'] };
-        },
-      },
-      'data-shape-type': {
-        default: null,
-        parseHTML: element => element.getAttribute('data-shape-type'),
-        renderHTML: attributes => {
-          if (!attributes['data-shape-type']) return {};
-          return { 'data-shape-type': attributes['data-shape-type'] };
-        },
-      },
-    };
+const BlockStyle = Extension.create({
+  name: 'blockStyle',
+  addOptions() {
+    return { types: ['paragraph', 'heading', 'tableCell', 'tableHeader'] };
   },
-  addCommands() {
-    return {
-      setFontSize: (fontSize: string) => ({ chain, state }: { chain: any; state: any }) => {
-        const attrs = state.selection ? state.selection.$from.marks().find((m: any) => m.type.name === 'textStyle')?.attrs || {} : {};
-        const currentStyle = attrs.style || '';
-        const newStyle = updateStyleString(currentStyle, 'font-size', fontSize);
-        return chain()
-          .setMark('textStyle', { ...attrs, style: newStyle || null })
-          .run();
+  addGlobalAttributes() {
+    return [
+      {
+        types: this.options.types,
+        attributes: {
+          style: {
+            default: null,
+            parseHTML: (el: HTMLElement) => {
+              const s = filterStyle(el.getAttribute('style') || '', OWNED_BY_OTHER_EXTENSIONS);
+              return s || null;
+            },
+            renderHTML: (attributes: Record<string, any>) =>
+              attributes.style ? { style: attributes.style } : {},
+          },
+        },
       },
-      setTextColor: (color: string) => ({ chain, state }: { chain: any; state: any }) => {
-        const attrs = state.selection ? state.selection.$from.marks().find((m: any) => m.type.name === 'textStyle')?.attrs || {} : {};
-        const currentStyle = attrs.style || '';
-        const newStyle = updateStyleString(currentStyle, 'color', color);
-        return chain()
-          .setMark('textStyle', { ...attrs, style: newStyle || null })
-          .run();
-      },
-      setHighlightColor: (backgroundColor: string) => ({ chain, state }: { chain: any; state: any }) => {
-        const attrs = state.selection ? state.selection.$from.marks().find((m: any) => m.type.name === 'textStyle')?.attrs || {} : {};
-        const currentStyle = attrs.style || '';
-        const newStyle = updateStyleString(currentStyle, 'background-color', backgroundColor);
-        return chain()
-          .setMark('textStyle', { ...attrs, style: newStyle || null })
-          .run();
-      },
-    } as any;
+    ];
   },
 });
 
-// ─── CUSTOM EXTENSION: DIV CONTAINER (For Block Shapes & Dividers) ───────────
-const DivNode = TipTapNode.create({
+const Div = TiptapNode.create({
   name: 'div',
   group: 'block',
-  content: 'inline*',
+  content: 'block+',
   defining: true,
-  selectable: true,
-  draggable: true,
-
   addAttributes() {
     return {
       style: {
         default: null,
-        parseHTML: element => element.getAttribute('style'),
-        renderHTML: attributes => {
-          if (!attributes.style) return {};
-          return { style: attributes.style };
-        },
-      },
-      'data-shape': {
-        default: null,
-        parseHTML: element => element.getAttribute('data-shape'),
-        renderHTML: attributes => {
-          if (!attributes['data-shape']) return {};
-          return { 'data-shape': attributes['data-shape'] };
-        },
-      },
-      'data-shape-type': {
-        default: null,
-        parseHTML: element => element.getAttribute('data-shape-type'),
-        renderHTML: attributes => {
-          if (!attributes['data-shape-type']) return {};
-          return { 'data-shape-type': attributes['data-shape-type'] };
-        },
+        parseHTML: (el: HTMLElement) => el.getAttribute('style'),
+        renderHTML: (attributes: Record<string, any>) =>
+          attributes.style ? { style: attributes.style } : {},
       },
     };
   },
-
   parseHTML() {
-    return [
-      { tag: 'div' },
-    ];
+    return [{ tag: 'div' }];
   },
-
   renderHTML({ HTMLAttributes }) {
     return ['div', HTMLAttributes, 0];
   },
 });
 
-// ─── CUSTOM EXTENSION: LINE HEIGHT ───────────────────────────────────────────
+// ─── LINE HEIGHT (block-level, renders inline so it is portable) ─────────────
 const LineHeight = Extension.create({
-  name: 'lineHeight',
+  name: 'blockLineHeight',
   addOptions() {
-    return {
-      types: ['paragraph', 'heading', 'listItem'],
-    };
+    return { types: ['paragraph', 'heading', 'listItem'] };
   },
   addGlobalAttributes() {
     return [
@@ -171,11 +140,9 @@ const LineHeight = Extension.create({
         attributes: {
           lineHeight: {
             default: null,
-            parseHTML: element => element.style.lineHeight,
-            renderHTML: attributes => {
-              if (!attributes.lineHeight) return {};
-              return { style: `line-height: ${attributes.lineHeight}` };
-            },
+            parseHTML: (element: HTMLElement) => element.style.lineHeight || null,
+            renderHTML: (attributes: Record<string, any>) =>
+              attributes.lineHeight ? { style: `line-height: ${attributes.lineHeight}` } : {},
           },
         },
       },
@@ -183,21 +150,46 @@ const LineHeight = Extension.create({
   },
   addCommands() {
     return {
-      setLineHeight: (lineHeight: string) => ({ commands }: { commands: any }) => {
-        return this.options.types
-          .filter((type: string) => this.editor.isActive(type))
-          .every((type: string) => commands.updateAttributes(type, { lineHeight }));
-      },
-      unsetLineHeight: () => ({ commands }: { commands: any }) => {
-        return this.options.types
-          .filter((type: string) => this.editor.isActive(type))
-          .every((type: string) => commands.updateAttributes(type, { lineHeight: null }));
-      },
+      setLineHeight:
+        (lineHeight: string) =>
+        ({ commands }: { commands: any }) =>
+          this.options.types.every((type: string) => commands.updateAttributes(type, { lineHeight })),
     } as any;
   },
 });
 
-// ─── PROPS & FONTS ───────────────────────────────────────────────────────────
+// ─── SIZABLE IMAGE (width/height/alignment for logos) ────────────────────────
+const SizableImage = Image.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      width: {
+        default: null,
+        parseHTML: (el: HTMLElement) => el.getAttribute('width') || el.style.width || null,
+        renderHTML: (attrs: Record<string, any>) => {
+          if (!attrs.width) return {};
+          const w = String(attrs.width).match(/^\d+$/) ? `${attrs.width}px` : attrs.width;
+          return { style: `width: ${w}; height: auto;` };
+        },
+      },
+      align: {
+        default: null,
+        parseHTML: (el: HTMLElement) => el.getAttribute('data-align') || null,
+        renderHTML: (attrs: Record<string, any>) => {
+          if (!attrs.align) return {};
+          const map: Record<string, string> = {
+            left: 'display:block;margin-right:auto;margin-left:0;',
+            center: 'display:block;margin-left:auto;margin-right:auto;',
+            right: 'display:block;margin-left:auto;margin-right:0;',
+          };
+          return { 'data-align': attrs.align, style: map[attrs.align] || '' };
+        },
+      },
+    };
+  },
+}).configure({ inline: false, allowBase64: true });
+
+// ─── PROPS & CONSTANTS ───────────────────────────────────────────────────────
 interface RichTextEditorProps {
   value: string;
   onChange: (val: string) => void;
@@ -206,1342 +198,535 @@ interface RichTextEditorProps {
 }
 
 const FONTS = [
-  { label: 'Times New Roman', value: 'Times New Roman, serif' },
-  { label: 'Arial', value: 'Arial, sans-serif' },
-  { label: 'Inter', value: 'Inter, sans-serif' },
+  { label: 'Times New Roman', value: "'Times New Roman', Times, serif" },
+  { label: 'Arial', value: 'Arial, Helvetica, sans-serif' },
+  { label: 'Calibri', value: 'Calibri, Candara, sans-serif' },
   { label: 'Georgia', value: 'Georgia, serif' },
-  { label: 'Courier New', value: 'Courier New, monospace' }
+  { label: 'Garamond', value: 'Garamond, serif' },
+  { label: 'Courier New', value: "'Courier New', Courier, monospace" },
+  { label: 'Verdana', value: 'Verdana, Geneva, sans-serif' },
 ];
+
+const FONT_SIZES = ['8pt', '9pt', '10pt', '11pt', '12pt', '14pt', '16pt', '18pt', '20pt', '24pt', '28pt', '32pt', '40pt', '48pt'];
 
 const COLOR_PALETTE = [
   '#000000', '#434343', '#666666', '#999999', '#cccccc', '#efefef', '#ffffff',
-  '#980000', '#ff0000', '#ff9900', '#ffff00', '#00ff00', '#00ffff', '#0563c1', '#0000ff', '#9900ff', '#ff00ff',
+  '#980000', '#ff0000', '#ff9900', '#ffff00', '#00ff00', '#00ffff', '#0563c1',
+  '#0000ff', '#9900ff', '#ff00ff', '#c00000', '#4472c4', '#2e7d32', '#7c3aed',
   '#f4cccc', '#fce5cd', '#fff2cc', '#d9ead3', '#d0e0e3', '#cfe2f3', '#ead1dc',
   '#ea9999', '#f9cb9c', '#ffe599', '#b6d7a8', '#a2c4c9', '#9fc5e8', '#b4a7d6',
-  '#cc4125', '#e06666', '#f6b26b', '#ffd966', '#93c47d', '#76a5af', '#6fa8dc', '#8e7cc3',
-  '#a61c00', '#cc0000', '#e69138', '#f1c232', '#6aa84f', '#45818e', '#3d85c6', '#674ea7',
-  '#85200c', '#990000', '#b45f06', '#bf9000', '#38761d', '#134f5c', '#0b5394', '#351c75',
+  '#cc0000', '#e69138', '#f1c232', '#6aa84f', '#45818e', '#3d85c6', '#674ea7',
 ];
 
-export default function RichTextEditor({ 
-  value, 
-  onChange, 
-  placeholder = 'Type here...', 
-  minHeight = '320px' 
+const LINE_SPACINGS = [
+  { label: 'Single', value: '1.0' },
+  { label: '1.15', value: '1.15' },
+  { label: '1.5', value: '1.5' },
+  { label: 'Double', value: '2.0' },
+  { label: 'Triple', value: '3.0' },
+];
+
+// ─── COMPONENT ───────────────────────────────────────────────────────────────
+export default function RichTextEditor({
+  value,
+  onChange,
+  placeholder = 'Start typing…',
+  minHeight = '320px',
 }: RichTextEditorProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
-  // Dropdown states
-  const [showFontDropdown, setShowFontDropdown] = useState(false);
-  const [showHeadingDropdown, setShowHeadingDropdown] = useState(false);
-  const [showColorDropdown, setShowColorDropdown] = useState(false);
-  const [showHighlightDropdown, setShowHighlightDropdown] = useState(false);
-  const [showLineHeightDropdown, setShowLineHeightDropdown] = useState(false);
-  const [showTableGrid, setShowTableGrid] = useState(false);
-  const [showShapesDropdown, setShowShapesDropdown] = useState(false);
+  const lastEmitted = useRef<string>('');
 
-  // Hovered table grid coordinates
+  const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [hoveredGrid, setHoveredGrid] = useState({ r: 0, c: 0 });
+  const [isEmpty, setIsEmpty] = useState(true);
+  const [, forceRender] = useState(0);
 
-  // Input states
-  const [fontSizeInput, setFontSizeInput] = useState('11pt');
-
-  // Selected shape/image element state
-  const [activeShapeEl, setActiveShapeEl] = useState<HTMLElement | null>(null);
-  const [shapeProperties, setShapeProperties] = useState({
-    type: 'line-solid',
-    height: '4px',
-    backgroundColor: '#3b82f6',
-    borderColor: '#9ca3af',
-    borderWidth: '0px',
-    borderStyle: 'solid',
-    padding: '12px',
-    width: '100%',
-    textAlign: 'left',
-    color: '#000000',
-    borderRadius: '0px',
-    marginLeft: '0px',
-    marginRight: 'auto',
-  });
-
-  const fontRef = useRef<HTMLDivElement>(null);
-  const headingRef = useRef<HTMLDivElement>(null);
-  const colorRef = useRef<HTMLDivElement>(null);
-  const highlightRef = useRef<HTMLDivElement>(null);
-  const lineHeightRef = useRef<HTMLDivElement>(null);
-  const gridContainerRef = useRef<HTMLDivElement>(null);
-  const shapesRef = useRef<HTMLDivElement>(null);
-
-  // Initialize TipTap Editor
   const editor = useEditor({
     extensions: [
-      StarterKit.configure({
-        bulletList: {},
-        orderedList: {},
-      }),
+      StarterKit.configure({ heading: { levels: [1, 2, 3] } }),
       Underline,
-      CustomTextStyle,
+      TextStyle,
+      FontSize,
+      Color,
+      BackgroundColor,
       FontFamily,
-      TextAlign.configure({
-        types: ['heading', 'paragraph'],
-      }),
-      Table.configure({
-        resizable: true,
-      }),
+      TextAlign.configure({ types: ['heading', 'paragraph'] }),
+      LineHeight,
+      BlockStyle,
+      Div,
+      Table.configure({ resizable: true }),
       TableRow,
       TableCell,
       TableHeader,
-      Image.configure({
-        inline: true,
-        allowBase64: true,
-      }),
-      DivNode,
-      LineHeight,
+      SizableImage,
     ],
     content: value,
     immediatelyRender: false,
-    editorProps: {
-      handleClick(view, pos, event) {
-        const target = event.target as HTMLElement;
-        const shapeEl = target.closest('[data-shape]') as HTMLElement | null;
-        if (shapeEl) {
-          if (shapeEl.tagName.toLowerCase() === 'div') {
-            const nodePos = view.posAtDOM(shapeEl, 0);
-            if (nodePos !== undefined && nodePos >= 0) {
-              try {
-                const nodeSelection = NodeSelection.create(view.state.doc, nodePos);
-                view.dispatch(view.state.tr.setSelection(nodeSelection));
-                return true; // prevent default cursor placement outside the block shape
-              } catch (err) {
-                console.error('Failed to select shape node:', err);
-              }
-            }
-          }
-        }
-        return false;
-      }
+    onCreate: ({ editor }) => {
+      lastEmitted.current = value;
+      setIsEmpty(editor.isEmpty);
     },
     onUpdate: ({ editor }) => {
-      onChange(editor.getHTML());
+      const html = inlineDocHtml(editor.getHTML());
+      lastEmitted.current = html;
+      setIsEmpty(editor.isEmpty);
+      onChange(html);
     },
+    onSelectionUpdate: () => forceRender((n) => n + 1),
+    onTransaction: () => forceRender((n) => n + 1),
   });
 
-  // Sync value from parent if it changes from outside
+  // Pull in external changes (e.g. loading a different template) without
+  // clobbering the caret while the user is typing.
   useEffect(() => {
-    if (editor && value !== editor.getHTML()) {
-      editor.commands.setContent(value, false as any);
+    if (!editor) return;
+    if (value !== lastEmitted.current && value !== inlineDocHtml(editor.getHTML())) {
+      editor.commands.setContent(value, { emitUpdate: false });
+      lastEmitted.current = value;
+      setIsEmpty(editor.isEmpty);
     }
   }, [value, editor]);
 
-  // Handle active states and selection sync
+  // Close any open dropdown on outside click.
+  const rootRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (!editor) return;
-
-    const handleSelection = () => {
-      // Sync Font Size from unified style string
-      const attrs = editor.getAttributes('textStyle');
-      const styleStr = attrs.style || '';
-      const fontSize = getStyleProperty(styleStr, 'font-size') || '11pt';
-      setFontSizeInput(fontSize);
-
-      // Sync active Shape (if selection is on a Shape)
-      const { view, state } = editor;
-      const { selection } = state;
-      
-      let shapeEl: HTMLElement | null = null;
-      if (selection instanceof NodeSelection) {
-        shapeEl = view.nodeDOM(selection.from) as HTMLElement | null;
-      } else {
-        let node = view.domAtPos(selection.from).node as HTMLElement;
-        if (node.nodeType === 3) { // 3 is Node.TEXT_NODE
-          node = node.parentNode as HTMLElement;
-        }
-        shapeEl = node.closest('[data-shape]') as HTMLElement | null;
-      }
-      
-      if (shapeEl) {
-        setActiveShapeEl(shapeEl);
-        
-        // Parse inline styles
-        const styleAttr = shapeEl.getAttribute('style') || '';
-        const styles: Record<string, string> = {};
-        styleAttr.split(';').forEach(s => {
-          const parts = s.split(':');
-          if (parts.length === 2) {
-            styles[parts[0].trim().toLowerCase()] = parts[1].trim();
-          }
-        });
-
-        setShapeProperties({
-          type: shapeEl.getAttribute('data-shape-type') || 'line-solid',
-          height: styles['height'] || '4px',
-          backgroundColor: styles['background-color'] || '#3b82f6',
-          borderColor: styles['border-color'] || '#9ca3af',
-          borderWidth: styles['border-width'] || '0px',
-          borderStyle: styles['border-style'] || 'solid',
-          padding: styles['padding'] || '12px',
-          width: styles['width'] || '100%',
-          textAlign: styles['text-align'] || 'left',
-          color: styles['color'] || '#000000',
-          borderRadius: styles['border-radius'] || '0px',
-          marginLeft: styles['margin-left'] || '0px',
-          marginRight: styles['margin-right'] || 'auto',
-        });
-      } else {
-        setActiveShapeEl(null);
-      }
+    const onDown = (e: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpenMenu(null);
     };
-
-    editor.on('selectionUpdate', handleSelection);
-    return () => {
-      editor.off('selectionUpdate', handleSelection);
-    };
-  }, [editor]);
-
-  // Click outside listener for dropdowns
-  useEffect(() => {
-    const handleOutsideClick = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (fontRef.current && !fontRef.current.contains(target)) setShowFontDropdown(false);
-      if (headingRef.current && !headingRef.current.contains(target)) setShowHeadingDropdown(false);
-      if (colorRef.current && !colorRef.current.contains(target)) setShowColorDropdown(false);
-      if (highlightRef.current && !highlightRef.current.contains(target)) setShowHighlightDropdown(false);
-      if (lineHeightRef.current && !lineHeightRef.current.contains(target)) setShowLineHeightDropdown(false);
-      if (gridContainerRef.current && !gridContainerRef.current.contains(target)) setShowTableGrid(false);
-      if (shapesRef.current && !shapesRef.current.contains(target)) setShowShapesDropdown(false);
-    };
-
-    document.addEventListener('mousedown', handleOutsideClick);
-    return () => document.removeEventListener('mousedown', handleOutsideClick);
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
   }, []);
+
+  const toggle = useCallback((name: string) => setOpenMenu((m) => (m === name ? null : name)), []);
 
   if (!editor) return null;
 
-  // ─── COMMAND WRAPPERS ──────────────────────────────────────────────────────
-  const toggleBold = () => editor.chain().focus().toggleBold().run();
-  const toggleItalic = () => editor.chain().focus().toggleItalic().run();
-  const toggleUnderline = () => editor.chain().focus().toggleUnderline().run();
-  const toggleBulletList = () => editor.chain().focus().toggleBulletList().run();
-  const toggleOrderedList = () => editor.chain().focus().toggleOrderedList().run();
-  
-  const alignLeft = () => editor.chain().focus().setTextAlign('left').run();
-  const alignCenter = () => editor.chain().focus().setTextAlign('center').run();
-  const alignRight = () => editor.chain().focus().setTextAlign('right').run();
-  const alignJustify = () => editor.chain().focus().setTextAlign('justify').run();
+  const chain = () => editor.chain().focus();
+  const attrs = editor.getAttributes('textStyle');
+  const currentFont = FONTS.find((f) => f.value === attrs.fontFamily)?.label || 'Font';
+  const currentSize = attrs.fontSize || '11pt';
+  const currentColor = attrs.color || '#000000';
+  const currentHighlight = attrs.backgroundColor || '';
+  const blockLabel = editor.isActive('heading', { level: 1 })
+    ? 'Heading 1'
+    : editor.isActive('heading', { level: 2 })
+    ? 'Heading 2'
+    : editor.isActive('heading', { level: 3 })
+    ? 'Heading 3'
+    : 'Normal text';
 
-  const handleHeadingSelect = (level: any) => {
-    if (level === 'paragraph') {
-      editor.chain().focus().setParagraph().run();
-    } else {
-      editor.chain().focus().toggleHeading({ level }).run();
-    }
-    setShowHeadingDropdown(false);
+  const imgActive = editor.isActive('image');
+  const imgWidthAttr = editor.getAttributes('image').width;
+  const imgWidth = parseInt(String(imgWidthAttr || '')) || 100;
+
+  const applyFontSize = (size: string) => {
+    let s = size.trim();
+    if (!s) return;
+    if (/^\d+(\.\d+)?$/.test(s)) s = `${s}pt`;
+    (chain() as any).setFontSize(s).run();
+    setOpenMenu(null);
   };
 
-  const handleFontSelect = (fontFamily: string) => {
-    editor.chain().focus().setFontFamily(fontFamily).run();
-    setShowFontDropdown(false);
+  const stepFontSize = (up: boolean) => {
+    const m = currentSize.match(/^(\d+(?:\.\d+)?)(.*)$/);
+    const val = m ? parseFloat(m[1]) : 11;
+    const unit = m && m[2] ? m[2] : 'pt';
+    applyFontSize(`${Math.max(1, up ? val + 1 : val - 1)}${unit}`);
   };
 
-  const handleTextColor = (color: string) => {
-    (editor.chain().focus() as any).setTextColor(color).run();
-    setShowColorDropdown(false);
-  };
-
-  const handleHighlightColor = (color: string) => {
-    (editor.chain().focus() as any).setHighlightColor(color).run();
-    setShowHighlightDropdown(false);
-  };
-
-  const handleLineHeightSelect = (spacing: string) => {
-    (editor.chain().focus() as any).setLineHeight(spacing).run();
-    setShowLineHeightDropdown(false);
-  };
-
-  // Font Size Actions
-  const applyFontSize = (val: string) => {
-    let size = val.trim();
-    if (!size) return;
-    if (/^\d+$/.test(size)) {
-      size = size + 'pt'; // Default to pt if plain number is provided
-    }
-    setFontSizeInput(size);
-    (editor.chain().focus() as any).setFontSize(size).run();
-  };
-
-  const changeFontSizeStep = (increment: boolean) => {
-    const match = fontSizeInput.match(/^(\d+(?:\.\d+)?)(.*)$/);
-    if (match) {
-      const currentVal = parseFloat(match[1]);
-      const unit = match[2] || 'pt';
-      const newVal = increment ? currentVal + 1 : Math.max(1, currentVal - 1);
-      applyFontSize(`${newVal}${unit}`);
-    } else {
-      applyFontSize(increment ? '12pt' : '10pt');
-    }
-  };
-
-  // Image Upload Action
-  const triggerImageUpload = () => {
-    fileInputRef.current?.click();
-  };
-
-  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const onImageFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     const reader = new FileReader();
-    reader.onload = (event) => {
-      const src = event.target?.result as string;
-      editor.chain().focus().setImage({ src }).run();
+    reader.onload = (ev) => {
+      const src = ev.target?.result as string;
+      chain().setImage({ src, width: '180' } as any).run();
     };
     reader.readAsDataURL(file);
-    e.target.value = ''; // Reset input
+    e.target.value = '';
   };
 
-  // Table Grid Actions
-  const renderGridSquares = () => {
-    const rows = 8;
-    const cols = 8;
-    const gridRows = [];
-    for (let r = 1; r <= rows; r++) {
-      const rowCells = [];
-      for (let c = 1; c <= cols; c++) {
-        const isHighlighted = r <= hoveredGrid.r && c <= hoveredGrid.c;
-        rowCells.push(
-          <div
-            key={`${r}-${c}`}
-            onMouseEnter={() => setHoveredGrid({ r, c })}
-            onClick={() => {
-              editor.chain().focus().insertTable({ rows: r, cols: c, withHeaderRow: false }).run();
-              setShowTableGrid(false);
-            }}
-            style={{
-              width: '16px', height: '16px', border: '1px solid #cbd5e1',
-              backgroundColor: isHighlighted ? '#cfe2f3' : '#ffffff',
-              borderColor: isHighlighted ? '#0563c1' : '#cbd5e1',
-              cursor: 'pointer', transition: 'background-color 0.05s, border-color 0.05s',
-            }}
-          />
-        );
-      }
-      gridRows.push(<div key={r} style={{ display: 'flex', gap: '3px' }}>{rowCells}</div>);
-    }
-    return gridRows;
-  };
-
-  // Shape Actions
-  const insertShapeNode = (type: string) => {
-    let html = '';
-    switch (type) {
-      case 'line-solid':
-        html = '<div data-shape="true" data-shape-type="line-solid" style="height: 4px; background-color: #3b82f6; margin: 12px 0; width: 100%; display: block; border-radius: 0; box-sizing: border-box;"></div><p></p>';
-        break;
-      case 'line-double':
-        html = '<div data-shape="true" data-shape-type="line-double" style="height: 6px; border-top: 2px solid #9ca3af; border-bottom: 2px solid #9ca3af; background: transparent; margin: 12px 0; width: 100%; display: block; border-radius: 0; box-sizing: border-box;"></div><p></p>';
-        break;
-      case 'line-dotted':
-        html = '<div data-shape="true" data-shape-type="line-dotted" style="height: 0px; border-top: 3px dotted #9ca3af; margin: 12px 0; width: 100%; display: block; border-radius: 0; box-sizing: border-box;"></div><p></p>';
-        break;
-      case 'box-info':
-        html = '<div data-shape="true" data-shape-type="box-info" style="border-left: 6px solid #3b82f6; background-color: #eff6ff; padding: 12px; margin: 12px 0; color: #1e3a8a; border-radius: 4px; min-height: 40px; box-sizing: border-box; width: 100%;"><strong>INFO:</strong> Enter details...</div><p></p>';
-        break;
-      case 'box-warning':
-        html = '<div data-shape="true" data-shape-type="box-warning" style="border-left: 6px solid #f59e0b; background-color: #fffbeb; padding: 12px; margin: 12px 0; color: #78350f; border-radius: 4px; min-height: 40px; box-sizing: border-box; width: 100%;"><strong>NOTE:</strong> Enter details...</div><p></p>';
-        break;
-      case 'box-bordered':
-        html = '<div data-shape="true" data-shape-type="box-bordered" style="border: 2px solid #cbd5e1; padding: 12px; margin: 12px 0; background-color: #f8fafc; border-radius: 4px; min-height: 40px; box-sizing: border-box; width: 100%;">Enter content...</div><p></p>';
-        break;
-      case 'badge-info':
-        html = '<span data-shape="true" data-shape-type="badge-info" style="border: 1px solid #3b82f6; padding: 4px 8px; border-radius: 12px; display: inline-block; font-size: 0.75rem; font-weight: bold; color: #3b82f6; background-color: #eff6ff; margin: 0 4px; box-sizing: border-box;">Badge</span>';
-        break;
-      case 'badge-success':
-        html = '<span data-shape="true" data-shape-type="badge-success" style="border: 1px solid #10b981; padding: 4px 8px; border-radius: 12px; display: inline-block; font-size: 0.75rem; font-weight: bold; color: #10b981; background-color: #ecfdf5; margin: 0 4px; box-sizing: border-box;">Success</span>';
-        break;
-    }
-    
-    editor.chain().focus().insertContent(html).run();
-    setShowShapesDropdown(false);
-  };
-
-  // Modify Active Shape properties
-  const updateShapeStyle = (prop: string, val: string) => {
-    if (!activeShapeEl) return;
-    
-    // Apply changes directly to the DOM for immediate layout updates
-    activeShapeEl.style[prop as any] = val;
-    
-    // Normalize custom double-border / dotted-border line colors
-    const type = activeShapeEl.getAttribute('data-shape-type') || '';
-    if (type === 'line-double' && prop === 'borderColor') {
-      activeShapeEl.style.borderTopColor = val;
-      activeShapeEl.style.borderBottomColor = val;
-    } else if (type === 'line-dotted' && prop === 'borderColor') {
-      activeShapeEl.style.borderTopColor = val;
-    }
-
-    // Sync style changes into TipTap's HTML/ProseMirror model
-    const newStyle = activeShapeEl.getAttribute('style') || '';
-    if (activeShapeEl.tagName.toLowerCase() === 'span') {
-      editor.commands.updateAttributes('textStyle', { style: newStyle });
-    } else {
-      editor.commands.updateAttributes('div', { style: newStyle });
-    }
-    
-    // Trigger callback
-    onChange(editor.getHTML());
-    
-    // Re-sync properties state
-    setShapeProperties(prev => ({
-      ...prev,
-      [prop]: val
-    }));
+  const insertDivider = (style: string) => {
+    chain().insertContent(`<hr style="${style}" />`).run();
+    setOpenMenu(null);
   };
 
   return (
-    <div style={editorContainerStyle}>
-      <input 
-        type="file" 
-        ref={fileInputRef} 
-        style={{ display: 'none' }} 
-        accept="image/*" 
-        onChange={handleImageSelect} 
-      />
+    <div ref={rootRef} style={S.container}>
+      <input type="file" ref={fileInputRef} accept="image/*" style={{ display: 'none' }} onChange={onImageFile} />
 
-      {/* ─── GOOGLE DOCS TOOLBAR ───────────────────────────────────────────────── */}
-      <div style={toolbarStyle}>
-        {/* Group 1: Undo / Redo */}
-        <div style={btnGroupStyle}>
-          <button 
-            type="button" 
-            onClick={() => editor.chain().focus().undo().run()} 
-            disabled={!editor.can().undo()}
-            style={btnStyle}
-            title="Undo (Ctrl+Z)"
-          >
-            <RiArrowGoBackLine size={15} />
-          </button>
-          <button 
-            type="button" 
-            onClick={() => editor.chain().focus().redo().run()} 
-            disabled={!editor.can().redo()}
-            style={btnStyle}
-            title="Redo (Ctrl+Y)"
-          >
-            <RiArrowGoForwardLine size={15} />
-          </button>
-        </div>
+      {/* ── TOOLBAR ─────────────────────────────────────────────────────── */}
+      <div style={S.toolbar}>
+        <Group>
+          <IconBtn title="Undo (Ctrl+Z)" disabled={!editor.can().undo()} onClick={() => chain().undo().run()}><RiArrowGoBackLine size={16} /></IconBtn>
+          <IconBtn title="Redo (Ctrl+Y)" disabled={!editor.can().redo()} onClick={() => chain().redo().run()}><RiArrowGoForwardLine size={16} /></IconBtn>
+        </Group>
 
-        <div style={dividerStyle} />
+        <Divider />
 
-        {/* Group 2: Headings / Text Styles */}
-        <div ref={headingRef} style={{ position: 'relative' }}>
-          <button 
-            type="button" 
-            onClick={() => setShowHeadingDropdown(!showHeadingDropdown)} 
-            style={{ ...btnStyle, width: '100px', justifyContent: 'space-between' }}
-          >
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.75rem', fontWeight: 600 }}>
-              {editor.isActive('heading', { level: 1 }) ? 'Heading 1' :
-               editor.isActive('heading', { level: 2 }) ? 'Heading 2' :
-               editor.isActive('heading', { level: 3 }) ? 'Heading 3' : 'Normal Text'}
-            </span>
-            <RiHeading size={14} style={{ opacity: 0.7 }} />
-          </button>
+        {/* Block type */}
+        <Menu label={blockLabel} width={116} open={openMenu === 'block'} onToggle={() => toggle('block')}>
+          <MenuItem onClick={() => { chain().setParagraph().run(); setOpenMenu(null); }}>Normal text</MenuItem>
+          <MenuItem onClick={() => { chain().toggleHeading({ level: 1 }).run(); setOpenMenu(null); }} style={{ fontSize: '1.3rem', fontWeight: 700 }}>Heading 1</MenuItem>
+          <MenuItem onClick={() => { chain().toggleHeading({ level: 2 }).run(); setOpenMenu(null); }} style={{ fontSize: '1.1rem', fontWeight: 700 }}>Heading 2</MenuItem>
+          <MenuItem onClick={() => { chain().toggleHeading({ level: 3 }).run(); setOpenMenu(null); }} style={{ fontSize: '1rem', fontWeight: 700 }}>Heading 3</MenuItem>
+        </Menu>
 
-          {showHeadingDropdown && (
-            <div style={dropdownStyle}>
-              <button type="button" onClick={() => handleHeadingSelect('paragraph')} style={dropdownItemStyle}>Normal Text</button>
-              <button type="button" onClick={() => handleHeadingSelect(1)} style={{ ...dropdownItemStyle, fontSize: '1.25rem', fontWeight: 'bold' }}>Heading 1</button>
-              <button type="button" onClick={() => handleHeadingSelect(2)} style={{ ...dropdownItemStyle, fontSize: '1.1rem', fontWeight: 'bold' }}>Heading 2</button>
-              <button type="button" onClick={() => handleHeadingSelect(3)} style={{ ...dropdownItemStyle, fontSize: '1rem', fontWeight: 'bold' }}>Heading 3</button>
-            </div>
-          )}
-        </div>
+        {/* Font family */}
+        <Menu label={currentFont} width={140} open={openMenu === 'font'} onToggle={() => toggle('font')}>
+          {FONTS.map((f) => (
+            <MenuItem key={f.label} onClick={() => { chain().setFontFamily(f.value).run(); setOpenMenu(null); }} style={{ fontFamily: f.value }}>
+              {f.label}
+            </MenuItem>
+          ))}
+        </Menu>
 
-        <div style={dividerStyle} />
-
-        {/* Group 3: Font Families */}
-        <div ref={fontRef} style={{ position: 'relative' }}>
-          <button 
-            type="button" 
-            onClick={() => setShowFontDropdown(!showFontDropdown)} 
-            style={{ ...btnStyle, width: '140px', justifyContent: 'space-between' }}
-          >
-            <span style={{ fontSize: '0.75rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {editor.getAttributes('textStyle').fontFamily 
-                ? FONTS.find(f => editor.getAttributes('textStyle').fontFamily === f.value)?.label || 'Times New Roman' 
-                : 'Times New Roman'}
-            </span>
-            <RiArrowDownSLine size={14} style={{ opacity: 0.7 }} />
-          </button>
-
-          {showFontDropdown && (
-            <div style={dropdownStyle}>
-              {FONTS.map(f => (
-                <button 
-                  key={f.label} 
-                  type="button" 
-                  onClick={() => handleFontSelect(f.value)} 
-                  style={{ ...dropdownItemStyle, fontFamily: f.value }}
-                >
-                  {f.label}
-                </button>
+        {/* Font size */}
+        <div style={S.sizeBox}>
+          <button type="button" style={S.sizeStep} title="Smaller" onClick={() => stepFontSize(false)}>−</button>
+          <button type="button" style={S.sizeValue} onClick={() => toggle('size')}>{currentSize}<RiArrowDownSLine size={12} style={{ opacity: 0.6 }} /></button>
+          <button type="button" style={S.sizeStep} title="Larger" onClick={() => stepFontSize(true)}>+</button>
+          {openMenu === 'size' && (
+            <div style={{ ...S.dropdown, minWidth: 70, left: 'auto', right: 0 }}>
+              {FONT_SIZES.map((s) => (
+                <MenuItem key={s} onClick={() => applyFontSize(s)}>{s}</MenuItem>
               ))}
             </div>
           )}
         </div>
 
-        <div style={dividerStyle} />
+        <Divider />
 
-        {/* Group 4: Font Size Picker (Highly Editable) */}
-        <div style={fontSizeContainerStyle}>
-          <button 
-            type="button" 
-            onClick={() => changeFontSizeStep(false)} 
-            style={fontSizeBtnStyle}
-            title="Decrease font size"
-          >
-            -
-          </button>
-          <input
-            type="text"
-            value={fontSizeInput}
-            onChange={(e) => setFontSizeInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                applyFontSize(fontSizeInput);
-                editor.commands.focus();
-              }
-            }}
-            onBlur={() => applyFontSize(fontSizeInput)}
-            style={fontSizeInputStyle}
-            title="Font Size (Type size and press Enter)"
-          />
-          <button 
-            type="button" 
-            onClick={() => changeFontSizeStep(true)} 
-            style={fontSizeBtnStyle}
-            title="Increase font size"
-          >
-            +
-          </button>
-        </div>
+        <Group>
+          <IconBtn title="Bold (Ctrl+B)" active={editor.isActive('bold')} onClick={() => chain().toggleBold().run()}><RiBold size={16} /></IconBtn>
+          <IconBtn title="Italic (Ctrl+I)" active={editor.isActive('italic')} onClick={() => chain().toggleItalic().run()}><RiItalic size={16} /></IconBtn>
+          <IconBtn title="Underline (Ctrl+U)" active={editor.isActive('underline')} onClick={() => chain().toggleUnderline().run()}><RiUnderline size={16} /></IconBtn>
+          <IconBtn title="Strikethrough" active={editor.isActive('strike')} onClick={() => chain().toggleStrike().run()}><RiStrikethrough size={16} /></IconBtn>
 
-        <div style={dividerStyle} />
-
-        {/* Group 5: Text Formatting & Colors */}
-        <div style={btnGroupStyle}>
-          <button 
-            type="button" 
-            onClick={toggleBold} 
-            style={activeBtnStyle(editor.isActive('bold'))}
-            title="Bold (Ctrl+B)"
-          >
-            <RiBold size={15} />
-          </button>
-          <button 
-            type="button" 
-            onClick={toggleItalic} 
-            style={activeBtnStyle(editor.isActive('italic'))}
-            title="Italic (Ctrl+I)"
-          >
-            <RiItalic size={15} />
-          </button>
-          <button 
-            type="button" 
-            onClick={toggleUnderline} 
-            style={activeBtnStyle(editor.isActive('underline'))}
-            title="Underline (Ctrl+U)"
-          >
-            <RiUnderline size={15} />
-          </button>
-
-          {/* Text Color Selection */}
-          <div ref={colorRef} style={{ position: 'relative' }}>
-            <button 
-              type="button" 
-              onClick={() => setShowColorDropdown(!showColorDropdown)} 
-              style={btnStyle}
-              title="Text color"
-            >
-              <RiFontColor size={15} />
-              <div style={{ position: 'absolute', bottom: 3, left: 6, right: 6, height: 3, backgroundColor: getStyleProperty(editor.getAttributes('textStyle').style || '', 'color') || '#000000' }} />
-            </button>
-
-            {showColorDropdown && (
-              <div style={colorPaletteGridStyle}>
-                {COLOR_PALETTE.map(c => (
-                  <button 
-                    key={c} 
-                    type="button" 
-                    onClick={() => handleTextColor(c)} 
-                    style={colorSquareStyle(c)} 
-                  />
-                ))}
-                <button 
-                  type="button" 
-                  onClick={() => {
-                    (editor.chain().focus() as any).setTextColor(null).run();
-                    setShowColorDropdown(false);
-                  }} 
-                  style={{ gridColumn: 'span 7', fontSize: '0.68rem', padding: '4px 0', border: '1px solid var(--gray-300)', background: '#fafafa', cursor: 'pointer', fontWeight: 600 }}
-                >
-                  Reset
-                </button>
-              </div>
+          {/* Text colour */}
+          <div style={{ position: 'relative' }}>
+            <IconBtn title="Text colour" onClick={() => toggle('color')}>
+              <RiFontColor size={16} />
+              <span style={{ ...S.colorBar, background: currentColor }} />
+            </IconBtn>
+            {openMenu === 'color' && (
+              <ColorGrid
+                onPick={(c) => { (chain() as any).setColor(c).run(); setOpenMenu(null); }}
+                onReset={() => { (chain() as any).unsetColor().run(); setOpenMenu(null); }}
+                resetLabel="Automatic"
+              />
             )}
           </div>
 
-          {/* Highlight Color Selection */}
-          <div ref={highlightRef} style={{ position: 'relative' }}>
-            <button 
-              type="button" 
-              onClick={() => setShowHighlightDropdown(!showHighlightDropdown)} 
-              style={btnStyle}
-              title="Highlight color"
-            >
-              <span style={{ fontSize: '0.72rem', fontWeight: 800, textDecoration: 'underline' }}>ab</span>
-              <div style={{ position: 'absolute', bottom: 3, left: 6, right: 6, height: 3, backgroundColor: getStyleProperty(editor.getAttributes('textStyle').style || '', 'background-color') || 'transparent', border: '1px solid #cbd5e1' }} />
-            </button>
+          {/* Highlight */}
+          <div style={{ position: 'relative' }}>
+            <IconBtn title="Highlight" onClick={() => toggle('highlight')}>
+              <RiMarkPenLine size={16} />
+              <span style={{ ...S.colorBar, background: currentHighlight || 'transparent', border: '1px solid #cbd5e1' }} />
+            </IconBtn>
+            {openMenu === 'highlight' && (
+              <ColorGrid
+                onPick={(c) => { (chain() as any).setBackgroundColor(c).run(); setOpenMenu(null); }}
+                onReset={() => { (chain() as any).unsetBackgroundColor().run(); setOpenMenu(null); }}
+                resetLabel="No highlight"
+              />
+            )}
+          </div>
+        </Group>
 
-            {showHighlightDropdown && (
-              <div style={colorPaletteGridStyle}>
-                {COLOR_PALETTE.map(c => (
-                  <button 
-                    key={c} 
-                    type="button" 
-                    onClick={() => handleHighlightColor(c)} 
-                    style={colorSquareStyle(c)} 
-                  />
+        <Divider />
+
+        <Group>
+          <IconBtn title="Align left" active={editor.isActive({ textAlign: 'left' })} onClick={() => chain().setTextAlign('left').run()}><RiAlignLeft size={16} /></IconBtn>
+          <IconBtn title="Align center" active={editor.isActive({ textAlign: 'center' })} onClick={() => chain().setTextAlign('center').run()}><RiAlignCenter size={16} /></IconBtn>
+          <IconBtn title="Align right" active={editor.isActive({ textAlign: 'right' })} onClick={() => chain().setTextAlign('right').run()}><RiAlignRight size={16} /></IconBtn>
+          <IconBtn title="Justify" active={editor.isActive({ textAlign: 'justify' })} onClick={() => chain().setTextAlign('justify').run()}><RiAlignJustify size={16} /></IconBtn>
+
+          {/* Line spacing */}
+          <div style={{ position: 'relative' }}>
+            <IconBtn title="Line spacing" onClick={() => toggle('spacing')}><RiLineHeight size={16} /></IconBtn>
+            {openMenu === 'spacing' && (
+              <div style={{ ...S.dropdown, minWidth: 110 }}>
+                {LINE_SPACINGS.map((s) => (
+                  <MenuItem key={s.value} onClick={() => { (chain() as any).setLineHeight(s.value).run(); setOpenMenu(null); }}>{s.label}</MenuItem>
                 ))}
-                <button 
-                  type="button" 
-                  onClick={() => {
-                    (editor.chain().focus() as any).setHighlightColor(null).run();
-                    setShowHighlightDropdown(false);
-                  }} 
-                  style={{ gridColumn: 'span 7', fontSize: '0.68rem', padding: '4px 0', border: '1px solid var(--gray-300)', background: '#fafafa', cursor: 'pointer', fontWeight: 600 }}
-                >
-                  No Color
-                </button>
               </div>
             )}
           </div>
-        </div>
+        </Group>
 
-        <div style={dividerStyle} />
+        <Divider />
 
-        {/* Group 6: Line Height (Line Spacing) */}
-        <div ref={lineHeightRef} style={{ position: 'relative' }}>
-          <button 
-            type="button" 
-            onClick={() => setShowLineHeightDropdown(!showLineHeightDropdown)} 
-            style={btnStyle}
-            title="Line Spacing"
-          >
-            <RiLineHeight size={15} />
-          </button>
+        <Group>
+          <IconBtn title="Bulleted list" active={editor.isActive('bulletList')} onClick={() => chain().toggleBulletList().run()}><RiListUnordered size={16} /></IconBtn>
+          <IconBtn title="Numbered list" active={editor.isActive('orderedList')} onClick={() => chain().toggleOrderedList().run()}><RiListOrdered size={16} /></IconBtn>
+        </Group>
 
-          {showLineHeightDropdown && (
-            <div style={{ ...dropdownStyle, minWidth: '100px' }}>
-              <button type="button" onClick={() => handleLineHeightSelect('1.0')} style={dropdownItemStyle}>Single (1.0)</button>
-              <button type="button" onClick={() => handleLineHeightSelect('1.15')} style={dropdownItemStyle}>1.15 Spacing</button>
-              <button type="button" onClick={() => handleLineHeightSelect('1.5')} style={dropdownItemStyle}>1.5 Spacing</button>
-              <button type="button" onClick={() => handleLineHeightSelect('2.0')} style={dropdownItemStyle}>Double (2.0)</button>
-              <button type="button" onClick={() => handleLineHeightSelect('3.0')} style={dropdownItemStyle}>Triple (3.0)</button>
-            </div>
-          )}
-        </div>
+        <Divider />
 
-        <div style={dividerStyle} />
-
-        {/* Group 7: Alignments */}
-        <div style={btnGroupStyle}>
-          <button type="button" onClick={alignLeft} style={activeBtnStyle(editor.isActive({ textAlign: 'left' }))} title="Align left"><RiAlignLeft size={15} /></button>
-          <button type="button" onClick={alignCenter} style={activeBtnStyle(editor.isActive({ textAlign: 'center' }))} title="Align center"><RiAlignCenter size={15} /></button>
-          <button type="button" onClick={alignRight} style={activeBtnStyle(editor.isActive({ textAlign: 'right' }))} title="Align right"><RiAlignRight size={15} /></button>
-          <button type="button" onClick={alignJustify} style={activeBtnStyle(editor.isActive({ textAlign: 'justify' }))} title="Justify"><RiAlignJustify size={15} /></button>
-        </div>
-
-        <div style={dividerStyle} />
-
-        {/* Group 8: Bullet / Numbered Lists */}
-        <div style={btnGroupStyle}>
-          <button type="button" onClick={toggleBulletList} style={activeBtnStyle(editor.isActive('bulletList'))} title="Bulleted list"><RiListUnordered size={15} /></button>
-          <button type="button" onClick={toggleOrderedList} style={activeBtnStyle(editor.isActive('orderedList'))} title="Numbered list"><RiListOrdered size={15} /></button>
-        </div>
-
-        <div style={dividerStyle} />
-
-        {/* Group 9: Insert Tools */}
-        <div style={btnGroupStyle}>
-          {/* Insert Table Grid Dropdown */}
-          <div ref={gridContainerRef} style={{ position: 'relative' }}>
-            <button 
-              type="button" 
-              onClick={() => setShowTableGrid(!showTableGrid)} 
-              style={btnStyle}
-              title="Insert Table"
-            >
-              <RiTable2 size={15} />
-            </button>
-
-            {showTableGrid && (
-              <div style={tableGridContainerStyle}>
-                <p style={{ margin: '0 0 6px 0', fontSize: '0.68rem', fontWeight: 700, color: 'var(--gray-600)' }}>
-                  Insert Table {hoveredGrid.r > 0 ? `(${hoveredGrid.r}x${hoveredGrid.c})` : ''}
-                </p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                  {renderGridSquares()}
+        <Group>
+          {/* Insert table */}
+          <div style={{ position: 'relative' }}>
+            <IconBtn title="Insert table" onClick={() => toggle('table')}><RiTable2 size={16} /></IconBtn>
+            {openMenu === 'table' && (
+              <div style={{ ...S.dropdown, padding: 10 }} onMouseLeave={() => setHoveredGrid({ r: 0, c: 0 })}>
+                <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748b', marginBottom: 6 }}>
+                  {hoveredGrid.r > 0 ? `${hoveredGrid.r} × ${hoveredGrid.c} table` : 'Insert table'}
                 </div>
+                {Array.from({ length: 8 }).map((_, ri) => (
+                  <div key={ri} style={{ display: 'flex', gap: 3, marginBottom: 3 }}>
+                    {Array.from({ length: 8 }).map((__, ci) => {
+                      const on = ri < hoveredGrid.r && ci < hoveredGrid.c;
+                      return (
+                        <div
+                          key={ci}
+                          onMouseEnter={() => setHoveredGrid({ r: ri + 1, c: ci + 1 })}
+                          onClick={() => { chain().insertTable({ rows: ri + 1, cols: ci + 1, withHeaderRow: true }).run(); setOpenMenu(null); }}
+                          style={{ width: 15, height: 15, cursor: 'pointer', border: `1px solid ${on ? '#0563c1' : '#cbd5e1'}`, background: on ? '#cfe2f3' : '#fff' }}
+                        />
+                      );
+                    })}
+                  </div>
+                ))}
               </div>
             )}
           </div>
 
-          {/* Insert Shapes Dropdown */}
-          <div ref={shapesRef} style={{ position: 'relative' }}>
-            <button 
-              type="button" 
-              onClick={() => setShowShapesDropdown(!showShapesDropdown)} 
-              style={btnStyle}
-              title="Insert Shape / Box / Badge"
-            >
-              <RiShapesLine size={15} />
-            </button>
-
-            {showShapesDropdown && (
-              <div style={{ ...dropdownStyle, width: '180px' }}>
-                <p style={dropdownHeadingStyle}>Lines</p>
-                <button type="button" onClick={() => insertShapeNode('line-solid')} style={dropdownItemStyle}>⎯⎯ Solid Line</button>
-                <button type="button" onClick={() => insertShapeNode('line-double')} style={dropdownItemStyle}>══ Double Line</button>
-                <button type="button" onClick={() => insertShapeNode('line-dotted')} style={dropdownItemStyle}>┈ ┈ Dotted Line</button>
-                
-                <p style={dropdownHeadingStyle}>Callout Boxes</p>
-                <button type="button" onClick={() => insertShapeNode('box-info')} style={dropdownItemStyle}>🔵 Info Callout</button>
-                <button type="button" onClick={() => insertShapeNode('box-warning')} style={dropdownItemStyle}>🟡 Note/Warning Callout</button>
-                <button type="button" onClick={() => insertShapeNode('box-bordered')} style={dropdownItemStyle}>⬜ Bordered Canvas Box</button>
-                
-                <p style={dropdownHeadingStyle}>Badges</p>
-                <button type="button" onClick={() => insertShapeNode('badge-info')} style={dropdownItemStyle}>🔵 Blue Badge</button>
-                <button type="button" onClick={() => insertShapeNode('badge-success')} style={dropdownItemStyle}>🟢 Green Badge</button>
+          {/* Insert divider */}
+          <div style={{ position: 'relative' }}>
+            <IconBtn title="Insert divider line" onClick={() => toggle('divider')}><RiSeparator size={16} /></IconBtn>
+            {openMenu === 'divider' && (
+              <div style={{ ...S.dropdown, minWidth: 170 }}>
+                <MenuItem onClick={() => insertDivider('border:none;border-top:1px solid #000000;margin:12px 0')}>Thin line</MenuItem>
+                <MenuItem onClick={() => insertDivider('border:none;border-top:3px solid #000000;margin:12px 0')}>Thick line</MenuItem>
+                <MenuItem onClick={() => insertDivider('border:none;border-top:2px solid #0563c1;margin:12px 0')}>Blue accent</MenuItem>
+                <MenuItem onClick={() => insertDivider('border:none;border-top:2px double #000000;margin:12px 0;height:3px')}>Double line</MenuItem>
+                <MenuItem onClick={() => insertDivider('border:none;border-top:1px dotted #666666;margin:12px 0')}>Dotted line</MenuItem>
               </div>
             )}
           </div>
 
-          {/* Insert Image */}
-          <button 
-            type="button" 
-            onClick={triggerImageUpload} 
-            style={btnStyle} 
-            title="Insert Logo Image"
-          >
-            <RiImageAddLine size={15} />
-          </button>
-
-          {/* Horizontal Line */}
-          <button 
-            type="button" 
-            onClick={() => editor.chain().focus().setHorizontalRule().run()} 
-            style={btnStyle}
-            title="Horizontal Line Break"
-          >
-            <RiSeparator size={15} />
-          </button>
-        </div>
+          <IconBtn title="Insert logo / image" onClick={() => fileInputRef.current?.click()}><RiImageAddLine size={16} /></IconBtn>
+          <IconBtn title="Clear formatting" onClick={() => chain().unsetAllMarks().clearNodes().run()}><RiFormatClear size={16} /></IconBtn>
+        </Group>
       </div>
 
-      {/* ─── CONTEXT-AWARE FLOATING PROPERTIES PANEL ───────────────────────────── */}
-      {/* 1. Contextual Table Operations Bar */}
+      {/* ── CONTEXT BAR: TABLE ───────────────────────────────────────────── */}
       {editor.isActive('table') && (
-        <div style={contextualTableBarStyle}>
-          <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#0563c1', textTransform: 'uppercase', marginRight: '0.5rem', borderRight: '1px solid var(--gray-300)', paddingRight: '0.5rem' }}>
-            Table Tools
-          </span>
-          <button type="button" onClick={() => editor.chain().focus().addRowBefore().run()} style={panelBtnStyle}>Insert Row Above</button>
-          <button type="button" onClick={() => editor.chain().focus().addRowAfter().run()} style={panelBtnStyle}>Insert Row Below</button>
-          <button type="button" onClick={() => editor.chain().focus().deleteRow().run()} style={{ ...panelBtnStyle, color: '#dc2626' }}>Delete Row</button>
-          <div style={{ width: 1, height: 16, backgroundColor: 'var(--gray-300)' }} />
-          <button type="button" onClick={() => editor.chain().focus().addColumnBefore().run()} style={panelBtnStyle}>Insert Column Left</button>
-          <button type="button" onClick={() => editor.chain().focus().addColumnAfter().run()} style={panelBtnStyle}>Insert Column Right</button>
-          <button type="button" onClick={() => editor.chain().focus().deleteColumn().run()} style={{ ...panelBtnStyle, color: '#dc2626' }}>Delete Column</button>
-          <div style={{ width: 1, height: 16, backgroundColor: 'var(--gray-300)' }} />
-          <button type="button" onClick={() => editor.chain().focus().mergeCells().run()} style={panelBtnStyle}>Merge Cells</button>
-          <button type="button" onClick={() => editor.chain().focus().splitCell().run()} style={panelBtnStyle}>Split Cell</button>
-          <div style={{ width: 1, height: 16, backgroundColor: 'var(--gray-300)' }} />
-          <button type="button" onClick={() => editor.chain().focus().deleteTable().run()} style={{ ...panelBtnStyle, background: '#fef2f2', color: '#dc2626', fontWeight: 'bold' }}>Delete Table</button>
+        <div style={S.contextBar}>
+          <span style={S.contextLabel}>Table</span>
+          <TextBtn onClick={() => chain().addRowBefore().run()}>Row above</TextBtn>
+          <TextBtn onClick={() => chain().addRowAfter().run()}>Row below</TextBtn>
+          <TextBtn onClick={() => chain().deleteRow().run()} danger>Delete row</TextBtn>
+          <MiniDivider />
+          <TextBtn onClick={() => chain().addColumnBefore().run()}>Col left</TextBtn>
+          <TextBtn onClick={() => chain().addColumnAfter().run()}>Col right</TextBtn>
+          <TextBtn onClick={() => chain().deleteColumn().run()} danger>Delete col</TextBtn>
+          <MiniDivider />
+          <TextBtn onClick={() => chain().mergeCells().run()}>Merge</TextBtn>
+          <TextBtn onClick={() => chain().splitCell().run()}>Split</TextBtn>
+          <TextBtn onClick={() => chain().toggleHeaderRow().run()}>Header row</TextBtn>
+          <MiniDivider />
+          <TextBtn onClick={() => chain().deleteTable().run()} danger>Delete table</TextBtn>
         </div>
       )}
 
-      {/* 2. Shape Properties Inspector */}
-      {activeShapeEl && (
-        <div style={shapePropertiesBarStyle}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#10b981', textTransform: 'uppercase', borderRight: '1px solid var(--gray-300)', paddingRight: '0.5rem' }}>
-              Shape Properties
-            </span>
-            <span style={{ fontSize: '0.72rem', color: 'var(--gray-500)', textTransform: 'capitalize' }}>
-              {shapeProperties.type.replace('-', ' ')}
-            </span>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
-            {/* Height (Thickness) - only for lines */}
-            {shapeProperties.type.includes('line') && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                <span style={inspectorLabelStyle}>Thickness:</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={20}
-                  value={parseInt(shapeProperties.height) || 0}
-                  onChange={(e) => updateShapeStyle('height', e.target.value + 'px')}
-                  style={inspectorInputStyle}
-                />
-                <span style={{ fontSize: '0.7rem', color: 'var(--gray-400)' }}>px</span>
-              </div>
-            )}
-
-            {/* Background Color - only for callout boxes / badge */}
-            {(shapeProperties.type.includes('box') || shapeProperties.type.includes('badge')) && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                <span style={inspectorLabelStyle}>Background:</span>
-                <input
-                  type="color"
-                  value={shapeProperties.backgroundColor}
-                  onChange={(e) => updateShapeStyle('backgroundColor', e.target.value)}
-                  style={inspectorColorInputStyle}
-                />
-              </div>
-            )}
-
-            {/* Shape Border Color */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-              <span style={inspectorLabelStyle}>{shapeProperties.type.includes('line') ? 'Line Color:' : 'Border Color:'}</span>
-              <input
-                type="color"
-                value={shapeProperties.borderColor === 'transparent' ? '#cbd5e1' : shapeProperties.borderColor}
-                onChange={(e) => updateShapeStyle('borderColor', e.target.value)}
-                style={inspectorColorInputStyle}
-              />
-            </div>
-
-            {/* Thickness / Border width for boxes / badges */}
-            {(shapeProperties.type.includes('box') || shapeProperties.type.includes('badge')) && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                <span style={inspectorLabelStyle}>Border:</span>
-                <input
-                  type="number"
-                  min={0}
-                  max={10}
-                  value={parseInt(shapeProperties.borderWidth) || 0}
-                  onChange={(e) => {
-                    updateShapeStyle('borderWidth', e.target.value + 'px');
-                    updateShapeStyle('borderStyle', e.target.value === '0' ? 'none' : 'solid');
-                  }}
-                  style={inspectorInputStyle}
-                />
-                <span style={{ fontSize: '0.7rem', color: 'var(--gray-400)' }}>px</span>
-              </div>
-            )}
-
-            {/* Shape Width (Percentage) */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-              <span style={inspectorLabelStyle}>Width:</span>
-              <input
-                type="range"
-                min="10"
-                max="100"
-                step="5"
-                value={parseInt(shapeProperties.width) || 100}
-                onChange={(e) => updateShapeStyle('width', e.target.value + '%')}
-                style={{ width: '60px', height: '4px', cursor: 'pointer' }}
-              />
-              <span style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--gray-700)', minWidth: '30px' }}>
-                {shapeProperties.width}
-              </span>
-            </div>
-
-            {/* Shape Alignment (Position) - for block shapes */}
-            {!shapeProperties.type.includes('badge') && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                <span style={inspectorLabelStyle}>Position:</span>
-                <button 
-                  type="button" 
-                  onClick={() => {
-                    updateShapeStyle('marginLeft', '0px');
-                    updateShapeStyle('marginRight', 'auto');
-                  }} 
-                  style={{
-                    ...panelBtnStyle, 
-                    fontWeight: 'bold', 
-                    background: (shapeProperties.marginLeft === '0px' && shapeProperties.marginRight === 'auto') ? '#e0f2fe' : 'transparent',
-                    color: (shapeProperties.marginLeft === '0px' && shapeProperties.marginRight === 'auto') ? '#0284c7' : 'var(--gray-600)'
-                  }}
-                >
-                  Left
-                </button>
-                <button 
-                  type="button" 
-                  onClick={() => {
-                    updateShapeStyle('marginLeft', 'auto');
-                    updateShapeStyle('marginRight', 'auto');
-                  }} 
-                  style={{
-                    ...panelBtnStyle, 
-                    fontWeight: 'bold', 
-                    background: (shapeProperties.marginLeft === 'auto' && shapeProperties.marginRight === 'auto') ? '#e0f2fe' : 'transparent',
-                    color: (shapeProperties.marginLeft === 'auto' && shapeProperties.marginRight === 'auto') ? '#0284c7' : 'var(--gray-600)'
-                  }}
-                >
-                  Center
-                </button>
-                <button 
-                  type="button" 
-                  onClick={() => {
-                    updateShapeStyle('marginLeft', 'auto');
-                    updateShapeStyle('marginRight', '0px');
-                  }} 
-                  style={{
-                    ...panelBtnStyle, 
-                    fontWeight: 'bold', 
-                    background: (shapeProperties.marginLeft === 'auto' && shapeProperties.marginRight === '0px') ? '#e0f2fe' : 'transparent',
-                    color: (shapeProperties.marginLeft === 'auto' && shapeProperties.marginRight === '0px') ? '#0284c7' : 'var(--gray-600)'
-                  }}
-                >
-                  Right
-                </button>
-              </div>
-            )}
-
-            {/* Shape padding (for boxes) */}
-            {shapeProperties.type.includes('box') && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                <span style={inspectorLabelStyle}>Padding:</span>
-                <input
-                  type="number"
-                  min={2}
-                  max={40}
-                  value={parseInt(shapeProperties.padding) || 0}
-                  onChange={(e) => updateShapeStyle('padding', e.target.value + 'px')}
-                  style={inspectorInputStyle}
-                />
-                <span style={{ fontSize: '0.7rem', color: 'var(--gray-400)' }}>px</span>
-              </div>
-            )}
-
-            {/* Shape Border Radius (for boxes) */}
-            {shapeProperties.type.includes('box') && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                <span style={inspectorLabelStyle}>Roundness:</span>
-                <input
-                  type="number"
-                  min={0}
-                  max={30}
-                  value={parseInt(shapeProperties.borderRadius) || 0}
-                  onChange={(e) => updateShapeStyle('borderRadius', e.target.value + 'px')}
-                  style={inspectorInputStyle}
-                />
-                <span style={{ fontSize: '0.7rem', color: 'var(--gray-400)' }}>px</span>
-              </div>
-            )}
-
-            <div style={{ width: 1, height: 16, backgroundColor: 'var(--gray-300)' }} />
-
-            <button 
-              type="button" 
-              onClick={() => {
-                if (activeShapeEl) {
-                  activeShapeEl.remove();
-                  onChange(editor.getHTML());
-                  setActiveShapeEl(null);
-                }
-              }} 
-              style={{ ...panelBtnStyle, background: '#fef2f2', color: '#dc2626', fontWeight: 'bold' }}
-              title="Delete Shape"
-            >
-              Delete Shape
-            </button>
-          </div>
+      {/* ── CONTEXT BAR: IMAGE ───────────────────────────────────────────── */}
+      {imgActive && (
+        <div style={{ ...S.contextBar, background: '#ecfdf5', borderColor: '#a7f3d0' }}>
+          <span style={{ ...S.contextLabel, color: '#059669' }}>Image</span>
+          <span style={{ fontSize: '0.7rem', color: '#475569' }}>Width</span>
+          <input
+            type="range" min={40} max={640} step={10} value={imgWidth}
+            onChange={(e) => chain().updateAttributes('image', { width: e.target.value }).run()}
+            style={{ width: 120 }}
+          />
+          <span style={{ fontSize: '0.7rem', fontWeight: 600, minWidth: 42 }}>{imgWidth}px</span>
+          <MiniDivider />
+          <TextBtn onClick={() => chain().updateAttributes('image', { align: 'left' }).run()}>Left</TextBtn>
+          <TextBtn onClick={() => chain().updateAttributes('image', { align: 'center' }).run()}>Center</TextBtn>
+          <TextBtn onClick={() => chain().updateAttributes('image', { align: 'right' }).run()}>Right</TextBtn>
+          <MiniDivider />
+          <TextBtn onClick={() => chain().deleteSelection().run()} danger><RiDeleteBinLine size={12} style={{ verticalAlign: 'middle' }} /> Remove</TextBtn>
         </div>
       )}
 
-      {/* ─── GOOGLE DOCS PAPER CANVAS ─────────────────────────────────────────── */}
-      <div style={editorOuterContainerStyle}>
-        <div style={editorPaperStyle}>
-          <EditorContent editor={editor} style={{ minHeight }} />
+      {/* ── PAGE CANVAS ──────────────────────────────────────────────────── */}
+      <div style={S.canvas}>
+        <div style={S.paper}>
+          <div style={{ position: 'relative' }}>
+            {isEmpty && <div style={S.placeholder}>{placeholder}</div>}
+            <EditorContent editor={editor} className="rte-content" style={{ minHeight }} />
+          </div>
         </div>
       </div>
 
-      {/* Inject self-contained stylesheet for ProseMirror editor content */}
       <style>{`
-        .ProseMirror {
-          outline: none;
-          min-height: 320px;
-          font-family: 'Times New Roman', Times, serif;
-          font-size: 11pt;
-          line-height: 1.5;
-          color: #000000;
+        ${buildDocCss('.rte-content .ProseMirror')}
+        .rte-content .ProseMirror { outline: none; min-height: ${minHeight}; }
+        .rte-content .ProseMirror:focus { outline: none; }
+        .rte-content .ProseMirror table { position: relative; overflow: hidden; }
+        .rte-content .ProseMirror td, .rte-content .ProseMirror th { position: relative; }
+        .rte-content .ProseMirror .selectedCell:after {
+          content: ""; position: absolute; inset: 0; background: rgba(5,99,193,0.12); pointer-events: none; z-index: 2;
         }
-        .ProseMirror p {
-          margin: 0 0 0.5rem 0;
+        .rte-content .ProseMirror .column-resize-handle {
+          position: absolute; right: -2px; top: 0; bottom: 0; width: 4px;
+          background: #0563c1; cursor: col-resize; z-index: 10;
         }
-        .ProseMirror ul {
-          list-style-type: disc !important;
-          margin: 0 0 0.75rem 1.5rem !important;
-          padding-left: 0 !important;
-        }
-        .ProseMirror ol {
-          list-style-type: decimal !important;
-          margin: 0 0 0.75rem 1.5rem !important;
-          padding-left: 0 !important;
-        }
-        .ProseMirror li {
-          margin-bottom: 0.25rem;
-        }
-        .ProseMirror table {
-          border-collapse: collapse;
-          table-layout: fixed;
-          width: 100%;
-          margin: 1.5rem 0;
-          overflow: hidden;
-        }
-        .ProseMirror td, .ProseMirror th {
-          min-width: 1em;
-          border: 1px solid #cbd5e1;
-          padding: 8px 10px;
-          vertical-align: top;
-          position: relative;
-          box-sizing: border-box;
-        }
-        .ProseMirror th {
-          font-weight: bold;
-          background-color: #f8fafc;
-          text-align: left;
-        }
-        .ProseMirror .selectedCell:after {
-          background: rgba(14, 165, 233, 0.15);
-          content: "";
-          left: 0; right: 0; top: 0; bottom: 0;
-          pointer-events: none;
-          position: absolute;
-          z-index: 2;
-        }
-        .ProseMirror .column-resize-handle {
-          background-color: #0563c1;
-          bottom: 0;
-          position: absolute;
-          right: -2px;
-          top: 0;
-          width: 4px;
-          cursor: col-resize;
-          z-index: 10;
-        }
-        .ProseMirror img {
-          max-width: 100%;
-          height: auto;
-          display: inline-block;
-          margin: 8px 0;
-          transition: outline 0.15s;
-        }
-        .ProseMirror img.ProseMirror-selectednode {
-          outline: 3px solid #0563c1;
-          outline-offset: 2px;
-        }
-        .ProseMirror h1 {
-          font-size: 2rem;
-          font-weight: 800;
-          margin: 1.5rem 0 0.5rem 0;
-        }
-        .ProseMirror h2 {
-          font-size: 1.5rem;
-          font-weight: 700;
-          margin: 1.25rem 0 0.4rem 0;
-        }
-        .ProseMirror h3 {
-          font-size: 1.25rem;
-          font-weight: 700;
-          margin: 1.1rem 0 0.3rem 0;
-        }
-        /* Custom shapes selection outline */
-        .ProseMirror [data-shape="true"] {
-          transition: outline 0.15s;
-          cursor: pointer;
-        }
-        .ProseMirror [data-shape="true"]:hover {
-          outline: 1px dashed rgba(5, 99, 193, 0.5);
-        }
-        .ProseMirror [data-shape="true"]:focus,
-        .ProseMirror [data-shape="true"].ProseMirror-selectednode {
-          outline: 2px solid #10b981 !important;
-          outline-offset: 3px;
-        }
+        .rte-content .ProseMirror img.ProseMirror-selectednode { outline: 3px solid #10b981; outline-offset: 2px; }
+        .rte-content .ProseMirror hr.ProseMirror-selectednode { outline: 2px solid #0563c1; }
+        .rte-content .ProseMirror.resize-cursor { cursor: col-resize; }
       `}</style>
     </div>
   );
 }
 
+// ─── SMALL UI PRIMITIVES ─────────────────────────────────────────────────────
+function Group({ children }: { children: React.ReactNode }) {
+  return <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>{children}</div>;
+}
+function Divider() {
+  return <div style={{ width: 1, height: 22, background: '#e2e8f0', margin: '0 4px' }} />;
+}
+function MiniDivider() {
+  return <div style={{ width: 1, height: 16, background: '#cbd5e1', margin: '0 2px' }} />;
+}
+
+function IconBtn({ children, onClick, active, disabled, title }: {
+  children: React.ReactNode; onClick?: () => void; active?: boolean; disabled?: boolean; title?: string;
+}) {
+  const [hover, setHover] = useState(false);
+  return (
+    <button
+      type="button" title={title} disabled={disabled} onClick={onClick}
+      onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+      style={{
+        position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        width: 30, height: 30, border: 'none', borderRadius: 4, cursor: disabled ? 'not-allowed' : 'pointer',
+        background: active ? '#e0f2fe' : hover && !disabled ? '#f1f5f9' : 'transparent',
+        color: disabled ? '#cbd5e1' : active ? '#0369a1' : '#334155', transition: 'background 0.1s',
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function Menu({ label, width, open, onToggle, children }: {
+  label: string; width: number; open: boolean; onToggle: () => void; children: React.ReactNode;
+}) {
+  return (
+    <div style={{ position: 'relative' }}>
+      <button
+        type="button" onClick={onToggle}
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4,
+          width, height: 30, padding: '0 8px', border: '1px solid transparent', borderRadius: 4,
+          background: open ? '#f1f5f9' : 'transparent', cursor: 'pointer', color: '#334155',
+          fontSize: '0.78rem', fontWeight: 600,
+        }}
+      >
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
+        <RiArrowDownSLine size={14} style={{ opacity: 0.6, flexShrink: 0 }} />
+      </button>
+      {open && <div style={S.dropdown}>{children}</div>}
+    </div>
+  );
+}
+
+function MenuItem({ children, onClick, style }: { children: React.ReactNode; onClick?: () => void; style?: React.CSSProperties }) {
+  const [hover, setHover] = useState(false);
+  return (
+    <button
+      type="button" onClick={onClick}
+      onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+      style={{
+        display: 'block', width: '100%', textAlign: 'left', padding: '7px 12px', border: 'none',
+        background: hover ? '#f1f5f9' : 'transparent', cursor: 'pointer', fontSize: '0.8rem',
+        color: '#1e293b', ...style,
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function TextBtn({ children, onClick, danger }: { children: React.ReactNode; onClick?: () => void; danger?: boolean }) {
+  const [hover, setHover] = useState(false);
+  return (
+    <button
+      type="button" onClick={onClick}
+      onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+      style={{
+        padding: '3px 8px', fontSize: '0.7rem', fontWeight: 600, borderRadius: 4,
+        border: '1px solid ' + (danger ? '#fecaca' : '#e2e8f0'),
+        background: hover ? (danger ? '#fef2f2' : '#f1f5f9') : '#fff',
+        color: danger ? '#dc2626' : '#334155', cursor: 'pointer',
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function ColorGrid({ onPick, onReset, resetLabel }: { onPick: (c: string) => void; onReset: () => void; resetLabel: string }) {
+  return (
+    <div style={{ ...S.dropdown, display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, padding: 8, width: 182 }}>
+      {COLOR_PALETTE.map((c) => (
+        <button
+          key={c} type="button" onClick={() => onPick(c)} title={c}
+          style={{ width: 18, height: 18, background: c, border: '1px solid #cbd5e1', borderRadius: 2, cursor: 'pointer', padding: 0 }}
+        />
+      ))}
+      <button
+        type="button" onClick={onReset}
+        style={{ gridColumn: 'span 7', marginTop: 4, padding: '5px 0', fontSize: '0.7rem', fontWeight: 600, border: '1px solid #e2e8f0', background: '#f8fafc', cursor: 'pointer', borderRadius: 4 }}
+      >
+        {resetLabel}
+      </button>
+    </div>
+  );
+}
+
 // ─── STYLES ──────────────────────────────────────────────────────────────────
-const editorContainerStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  border: '1px solid var(--gray-300)',
-  background: '#f3f4f6',
-  borderRadius: 0,
-  overflow: 'hidden',
-  height: '100%',
-  width: '100%'
-};
-
-const toolbarStyle: React.CSSProperties = {
-  display: 'flex',
-  flexWrap: 'wrap',
-  gap: '0.4rem',
-  alignItems: 'center',
-  padding: '0.5rem',
-  background: '#ffffff',
-  borderBottom: '1px solid var(--gray-200)',
-  boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
-  zIndex: 10
-};
-
-const btnGroupStyle: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  background: 'transparent',
-  borderRadius: '4px',
-  overflow: 'hidden'
-};
-
-const btnStyle: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  width: '28px',
-  height: '28px',
-  border: 'none',
-  background: 'transparent',
-  color: 'var(--gray-700)',
-  cursor: 'pointer',
-  borderRadius: '4px',
-  transition: 'background 0.1s',
-  outline: 'none',
-};
-
-const activeBtnStyle = (active: boolean): React.CSSProperties => ({
-  ...btnStyle,
-  background: active ? '#e0f2fe' : 'transparent',
-  color: active ? '#0284c7' : 'var(--gray-700)',
-  fontWeight: active ? 'bold' : 'normal'
-});
-
-const dividerStyle: React.CSSProperties = {
-  width: '1px',
-  height: '20px',
-  backgroundColor: 'var(--gray-300)',
-  margin: '0 0.15rem'
-};
-
-const dropdownStyle: React.CSSProperties = {
-  position: 'absolute',
-  top: '100%',
-  left: 0,
-  backgroundColor: 'white',
-  border: '1px solid var(--gray-300)',
-  borderRadius: '4px',
-  boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
-  zIndex: 100,
-  minWidth: '150px',
-  display: 'flex',
-  flexDirection: 'column',
-  padding: '4px 0',
-  marginTop: '4px'
-};
-
-const dropdownItemStyle: React.CSSProperties = {
-  padding: '8px 12px',
-  border: 'none',
-  background: 'none',
-  textAlign: 'left',
-  width: '100%',
-  cursor: 'pointer',
-  fontSize: '0.78rem',
-  color: 'var(--gray-700)',
-  transition: 'background 0.1s',
-  outline: 'none',
-};
-
-const dropdownHeadingStyle: React.CSSProperties = {
-  fontSize: '0.62rem',
-  fontWeight: 800,
-  color: 'var(--gray-400)',
-  textTransform: 'uppercase',
-  padding: '6px 12px 2px 12px',
-  margin: 0,
-  letterSpacing: '0.05em'
-};
-
-const colorPaletteGridStyle: React.CSSProperties = {
-  position: 'absolute',
-  top: '100%',
-  left: 0,
-  backgroundColor: 'white',
-  border: '1px solid var(--gray-300)',
-  borderRadius: '6px',
-  boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
-  zIndex: 100,
-  display: 'grid',
-  gridTemplateColumns: 'repeat(7, 1fr)',
-  gap: '4px',
-  padding: '8px',
-  marginTop: '4px',
-  width: '170px'
-};
-
-const colorSquareStyle = (color: string): React.CSSProperties => ({
-  width: '18px',
-  height: '18px',
-  backgroundColor: color,
-  border: '1px solid #cbd5e1',
-  cursor: 'pointer',
-  borderRadius: '2px',
-  padding: 0
-});
-
-const fontSizeContainerStyle: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  border: '1px solid var(--gray-300)',
-  borderRadius: '4px',
-  overflow: 'hidden',
-  height: '26px',
-  background: 'white'
-};
-
-const fontSizeBtnStyle: React.CSSProperties = {
-  width: '20px',
-  height: '100%',
-  border: 'none',
-  background: '#f3f4f6',
-  color: 'var(--gray-600)',
-  cursor: 'pointer',
-  fontWeight: 'bold',
-  fontSize: '0.9rem',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  outline: 'none',
-  transition: 'background 0.1s'
-};
-
-const fontSizeInputStyle: React.CSSProperties = {
-  width: '42px',
-  height: '100%',
-  border: 'none',
-  textAlign: 'center',
-  fontSize: '0.75rem',
-  fontWeight: 'bold',
-  color: 'var(--gray-800)',
-  outline: 'none'
-};
-
-const tableGridContainerStyle: React.CSSProperties = {
-  position: 'absolute',
-  top: '100%',
-  left: 0,
-  backgroundColor: 'white',
-  border: '1px solid var(--gray-300)',
-  borderRadius: '6px',
-  boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
-  zIndex: 100,
-  padding: '10px',
-  marginTop: '4px',
-  display: 'flex',
-  flexDirection: 'column',
-  gap: '4px'
-};
-
-// Properties Panels
-const contextualTableBarStyle: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: '0.4rem',
-  padding: '0.4rem 0.75rem',
-  background: '#eff6ff',
-  borderBottom: '1px solid #bfdbfe',
-  zIndex: 5,
-  flexWrap: 'wrap'
-};
-
-const shapePropertiesBarStyle: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  gap: '1rem',
-  padding: '0.45rem 0.75rem',
-  background: '#ecfdf5',
-  borderBottom: '1px solid #a7f3d0',
-  zIndex: 5,
-  flexWrap: 'wrap'
-};
-
-const panelBtnStyle: React.CSSProperties = {
-  padding: '3px 8px',
-  fontSize: '0.68rem',
-  border: '1px solid var(--gray-300)',
-  borderRadius: '4px',
-  background: 'white',
-  color: 'var(--gray-700)',
-  cursor: 'pointer',
-  outline: 'none',
-  transition: 'all 0.1s'
-};
-
-const inspectorLabelStyle: React.CSSProperties = {
-  fontSize: '0.68rem',
-  fontWeight: 600,
-  color: 'var(--gray-600)'
-};
-
-const inspectorInputStyle: React.CSSProperties = {
-  width: '38px',
-  padding: '2px 4px',
-  fontSize: '0.68rem',
-  border: '1px solid var(--gray-300)',
-  borderRadius: '4px',
-  textAlign: 'center',
-  outline: 'none'
-};
-
-const inspectorColorInputStyle: React.CSSProperties = {
-  width: '24px',
-  height: '20px',
-  padding: '0',
-  border: '1px solid var(--gray-300)',
-  borderRadius: '4px',
-  cursor: 'pointer',
-  background: 'none'
-};
-
-// Paper Layout Styles
-const editorOuterContainerStyle: React.CSSProperties = {
-  backgroundColor: '#f3f4f6',
-  padding: '1.5rem',
-  overflowY: 'auto',
-  flex: 1,
-  display: 'flex',
-  justifyContent: 'center',
-  width: '100%',
-  boxSizing: 'border-box'
-};
-
-const editorPaperStyle: React.CSSProperties = {
-  backgroundColor: 'white',
-  width: '100%',
-  maxWidth: '820px',
-  minHeight: '100%',
-  padding: '2.5rem',
-  boxShadow: '0 4px 6px -1px rgba(0,0,0,0.06), 0 2px 4px -2px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.04)',
-  border: '1px solid #e5e7eb',
-  boxSizing: 'border-box'
+const S: Record<string, React.CSSProperties> = {
+  container: {
+    display: 'flex', flexDirection: 'column', border: '1px solid #d1d5db',
+    borderRadius: 6, overflow: 'hidden', background: '#f8fafc', width: '100%', height: '100%',
+  },
+  toolbar: {
+    display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 2, padding: '6px 8px',
+    background: '#ffffff', borderBottom: '1px solid #e2e8f0', position: 'sticky', top: 0, zIndex: 20,
+  },
+  sizeBox: {
+    display: 'flex', alignItems: 'center', height: 30, border: '1px solid #e2e8f0',
+    borderRadius: 4, overflow: 'hidden', position: 'relative', background: '#fff',
+  },
+  sizeStep: { width: 22, height: '100%', border: 'none', background: '#f8fafc', color: '#475569', cursor: 'pointer', fontSize: '1rem', fontWeight: 700 },
+  sizeValue: { display: 'flex', alignItems: 'center', gap: 2, height: '100%', minWidth: 52, padding: '0 6px', border: 'none', background: '#fff', color: '#334155', cursor: 'pointer', fontSize: '0.76rem', fontWeight: 600 },
+  colorBar: { position: 'absolute', left: 6, right: 6, bottom: 4, height: 3, borderRadius: 1 },
+  dropdown: {
+    position: 'absolute', top: 'calc(100% + 4px)', left: 0, background: '#fff', border: '1px solid #e2e8f0',
+    borderRadius: 6, boxShadow: '0 10px 25px -5px rgba(0,0,0,0.15)', zIndex: 100, minWidth: 150,
+    padding: '4px 0', maxHeight: 320, overflowY: 'auto',
+  },
+  contextBar: {
+    display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 5, padding: '6px 10px',
+    background: '#eff6ff', borderBottom: '1px solid #bfdbfe',
+  },
+  contextLabel: { fontSize: '0.66rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em', color: '#0369a1', marginRight: 4 },
+  canvas: {
+    flex: 1, overflowY: 'auto', padding: '1.5rem', background: '#e9edf2',
+    display: 'flex', justifyContent: 'center',
+  },
+  paper: {
+    width: '100%', maxWidth: 820, minHeight: '100%', background: '#fff', padding: '2.5rem 2.75rem',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.08)', border: '1px solid #e5e7eb',
+    boxSizing: 'border-box',
+  },
+  placeholder: {
+    position: 'absolute', top: 0, left: 0, pointerEvents: 'none', color: '#9ca3af',
+    fontFamily: DOC_BASE.fontFamily, fontSize: DOC_BASE.fontSize,
+  },
 };

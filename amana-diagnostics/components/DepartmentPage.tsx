@@ -80,10 +80,13 @@ export default function DepartmentPage({ department }: Props) {
     } catch (e) {
       console.error('Failed to pre-cache custom tests:', e);
     }
-    const data = await fetchPatients(organization.id);
+    // Only this department's work. The screen never reads another
+    // department's tests, so nothing is lost by not fetching them — and it no
+    // longer downloads the whole clinic to show one bench's queue.
+    const data = await fetchPatients(organization.id, { department });
     setPatients(data);
     setLoadingData(false);
-  }, [organization?.id]);
+  }, [organization?.id, department]);
 
   useEffect(() => {
     if (!organization?.id) return;
