@@ -1,4 +1,5 @@
 'use client';
+import { useNotices } from '@/components/Notices';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   RiHospitalLine, RiAddLine, RiClipboardLine, RiCheckLine,
@@ -60,6 +61,7 @@ function usePatientSearch(organizationId: string | undefined, query: string) {
 }
 
 export default function ReceptionPage() {
+  const { notify, ask } = useNotices();
   const [tab, setTab] = useState<Tab>('register');
   const [patients, setPatients] = useState<Patient[]>([]);
   // Everyone attached to a wallet, whenever they were registered. The queue
@@ -222,7 +224,7 @@ export default function ReceptionPage() {
 
   const handleCreateBillingAccountSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!accountForm.name.trim() && !isOwnerNew) return alert('Please enter account name');
+    if (!accountForm.name.trim() && !isOwnerNew) return notify('Please enter account name', 'error');
 
     setSaving(true);
     try {
@@ -302,14 +304,14 @@ export default function ReceptionPage() {
         profile?.full_name || 'Staff'
       );
 
-      alert('Billing account created successfully');
+      notify('Billing account created successfully', 'success');
       setShowBillingAccountModal(false);
       setIsOwnerNew(false);
       setNewDependentsToRegister([]);
       setNewOwnerForm({ firstName: '', surname: '', middleName: '', age: '', sex: 'Male', phone: '', address: '' });
       refresh();
     } catch (err: any) {
-      alert('Failed to create account: ' + err.message);
+      notify('Failed to create account: ' + err.message, 'error');
     } finally {
       setSaving(false);
     }
@@ -322,7 +324,7 @@ export default function ReceptionPage() {
 
   const handleDepositSubmit = async (accountId: string) => {
     const amt = parseFloat(depositAmount);
-    if (isNaN(amt) || amt <= 0) return alert('Please enter a valid deposit amount');
+    if (isNaN(amt) || amt <= 0) return notify('Please enter a valid deposit amount', 'error');
 
     setDepositing(true);
     try {
@@ -336,7 +338,7 @@ export default function ReceptionPage() {
         undefined
       );
 
-      alert('Deposit processed successfully');
+      notify('Deposit processed successfully', 'success');
       setDepositAmount('');
       setDepositNotes('');
 
@@ -352,7 +354,7 @@ export default function ReceptionPage() {
         setShowLedgerModal(updatedAcc);
       }
     } catch (err: any) {
-      alert('Deposit failed: ' + err.message);
+      notify('Deposit failed: ' + err.message, 'error');
     } finally {
       setDepositing(false);
     }
@@ -380,30 +382,30 @@ export default function ReceptionPage() {
     if (!existingPatientToLink) return;
     try {
       await updatePatientBillingAccount(existingPatientToLink, accountId);
-      alert('Patient linked successfully');
+      notify('Patient linked successfully', 'success');
       setExistingPatientToLink('');
       setShowAddExisting(false);
       refresh();
     } catch (err: any) {
-      alert('Failed to link patient: ' + err.message);
+      notify('Failed to link patient: ' + err.message, 'error');
     }
   };
 
   const handleUnlinkDependent = async (patientId: number | string) => {
-    if (!confirm('Are you sure you want to unlink this dependent from this wallet account?')) return;
+    if (!await ask('Are you sure you want to unlink this dependent from this wallet account?')) return;
     try {
       await updatePatientBillingAccount(patientId, null);
-      alert('Patient unlinked successfully');
+      notify('Patient unlinked successfully', 'success');
       refresh();
     } catch (err: any) {
-      alert('Failed to unlink patient: ' + err.message);
+      notify('Failed to unlink patient: ' + err.message, 'error');
     }
   };
 
   const handleQuickRegisterDependentSubmit = async (e: React.FormEvent, accountId: string) => {
     e.preventDefault();
     if (!workspaceDepForm.firstName.trim() || !workspaceDepForm.surname.trim()) {
-      return alert('First Name and Surname are required');
+      return notify('First Name and Surname are required', 'info');
     }
 
     setSaving(true);
@@ -424,7 +426,7 @@ export default function ReceptionPage() {
       };
 
       await registerPatientAndGetId(patientData as any, organization?.id || '');
-      alert('Dependent registered and linked successfully');
+      notify('Dependent registered and linked successfully', 'success');
 
       setWorkspaceDepForm({
         firstName: '', surname: '', middleName: '', age: '', sex: 'Male', phone: '', address: ''
@@ -432,7 +434,7 @@ export default function ReceptionPage() {
       setShowQuickRegisterDep(false);
       refresh();
     } catch (err: any) {
-      alert('Failed to register dependent: ' + err.message);
+      notify('Failed to register dependent: ' + err.message, 'error');
     } finally {
       setSaving(false);
     }
@@ -440,10 +442,10 @@ export default function ReceptionPage() {
 
   const handleWorkspaceExpenseSubmit = async (e: React.FormEvent, accountId: string) => {
     e.preventDefault();
-    if (!workspaceExpenseForm.patientId) return alert('Please select a member');
-    if (!workspaceExpenseForm.receiptNumber.trim()) return alert('Please enter a receipt number');
+    if (!workspaceExpenseForm.patientId) return notify('Please select a member', 'error');
+    if (!workspaceExpenseForm.receiptNumber.trim()) return notify('Please enter a receipt number', 'error');
     const amt = parseFloat(workspaceExpenseForm.amount);
-    if (isNaN(amt) || amt <= 0) return alert('Please enter a valid amount');
+    if (isNaN(amt) || amt <= 0) return notify('Please enter a valid amount', 'error');
 
     setSaving(true);
     try {
@@ -461,7 +463,7 @@ export default function ReceptionPage() {
       };
 
       await logExternalCharge(chargePayload);
-      alert('Department charge logged successfully');
+      notify('Department charge logged successfully', 'success');
 
       setWorkspaceExpenseForm({
         patientId: '', department: 'pharmacy', receiptNumber: '', amount: '', paymentMethod: 'wallet', description: ''
@@ -473,7 +475,7 @@ export default function ReceptionPage() {
       setBillingTransactions(txs);
       refresh();
     } catch (err: any) {
-      alert('Logging failed: ' + err.message);
+      notify('Logging failed: ' + err.message, 'error');
     } finally {
       setSaving(false);
     }
@@ -1255,7 +1257,7 @@ export default function ReceptionPage() {
                         <button type="button" onClick={async () => {
                           try {
                             const newLimit = parseFloat(editCreditLimit);
-                            if(isNaN(newLimit)) return alert('Invalid number');
+                            if(isNaN(newLimit)) return notify('Invalid number', 'error');
                             const res = await fetch(`/api/billing?action=update_limit`, {
                               method: 'POST',
                               headers: { 'Content-Type': 'application/json' },
@@ -1266,7 +1268,7 @@ export default function ReceptionPage() {
                             setEditCreditLimit(null);
                             refresh();
                           } catch (e) {
-                            alert('Error updating limit');
+                            notify('Error updating limit', 'error');
                           }
                         }} style={{ background: 'var(--teal-700)', color: 'white', border: 'none', padding: '0.1rem 0.3rem', borderRadius: 2, cursor: 'pointer', fontSize: '0.65rem' }}>Save</button>
                       </div>
@@ -1508,9 +1510,9 @@ export default function ReceptionPage() {
                                   if(!res.ok) throw new Error('Update failed');
                                   setShowLedgerModal({...showLedgerModal, type: 'family'});
                                   refresh();
-                                  alert('Successfully upgraded to family account!');
+                                  notify('Successfully upgraded to family account!', 'success');
                                 } catch (e) {
-                                  alert('Error upgrading account');
+                                  notify('Error upgrading account', 'error');
                                 }
                               }}
                               style={{ background: '#f59e0b', color: 'white', border: 'none', padding: '0.3rem 0.6rem', borderRadius: 4, cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600 }}
@@ -2061,6 +2063,7 @@ function SlipModal({ patient, onClose, org }: { patient: Patient; onClose: () =>
 
 /* ---- Result Modal ---- */
 function ResultModal({ patient, onClose, org }: { patient: Patient; onClose: () => void; org?: any }) {
+  const { notify } = useNotices();
   const { session } = useAuth();
   const completedTests = patient.tests.filter(t => t.status === 'completed');
   const [sendingEmail, setSendingEmail] = useState(false);
@@ -2079,7 +2082,7 @@ function ResultModal({ patient, onClose, org }: { patient: Patient; onClose: () 
   const handlePrint = () => {
     const testsToPrint = completedTests.filter(t => selectedIds.includes(t.testId));
     if (testsToPrint.length === 0) {
-      alert('Please select at least one test to print.');
+      notify('Please select at least one test to print.', 'error');
       return;
     }
     const html = getResultTemplate(patient, testsToPrint, org);
@@ -2088,13 +2091,13 @@ function ResultModal({ patient, onClose, org }: { patient: Patient; onClose: () 
 
   const handleEmail = async () => {
     if (!patient.email) {
-      alert('This patient does not have an email address recorded. Please update their details first.');
+      notify('This patient does not have an email address recorded. Please update their details first.', 'error');
       return;
     }
 
     const testsToPrint = completedTests.filter(t => selectedIds.includes(t.testId));
     if (testsToPrint.length === 0) {
-      alert('Please select at least one test to email.');
+      notify('Please select at least one test to email.', 'error');
       return;
     }
 
@@ -2115,9 +2118,9 @@ function ResultModal({ patient, onClose, org }: { patient: Patient; onClose: () 
         throw new Error(data.error || 'Failed to send email');
       }
 
-      alert(`Report successfully emailed to ${patient.email}!`);
+      notify(`Report successfully emailed to ${patient.email}!`, 'success');
     } catch (err: any) {
-      alert('Error: ' + err.message);
+      notify('Error: ' + err.message, 'error');
     } finally {
       setSendingEmail(false);
     }

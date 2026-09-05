@@ -741,7 +741,7 @@ export interface BillingLedgerTransaction {
   organization_id: string;
   billing_account_id: string;
   patient_id?: string | number;
-  type: 'deposit' | 'charge' | 'refund' | 'adjustment';
+  type: 'deposit' | 'charge' | 'refund' | 'adjustment' | 'reversal';
   amount: number; // positive for credit/deposit, negative for debit/charge
   description: string;
   reference_id?: string;

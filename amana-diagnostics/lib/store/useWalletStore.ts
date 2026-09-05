@@ -55,6 +55,7 @@ interface WalletState {
   workspaceTab: 'members' | 'ledger' | 'charges';
   billingTransactions: BillingLedgerTransaction[];
   loadingLedger: boolean;
+  setLoadingLedger: (v: boolean) => void;
   showAddExisting: boolean;
   existingPatientToLink: string;
   showQuickRegisterDep: boolean;
@@ -152,6 +153,7 @@ export const useWalletStore = create<WalletState>((set, get) => ({
   workspaceTab: 'members',
   billingTransactions: [],
   loadingLedger: false,
+  setLoadingLedger: (v) => set({ loadingLedger: v }),
   showAddExisting: false,
   existingPatientToLink: '',
   showQuickRegisterDep: false,

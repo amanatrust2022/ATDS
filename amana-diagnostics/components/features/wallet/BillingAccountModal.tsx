@@ -1,3 +1,4 @@
+import { useNotices } from '@/components/Notices';
 import React, { useRef, useState } from 'react';
 import { RiCloseLine, RiSearchLine } from '@remixicon/react';
 import { useWalletStore } from '@/lib/store/useWalletStore';
@@ -40,6 +41,7 @@ const modalBox: React.CSSProperties = {
 };
 
 export default function BillingAccountModal({ organization, patients, profile, onSuccess }: any) {
+  const { notify } = useNotices();
   const { 
     accountForm, isOwnerNew, newOwnerForm, newDependentsToRegister,
     ownerSearchQuery, ownerSearchPage, showOwnerSearchDrop,
@@ -54,7 +56,7 @@ export default function BillingAccountModal({ organization, patients, profile, o
 
   const handleCreateBillingAccountSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!accountForm.name.trim() && !isOwnerNew) return alert('Please enter account name');
+    if (!accountForm.name.trim() && !isOwnerNew) return notify('Please enter account name', 'error');
 
     setSavingLocal(true);
     try {
@@ -134,14 +136,14 @@ export default function BillingAccountModal({ organization, patients, profile, o
         profile?.full_name || 'Staff'
       );
 
-      alert('Billing account created successfully');
+      notify('Billing account created successfully', 'success');
       store.setShowBillingAccountModal(false);
       setIsOwnerNew(false);
       store.setNewDependentsToRegister([]);
       store.updateNewOwnerForm({ firstName: '', surname: '', middleName: '', age: '', sex: 'Male', phone: '', address: '' });
       onSuccess();
     } catch (err: any) {
-      alert('Failed to create account: ' + err.message);
+      notify('Failed to create account: ' + err.message, 'error');
     } finally {
       setSavingLocal(false);
     }

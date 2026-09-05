@@ -1,4 +1,5 @@
 'use client';
+import { useNotices } from '@/components/Notices';
 import RequireRole from '@/components/RequireRole';
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase';
@@ -37,6 +38,7 @@ async function withTimeout(promise: any, ms: number, onWarning: () => void): Pro
 }
 
 function StaffManagement() {
+  const { ask } = useNotices();
   const { profile, organization } = useAuth();
   const params = useParams();
   const slug = params?.slug as string;
@@ -318,7 +320,7 @@ function StaffManagement() {
   };
 
   const revokeInvite = async (id: string) => {
-    if (!confirm('Revoke this pending invitation?')) return;
+    if (!await ask('Revoke this pending invitation?')) return;
     try {
       const { error } = await supabase.from('invitations').delete().eq('id', id);
       if (error) throw error;
@@ -331,7 +333,7 @@ function StaffManagement() {
   };
 
   const removeStaff = async (s: any) => {
-    if (!confirm(`Remove ${s.full_name || 'this staff member'} from the workspace?`)) return;
+    if (!await ask(`Remove ${s.full_name || 'this staff member'} from the workspace?`)) return;
 
     try {
       const apiEndpoint = typeof window !== 'undefined' && window.location.origin.includes('localhost:1420') 

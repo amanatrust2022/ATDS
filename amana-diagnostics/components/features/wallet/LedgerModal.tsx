@@ -1,4 +1,4 @@
-// @ts-nocheck
+import { useNotices } from '@/components/Notices';
 import React, { useState, useEffect } from 'react';
 import { fetchBillingAccounts } from '@/lib/store';
 import { 
@@ -7,7 +7,7 @@ import {
 } from '@remixicon/react';
 import { useWalletStore } from '@/lib/store/useWalletStore';
 import { 
-  fetchAccountLedger, fetchExternalCharges, linkPatientToAccount, registerPatientAndGetId, logExternalCharge, updateBillingAccountLimit, upgradeBillingAccount, depositToBillingAccount, updatePatientBillingAccount, generateSlipNumber, reverseLedgerTransaction 
+  fetchAccountLedger, fetchExternalCharges, registerPatientAndGetId, logExternalCharge, updateBillingAccountLimit, upgradeBillingAccount, depositToBillingAccount, updatePatientBillingAccount, generateSlipNumber, reverseLedgerTransaction 
 } from '@/lib/store';
 import { getLedgerStatementTemplate, printHtml } from '@/lib/templates';
 import { Patient, BillingAccount } from '@/lib/store';
@@ -44,11 +44,28 @@ const modalBox: React.CSSProperties = {
   display: 'flex', flexDirection: 'column', overflow: 'hidden'
 };
 
-export default function LedgerModal({ organization, patients, profile, onSuccess }: any) {
+/**
+ * The wallet ledger.
+ *
+ * This file carried `// @ts-nocheck` — the one file in the app that did, and
+ * the one that moves money. Behind it were three real defects: a call to a
+ * setter that does not exist, which threw every time the ledger opened; a
+ * variable declared twice in one scope; and an import of something the store
+ * does not export. Typing the props is what makes the rest of the file
+ * checkable, because `patients: any` made every callback parameter untyped too.
+ */
+interface LedgerModalProps {
+  organization: { id: string; name?: string } | null;
+  patients: Patient[];
+  profile: { full_name?: string } | null;
+  onSuccess?: () => void;
+}
+
+export default function LedgerModal({ organization, patients, profile, onSuccess }: LedgerModalProps) {
+  const { notify, ask, askFor } = useNotices();
   
   
   const store = useWalletStore();
-  const [showAddExisting, setShowAddExisting] = useState(false);
   const [isEditingLimit, setIsEditingLimit] = useState(false);
   const [newCreditLimit, setNewCreditLimit] = useState(''); // Used for loading states in modals, not fully extracted but prevents crashes
   const [saving, setSaving] = useState(false); // Used for loading states in modals, not fully extracted but prevents crashes
@@ -60,10 +77,10 @@ export default function LedgerModal({ organization, patients, profile, onSuccess
     showWorkspaceLogExpense, workspaceExpenseForm
   } = store;
 
-  const setWorkspaceDepForm = (val) => typeof val === 'function' ? store.updateWorkspaceDepForm(val(workspaceDepForm)) : store.updateWorkspaceDepForm(val);
-  const setWorkspaceExpenseForm = (val) => typeof val === 'function' ? store.updateWorkspaceExpenseForm(val(workspaceExpenseForm)) : store.updateWorkspaceExpenseForm(val);
+  const setWorkspaceDepForm = (val: any) => typeof val === 'function' ? store.updateWorkspaceDepForm(val(workspaceDepForm)) : store.updateWorkspaceDepForm(val);
+  const setWorkspaceExpenseForm = (val: any) => typeof val === 'function' ? store.updateWorkspaceExpenseForm(val(workspaceExpenseForm)) : store.updateWorkspaceExpenseForm(val);
   
-  const setShowLedgerModal = (val) => val === null ? store.closeLedger() : store.openLedger(val);
+  const setShowLedgerModal = (val: any) => val === null ? store.closeLedger() : store.openLedger(val);
   const setWorkspaceTab = store.setWorkspaceTab;
   const setBillingTransactions = store.setBillingTransactions;
 
@@ -87,7 +104,7 @@ export default function LedgerModal({ organization, patients, profile, onSuccess
    * the wrong charge on the patient's statement looking like a real one.
    */
   const handleReverse = async (tx: any) => {
-    const reason = prompt(
+    const reason = await askFor(
       `Reverse this charge?
 
 ${tx.description}
@@ -97,7 +114,7 @@ The original entry stays on the statement and a matching credit is added beside 
 Why is it being reversed?`,
     );
     if (reason === null) return;
-    if (!reason.trim()) { alert('Please give a reason for the reversal.'); return; }
+    if (!reason.trim()) { notify('Please give a reason for the reversal.', 'error'); return; }
 
     setReversing(true);
     try {
@@ -109,9 +126,9 @@ Why is it being reversed?`,
       const accs = await fetchBillingAccounts(organization?.id || '');
       store.setBillingAccounts(accs);
 
-      alert('Charge reversed. The original entry remains on the statement.');
+      notify('Charge reversed. The original entry remains on the statement.', 'success');
     } catch (err: any) {
-      alert('Could not reverse this charge: ' + (err.message || 'unknown error'));
+      notify('Could not reverse this charge: ' + (err.message || 'unknown error'), 'error');
     } finally {
       setReversing(false);
     }
@@ -128,7 +145,7 @@ Why is it being reversed?`,
 
   const handleDepositSubmit = async (accountId: string) => {
     const amt = parseFloat(depositAmount);
-    if (isNaN(amt) || amt <= 0) return alert('Please enter a valid deposit amount');
+    if (isNaN(amt) || amt <= 0) return notify('Please enter a valid deposit amount', 'error');
 
     setDepositing(true);
     try {
@@ -142,7 +159,7 @@ Why is it being reversed?`,
         undefined
       );
 
-      alert('Deposit processed successfully');
+      notify('Deposit processed successfully', 'success');
       setDepositAmount('');
       setDepositNotes('');
 
@@ -158,7 +175,7 @@ Why is it being reversed?`,
         setShowLedgerModal(updatedAcc);
       }
     } catch (err: any) {
-      alert('Deposit failed: ' + err.message);
+      notify('Deposit failed: ' + err.message, 'error');
     } finally {
       setDepositing(false);
     }
@@ -166,10 +183,10 @@ Why is it being reversed?`,
 
   const handleLogExpenseSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!workspaceExpenseForm.patientId) return alert('Please select a patient');
-    if (!workspaceExpenseForm.receiptNumber.trim()) return alert('Please enter a receipt number');
+    if (!workspaceExpenseForm.patientId) return notify('Please select a patient', 'error');
+    if (!workspaceExpenseForm.receiptNumber.trim()) return notify('Please enter a receipt number', 'error');
     const amt = parseFloat(workspaceExpenseForm.amount);
-    if (isNaN(amt) || amt <= 0) return alert('Please enter a valid amount');
+    if (isNaN(amt) || amt <= 0) return notify('Please enter a valid amount', 'error');
 
     setSaving(true);
     try {
@@ -190,11 +207,11 @@ Why is it being reversed?`,
       };
 
       await logExternalCharge(chargePayload);
-      alert('Department charge logged successfully');
+      notify('Department charge logged successfully', 'success');
       setShowWorkspaceLogExpense(false);
-      onSuccess();
+      onSuccess?.();
     } catch (err: any) {
-      alert('Logging failed: ' + err.message);
+      notify('Logging failed: ' + err.message, 'error');
     } finally {
       setSaving(false);
     }
@@ -203,11 +220,11 @@ Why is it being reversed?`,
   // Load ledger transactions and reset workspace states when modal opens
   useEffect(() => {
     if (showLedgerModal) {
-      setLoadingLedgerLocal(true);
+      store.setLoadingLedger(true);
       fetchAccountLedger(showLedgerModal.id)
         .then(txs => setBillingTransactions(txs))
         .catch(err => console.error(err))
-        .finally(() => setLoadingLedgerLocal(false));
+        .finally(() => store.setLoadingLedger(false));
 
       setWorkspaceTab('members');
       setShowAddExisting(false);
@@ -223,14 +240,14 @@ Why is it being reversed?`,
 
   const handleUpdateLimit = async (accountId: string) => {
     const limit = Number(newCreditLimit);
-    if (isNaN(limit) || limit < 0) return alert('Invalid credit limit');
+    if (isNaN(limit) || limit < 0) return notify('Invalid credit limit', 'error');
     try {
       await updateBillingAccountLimit(accountId, limit);
       store.updateCreditLimit(accountId, limit);
       setIsEditingLimit(false);
-      alert('Credit limit updated successfully');
+      notify('Credit limit updated successfully', 'success');
     } catch (err: any) {
-      alert(err.message);
+      notify(err.message, 'info');
     }
   };
 
@@ -238,9 +255,9 @@ Why is it being reversed?`,
     try {
       await upgradeBillingAccount(accountId);
       store.upgradeAccountToFamily(accountId);
-      alert('Account upgraded to Family successfully');
+      notify('Account upgraded to Family successfully', 'success');
     } catch (err: any) {
-      alert(err.message);
+      notify(err.message, 'info');
     }
   };
 
@@ -248,30 +265,30 @@ Why is it being reversed?`,
     if (!existingPatientToLink) return;
     try {
       await updatePatientBillingAccount(existingPatientToLink, accountId);
-      alert('Patient linked successfully');
+      notify('Patient linked successfully', 'success');
       setExistingPatientToLink('');
       setShowAddExisting(false);
-      onSuccess();
+      onSuccess?.();
     } catch (err: any) {
-      alert('Failed to link patient: ' + err.message);
+      notify('Failed to link patient: ' + err.message, 'error');
     }
   };
 
   const handleUnlinkDependent = async (patientId: number | string) => {
-    if (!confirm('Are you sure you want to unlink this dependent from this wallet account?')) return;
+    if (!await ask('Are you sure you want to unlink this dependent from this wallet account?')) return;
     try {
       await updatePatientBillingAccount(patientId, null);
-      alert('Patient unlinked successfully');
-      onSuccess();
+      notify('Patient unlinked successfully', 'success');
+      onSuccess?.();
     } catch (err: any) {
-      alert('Failed to unlink patient: ' + err.message);
+      notify('Failed to unlink patient: ' + err.message, 'error');
     }
   };
 
   const handleQuickRegisterDependentSubmit = async (e: React.FormEvent, accountId: string) => {
     e.preventDefault();
     if (!workspaceDepForm.firstName.trim() || !workspaceDepForm.surname.trim()) {
-      return alert('First Name and Surname are required');
+      return notify('First Name and Surname are required', 'info');
     }
 
     setSaving(true);
@@ -292,15 +309,15 @@ Why is it being reversed?`,
       };
 
       await registerPatientAndGetId(patientData as any, organization?.id || '');
-      alert('Dependent registered and linked successfully');
+      notify('Dependent registered and linked successfully', 'success');
 
       setWorkspaceDepForm({
         firstName: '', surname: '', middleName: '', age: '', sex: 'Male', phone: '', address: ''
       });
       setShowQuickRegisterDep(false);
-      onSuccess();
+      onSuccess?.();
     } catch (err: any) {
-      alert('Failed to register dependent: ' + err.message);
+      notify('Failed to register dependent: ' + err.message, 'error');
     } finally {
       setSaving(false);
     }
@@ -308,10 +325,10 @@ Why is it being reversed?`,
 
   const handleWorkspaceExpenseSubmit = async (e: React.FormEvent, accountId: string) => {
     e.preventDefault();
-    if (!workspaceExpenseForm.patientId) return alert('Please select a member');
-    if (!workspaceExpenseForm.receiptNumber.trim()) return alert('Please enter a receipt number');
+    if (!workspaceExpenseForm.patientId) return notify('Please select a member', 'error');
+    if (!workspaceExpenseForm.receiptNumber.trim()) return notify('Please enter a receipt number', 'error');
     const amt = parseFloat(workspaceExpenseForm.amount);
-    if (isNaN(amt) || amt <= 0) return alert('Please enter a valid amount');
+    if (isNaN(amt) || amt <= 0) return notify('Please enter a valid amount', 'error');
 
     setSaving(true);
     try {
@@ -329,7 +346,7 @@ Why is it being reversed?`,
       };
 
       await logExternalCharge(chargePayload);
-      alert('Department charge logged successfully');
+      notify('Department charge logged successfully', 'success');
 
       setWorkspaceExpenseForm({
         patientId: '', department: 'pharmacy', receiptNumber: '', amount: '', paymentMethod: 'wallet', description: ''
@@ -339,9 +356,9 @@ Why is it being reversed?`,
       // Refresh charges & ledger list
       const txs = await fetchAccountLedger(accountId);
       setBillingTransactions(txs);
-      onSuccess();
+      onSuccess?.();
     } catch (err: any) {
-      alert('Logging failed: ' + err.message);
+      notify('Logging failed: ' + err.message, 'error');
     } finally {
       setSaving(false);
     }
@@ -442,7 +459,7 @@ Why is it being reversed?`,
                     }
                   });
                   const members = Array.from(uniqueMembersMap.values());
-                      setWorkspaceExpenseForm(prev => ({
+                      setWorkspaceExpenseForm((prev: any) => ({
                         ...prev,
                         patientId: members[0]?.id ? String(members[0].id) : ''
                       }));

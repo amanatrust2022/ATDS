@@ -9,6 +9,7 @@ export const metadata: Metadata = {
 
 import { AuthProvider } from '@/components/AuthProvider'
 import RootWrapper from '@/components/RootWrapper'
+import { NoticeProvider } from '@/components/Notices'
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   const supabaseUrl = process.env['NEXT_PUBLIC_SUPABASE_URL'] || '';
@@ -26,9 +27,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           }}
         />
         <AuthProvider>
-          <RootWrapper>
-            {children}
-          </RootWrapper>
+          <NoticeProvider>
+            <RootWrapper>
+              {children}
+            </RootWrapper>
+          </NoticeProvider>
         </AuthProvider>
       </body>
     </html>

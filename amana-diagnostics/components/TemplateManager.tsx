@@ -1,4 +1,5 @@
 'use client';
+import { useNotices } from '@/components/Notices';
 import { useState, useEffect, useRef } from 'react';
 import { 
   RiCloseLine, RiUploadCloud2Line, RiFileWordLine, RiFileTextLine, 
@@ -28,6 +29,7 @@ export default function TemplateManager({
   userId,
   onTemplateChange 
 }: TemplateManagerProps) {
+  const { notify, ask } = useNotices();
   const [customTemplates, setCustomTemplates] = useState<RadiologyTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -101,20 +103,20 @@ export default function TemplateManager({
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this custom template?')) return;
+    if (!await ask('Are you sure you want to delete this custom template?')) return;
     try {
       await deleteCustomTemplate(id);
       await loadTemplates();
       if (onTemplateChange) onTemplateChange();
     } catch (err) {
-      alert('Failed to delete template');
+      notify('Failed to delete template', 'error');
     }
   };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formName.trim() || !formFindings.trim()) {
-      alert('Template Name and Findings are required.');
+      notify('Template Name and Findings are required.', 'info');
       return;
     }
     setSaving(true);
@@ -144,7 +146,7 @@ export default function TemplateManager({
       if (onTemplateChange) onTemplateChange();
     } catch (err: any) {
       console.error(err);
-      alert('Failed to save template: ' + err.message);
+      notify('Failed to save template: ' + err.message, 'error');
     } finally {
       setSaving(false);
     }

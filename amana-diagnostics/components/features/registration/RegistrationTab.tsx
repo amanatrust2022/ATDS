@@ -1,3 +1,4 @@
+import { useNotices } from '@/components/Notices';
 import React, { useRef, useState, useEffect } from 'react';
 import { useRegistrationStore } from '@/lib/store/useRegistrationStore';
 import { Patient, PatientProfile, ReferringDoctor, ReferringFacility, TestPrice, Test, BillingAccount } from '@/lib/store';
@@ -41,6 +42,7 @@ export default function RegistrationTab({
   testPrices, catalogue, billingAccounts, organization,
   setShowSlipModal, onRegistered
 }: RegistrationTabProps) {
+  const { notify } = useNotices();
   // Ephemeral UI state — domain state lives in useRegistrationStore
   const [patientSearchQuery, setPatientSearchQuery] = useState('');
   const [showPatientSearchDrop, setShowPatientSearchDrop] = useState(false);
@@ -266,16 +268,16 @@ export default function RegistrationTab({
 
     if (paymentMethod === 'wallet') {
       if (!checkoutBillingAccountId) {
-        alert('Please select a wallet account for payment.');
+        notify('Please select a wallet account for payment.', 'error');
         return;
       }
       const acc = billingAccounts.find(a => a.id === checkoutBillingAccountId);
       if (!acc) {
-        alert('Selected wallet account not found.');
+        notify('Selected wallet account not found.', 'error');
         return;
       }
       if ((acc.balance + acc.credit_limit) < netBill) {
-        alert(`Insufficient wallet balance on "${acc.name}". Available: ₦${(acc.balance + acc.credit_limit).toLocaleString('en-NG')}`);
+        notify(`Insufficient wallet balance on "${acc.name}". Available: ₦${(acc.balance + acc.credit_limit).toLocaleString('en-NG')}`, 'error');
         return;
       }
     }
@@ -355,7 +357,7 @@ export default function RegistrationTab({
       setPaymentMethod('cash');
       setErrors({});
     } catch (err: any) {
-      alert('Registration failed: ' + err.message);
+      notify('Registration failed: ' + err.message, 'error');
     } finally {
       setSaving(false);
     }

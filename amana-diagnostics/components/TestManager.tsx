@@ -1,4 +1,5 @@
 'use client';
+import { useNotices } from '@/components/Notices';
 import { useState, useEffect } from 'react';
 import {
   RiCloseLine, RiSearchLine, RiAddLine, RiDeleteBin6Line, RiEdit2Line,
@@ -356,6 +357,7 @@ const CLINICAL_PRESETS = [
 ];
 
 export default function TestManager({ organizationId, restrictDepartment, onClose }: Props) {
+  const { ask } = useNotices();
   const { profile } = useAuth();
   const [catalogue, setCatalogue] = useState<Test[]>([]);
   const [pendingTests, setPendingTests] = useState<Test[]>([]);
@@ -664,7 +666,7 @@ export default function TestManager({ organizationId, restrictDepartment, onClos
 
   const handleDelete = async () => {
     if (!editingTest) return;
-    if (!confirm(
+    if (!await ask(
       `Remove "${editingTest.name}" from the catalogue?
 
 ` +

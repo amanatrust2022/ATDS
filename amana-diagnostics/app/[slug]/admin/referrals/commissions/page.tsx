@@ -1,4 +1,5 @@
 'use client';
+import { useNotices } from '@/components/Notices';
 import RequireRole from '@/components/RequireRole';
 
 import { useState, useEffect } from 'react';
@@ -12,6 +13,7 @@ import {
 } from '@remixicon/react';import { printHtml } from '@/lib/templates';
 
 function CommissionsPage() {
+  const { notify, ask } = useNotices();
   const { organization } = useAuth();
   const [entries, setEntries] = useState<CommissionEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -114,14 +116,14 @@ function CommissionsPage() {
 
   const handleBulkPay = async () => {
     if (selectedIds.length === 0) return;
-    if (!confirm(`Are you sure you want to mark ${selectedIds.length} commissions as Paid?`)) return;
+    if (!await ask(`Are you sure you want to mark ${selectedIds.length} commissions as Paid?`)) return;
     setProcessingPay(true);
     try {
       await Promise.all(selectedIds.map(id => markCommissionPaid(id, 'Bulk settlement')));
       setSelectedIds([]);
       await load();
     } catch (e: any) {
-      alert('Bulk settlement failed: ' + e.message);
+      notify('Bulk settlement failed: ' + e.message, 'error');
     } finally {
       setProcessingPay(false);
     }
@@ -136,7 +138,7 @@ function CommissionsPage() {
       setPayNotes('');
       await load();
     } catch (e: any) {
-      alert('Payment failed: ' + e.message);
+      notify('Payment failed: ' + e.message, 'error');
     } finally {
       setProcessingPay(false);
     }

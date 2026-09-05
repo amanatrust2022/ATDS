@@ -1,4 +1,5 @@
 'use client';
+import { useNotices } from '@/components/Notices';
 import RequireRole from '@/components/RequireRole';
 
 import { useState, useEffect } from 'react';
@@ -20,6 +21,7 @@ const EMPTY_FORM = {
 };
 
 function ReferringDoctorsPage() {
+  const { notify, ask } = useNotices();
   const { organization } = useAuth();
   const [doctors, setDoctors] = useState<ReferringDoctor[]>([]);
   const [facilities, setFacilities] = useState<ReferringFacility[]>([]);
@@ -79,12 +81,12 @@ function ReferringDoctorsPage() {
   };
 
   const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`Delete Dr. ${name}? This cannot be undone.`)) return;
+    if (!await ask(`Delete Dr. ${name}? This cannot be undone.`)) return;
     try {
       await deleteReferringDoctor(id);
       await load();
     } catch (e: any) {
-      alert('Delete failed: ' + e.message);
+      notify('Delete failed: ' + e.message, 'error');
     }
   };
 
