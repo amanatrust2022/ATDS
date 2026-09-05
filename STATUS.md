@@ -7,21 +7,21 @@ For the technical detail behind any of this, see `amana-diagnostics/.agents/AGEN
 
 ## The short version
 
-The code has had a big tidy-up over the last few days. It is finished, tested, and
-committed — but **none of it has been released to the clinic yet**. The live system
-is still running the version from **6 July 2026** (v1.2.20) for the desktop app.
+Two audits in early September found **37 defects** between them — fifteen in the
+code (D-01 to D-15) and twenty-two in what each role can actually do (U-01 to
+U-22). **All of them are now fixed**, along with the performance problem that
+made the system slower every day it ran.
 
-On 4 September the code was audited ahead of the architecture migration. It found
-**fifteen defects that no test catches**, six of which could lose money or patient
-records silently, plus one performance problem that got worse every day the system
-ran.
+The test suite went from 335 tests to 429, and the one file that was exempt from
+type checking — the wallet ledger, 800 lines — is now checked like everything
+else. Three real defects were hiding behind that exemption, including one that
+threw an error every single time the ledger was opened.
 
-**Nine of the fifteen are now fixed, along with the performance problem.** Six
-remain open; three of those are waiting on a decision from you rather than on
-work. The test suite went from 335 tests to 391 in the process.
+**None of it has reached the clinic.** The live system is still running the
+version from **6 July 2026** (v1.2.20).
 
-None of it has reached the clinic. Four things need your attention, under **What
-needs you** — the first is a database change that two of the fixes depend on.
+Three things need you, and they are at the bottom. Two of them are database
+changes that have been written but deliberately not applied.
 
 ---
 
@@ -88,71 +88,48 @@ There is no hurry. The clinic ran without this feature for two years.
 
 ## What needs you
 
-### 1. Apply the SQL, on staging first
+### 1. Apply the two database changes — on staging first
 
-`supabase_id_and_slip_integrity.sql` closes two defects that cannot be fixed in
-the app alone: patient IDs that would eventually collide, and two front desks
-being issued the same slip number. Nothing else in this work depends on it — if
-it is not applied, the app keeps its old behaviour and writes a warning, so a
-release cannot break registration by arriving first.
+Both are written, both have a checklist at the foot of the file that proves they
+work before you trust them, and both say how to switch them back off.
 
-Two things before you run it:
+- **`amana-diagnostics/supabase_tighten_rls.sql`** — the live database currently lets
+  any signed-in user of any clinic read every other clinic's patients and
+  wallets, and delete their financial records. An anonymous visitor can list
+  every pending staff invitation. The app can no longer do those things, but the
+  app is not the only way in — anyone with the public key can talk to the
+  database directly. **Dump the live policies and compare before running it**;
+  the .sql files in this repository are hand-run scripts, not a record of what
+  is actually there.
 
-- **It will refuse to build if the database already contains duplicate slip
-  numbers.** That is the point. The file carries the query that finds them; settle
-  those rows by hand first. Do not force it.
-- **Read the VERIFY block at the end and actually run it.** It proves the counter
-  started above the IDs already in use and that a duplicate slip is now refused.
-  The ROLLBACK block undoes everything.
+- **`supabase_deposit_atomicity.sql`** — until this is applied, two receptionists
+  taking a deposit at the same moment can still lose one of them, and reversing
+  a mistaken charge does not work at all.
 
-`supabase_wallet_atomicity.sql` from last week is still unapplied and still
-untested against a real database. Treat these as two separate decisions — do not
-apply both in one sitting.
+Tightening security breaks screens that were quietly relying on being able to
+read everything, and the failure looks like an empty list rather than an error.
+Sign in as each role and walk their screens.
 
-### 2. Release this in three parts, not one
+### 2. Confirm one assumption about the live project
 
-There is now a great deal sitting unreleased: the August tidy-up, the queue and
-name fixes from 2 September, and nine defect fixes plus the performance work from
-4 September. Shipping that as one release is exactly the shape of change that had
-to be rolled back last week.
+One fix rests on the fact that a user can edit their own account metadata in
+Supabase — which is the default, and is why the app could be told "I am an
+administrator" and believe it. Worth confirming on the live project, because if
+it is somehow not true, that finding was less serious than recorded.
 
-A sensible split, smallest and safest first:
+### 3. Decide when to release
 
-| Release | What is in it | Why first |
-|---|---|---|
-| **v1.2.21** | The August tidy-up, the queue and name fixes, the pop-up and index changes | Already tested, no database change, and it is the batch that has been waiting longest |
-| **v1.2.22** | The sync fixes (D-01, D-02, D-03, D-12, D-15) | Self-contained, no schema change on the cloud, and it is the one that stops silent data loss |
-| **v1.2.23** | The performance work, then the ID and slip changes once the SQL is applied and verified | Touches the most screens, and the last part depends on a migration |
+This is a lot of change at once, which is exactly what Lehman's fifth law warns
+about — and the wallet rollback in August is what it looks like when that warning
+is ignored. **Split it.** The security fixes are the ones with a reason to hurry;
+the rest can follow at a steady size.
 
-Each wants a real login and a few practice registrations on staging before it
-goes to the front desk. Releasing is described in `RELEASE.md`.
-
-### 3. Confirm D-07 against the live database
-
-One open defect cannot be settled by reading code. Someone needs to look at
-whether patients created through the wallet flow actually carry a registration
-timestamp in the live database. If they do not, those patients are invisible in
-every queue view. It is a two-minute check and it decides how serious that entry
-is.
-
-### 4. Decide who wins on D-10, and whether to schedule D-05 and D-11
-
-Three open defects need a decision rather than a fix:
-
-- **D-10** — when the hub and the cloud disagree about a test result, which one
-  should win? Today wallet balances compare timestamps and test results simply
-  take the cloud's copy. Nobody chose that.
-- **D-05** — ghost patients from a half-filled wallet form. The fix is to check
-  the whole form before saving anything, which changes how that modal behaves.
-- **D-11** — schema changes that fail silently. The fix is a proper migration
-  table, which is its own piece of work.
-
-None are urgent this week. All get harder after the architecture migration moves
-the code.
+Releasing is described in `RELEASE.md`. Test on staging with a real login and a few
+practice registrations before it reaches the front desk.
 
 ---
 
-## Open defects — found 4 September 2026
+## Defects found 4 September 2026 — all now fixed
 
 A code audit ahead of the architecture migration found fifteen defects. **Nine
 are now fixed** (logged in [BUGFIXES.md](BUGFIXES.md) under 4 September, none
@@ -344,10 +321,14 @@ structure, and releases kept small enough that the clinic can absorb them.
 ## Use-case audit — 5 September 2026
 
 Every action every role can take, walked through the code, is in
-[USE-CASE-AUDIT.md](USE-CASE-AUDIT.md). The clinical workflow is sound. The
-authorisation layer is not: **three server routes let an unauthenticated caller
-act as an administrator of any clinic**, and no page in the app checks the
-signed-in user's role. Sixteen findings, numbered U-01 to U-16. None fixed.
+[USE-CASE-AUDIT.md](USE-CASE-AUDIT.md) — twenty-two findings, U-01 to U-22, each
+with a one-line note of what was done about it. The clinical workflow was sound.
+The authorisation layer was not: three server routes let an unauthenticated
+caller act as an administrator of any clinic, and no page checked the signed-in
+user's role.
+
+All twenty-two are fixed in code. U-20 needs `supabase_tighten_rls.sql` applying,
+because an approval rule that only the browser enforces is not a rule.
 
 ---
 

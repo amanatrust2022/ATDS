@@ -1,3 +1,22 @@
+> **Status, 5 September 2026 — all 22 findings are now fixed in code.**
+>
+> Three things still need a person, and none of them are code:
+>
+> 1. **`supabase_tighten_rls.sql` has not been applied.** Until it is, the
+>    application-side guards stop the app misbehaving, but not someone holding
+>    the public anon key and talking to the database directly. Dump the live
+>    policies first and compare — the .sql files here are hand-run scripts, not
+>    a migration history.
+> 2. **`supabase_deposit_atomicity.sql` has not been applied.** Deposits fall
+>    back to the old non-atomic path until it is, and reversing a charge needs
+>    it outright.
+> 3. **U-18 was fixed on the assumption that `user_metadata` is writable by the
+>    account holder**, which it is by default in Supabase. Worth confirming on
+>    the live project.
+>
+> The entries below are kept in the present tense, as written, because what was
+> wrong and why is the part worth keeping. Each carries a **Fixed:** line.
+
 # Use-case audit — 5 September 2026
 
 Every action every role can take, walked through the code and checked.
@@ -12,6 +31,40 @@ except where it says so.
 
 ---
 
+## What was done
+
+One line each. The findings themselves are below, unchanged and in the present
+tense, because what was wrong and why is the part worth keeping.
+
+| | Fix | Where |
+|---|---|---|
+| **U-01** | Role guards on every workspace screen | `components/RequireRole.tsx` |
+| **U-02** | All three routes establish who is calling, what they may do, and that the target is in their own workspace. `send-result` also refuses to fetch images from anywhere but the configured Supabase host | `lib/apiAuth.ts` |
+| **U-03** | Administrator only | `app/api/diagnostic/route.ts` |
+| **U-04** | A correction now reaches the permanent record as well as the visit | `updateProfile`, Admin → Patients → Edit |
+| **U-05** | A real unique filename | `crypto.randomUUID()` |
+| **U-06** | Atomic on both backends; the cloud falls back to the old path until the SQL is applied | `supabase_deposit_atomicity.sql` |
+| **U-07** | The amount is checked server-side, not only in the browser | `app/api/billing/route.ts`, `lib/repositories/billing.ts` |
+| **U-08** | A reversal records the opposite entry and never touches the original. One per entry; reversing a deposit is refused rather than half-done | `reverseTransaction`, 9 tests |
+| **U-09** | The result is signed by the account entering it | `components/DepartmentPage.tsx` |
+| **U-10** | The badge counts everything unfinished, not just everything untouched | `components/DepartmentPage.tsx` |
+| **U-11** | **Narrower than written.** The department screen offers no way to reopen a completed result, so this was never reachable. Left alone — an amendment trail for a path nobody can take is machinery without a purpose. Revisit if reopening is ever added | — |
+| **U-12** | `findUserByEmail` walks every page | `app/api/invite/accept/route.ts` |
+| **U-13** | An allow-list sanitiser used by both renderers, replacing the two copies of the tidier. `--no-sandbox` is gone | `lib/sanitizeHtml.ts`, 15 tests |
+| **U-14** | A challenge is a row: five attempts, one use, codes from `crypto.randomInt`, and a cap on how many can be requested for an address | `lib/portalOtp.ts` |
+| **U-15** | A challenge is created either way, so the two replies are identical | `app/api/portal/otp/route.ts` |
+| **U-16** | A hub that cannot reach its own secret refuses to sign rather than signing with a shared literal | `lib/portalAuth.ts` |
+| **U-17** | Retires the test instead of destroying it. The schema already had `is_active` | `app/api/custom-tests/route.ts` |
+| **U-18** | Standing in a clinic is decided server-side: admin is granted only when the workspace has no members yet, which is the sign-up case | `app/api/auth/profile/route.ts`, `AuthProvider` |
+| **U-19** | The legacy screen redirects to the real one rather than being kept in step | `app/admin/staff/page.tsx` |
+| **U-20** | Fixed in the database, the only place it can be: the insert policy refuses `is_active = true` from a non-admin | `supabase_tighten_rls.sql` |
+| **U-21** | Both ends of the period read as local time | `admin/referrals/commissions` |
+| **U-22** | A workspace with no members is adoptable, so a clinic can claim its own name back. One in use never is | `app/api/signup/claim-slug/route.ts` |
+
+Findings from the first audit (`STATUS.md`, D-01 to D-15) are all fixed too,
+apart from the parts that need the two SQL files applying.
+
+---
 ## How to read this
 
 Each use case is marked:
