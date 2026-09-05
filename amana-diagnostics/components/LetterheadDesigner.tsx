@@ -18,7 +18,8 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import {
   RiText, RiImageAddLine, RiSeparator, RiSquareLine, RiCircleLine, RiTriangleLine,
   RiDeleteBinLine, RiBringToFront, RiSendToBack, RiBold, RiItalic, RiUnderline,
-  RiAlignLeft, RiAlignCenter, RiAlignRight,
+  RiAlignLeft, RiAlignCenter, RiAlignRight, RiShapesLine, RiFileCopyLine,
+  RiPentagonLine, RiHexagonLine, RiStarLine, RiVipDiamondLine,
 } from '@remixicon/react';
 
 // ── Canvas geometry ──────────────────────────────────────────────────────────
@@ -28,7 +29,24 @@ const CANVAS_W = 740;
 const DEFAULT_H = 220;
 const MIN = 8;
 
-type ElType = 'text' | 'image' | 'line' | 'rect' | 'circle' | 'triangle';
+type ElType =
+  | 'text' | 'image' | 'line' | 'rect' | 'circle'
+  | 'triangle' | 'diamond' | 'pentagon' | 'hexagon' | 'star';
+
+// Shapes drawn with a CSS clip-path polygon. `clip-path` survives the letterhead
+// sanitiser, so these print identically to the canvas. `circle`/`rect` are not
+// here — they use border-radius (and can therefore carry a real CSS border).
+const CLIP: Partial<Record<ElType, string>> = {
+  triangle: 'polygon(50% 0%, 0% 100%, 100% 100%)',
+  diamond: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)',
+  pentagon: 'polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%)',
+  hexagon: 'polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%)',
+  star: 'polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%)',
+};
+// Every element type that is a filled shape (fill colour applies, text does not).
+const FILLED = new Set<ElType>(['line', 'rect', 'circle', ...(Object.keys(CLIP) as ElType[])]);
+// Shapes whose outline is a real CSS border (clip-path shapes can't carry one).
+const BORDERABLE = new Set<ElType>(['rect', 'circle', 'image']);
 
 interface El {
   id: string;
@@ -108,8 +126,8 @@ function elStyle(e: El): string {
   } else if (e.type === 'circle') {
     parts.push(`background:${e.fill}`, 'border-radius:50%');
     if (e.borderWidth) parts.push(`border:${e.borderWidth}px solid ${e.borderColor}`);
-  } else if (e.type === 'triangle') {
-    parts.push(`background:${e.fill}`, 'clip-path:polygon(50% 0%, 0% 100%, 100% 100%)');
+  } else if (CLIP[e.type]) {
+    parts.push(`background:${e.fill}`, `clip-path:${CLIP[e.type]}`);
   }
   return parts.join(';');
 }
@@ -203,6 +221,10 @@ export default function LetterheadDesigner({ value, onChange }: Props) {
   const [height, setHeight] = useState(DEFAULT_H);
   const [selId, setSelId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [shapeMenu, setShapeMenu] = useState(false);
+  // Alignment guides shown live while dragging: canvas/other-element edges the
+  // moving element has snapped to. Cleared on mouse-up.
+  const [guides, setGuides] = useState<{ x: number[]; y: number[] }>({ x: [], y: [] });
 
   const canvasRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -247,7 +269,9 @@ export default function LetterheadDesigner({ value, onChange }: Props) {
     if (type === 'line') e = { ...e, w: 300, h: 4, x: 60, y: 90, fill: '#000000' };
     if (type === 'text') e = { ...e, w: 320, h: 48, x: 60, y: 40, content: 'Double-click to edit' };
     if (type === 'circle') e = { ...e, w: 100, h: 100 };
-    if (type === 'triangle') e = { ...e, w: 120, h: 100 };
+    if (type === 'triangle' || type === 'diamond' || type === 'pentagon' || type === 'hexagon' || type === 'star') {
+      e = { ...e, w: 110, h: 100 };
+    }
     apply([...elsRef.current, e]);
     setSelId(e.id);
   };
@@ -261,6 +285,43 @@ export default function LetterheadDesigner({ value, onChange }: Props) {
   const sendBack = (id: string) => {
     const min = elsRef.current.reduce((m, e) => Math.min(m, e.z), 0);
     apply(elsRef.current.map((e) => (e.id === id ? { ...e, z: min - 1 } : e)));
+  };
+  const duplicate = (id: string) => {
+    const src = elsRef.current.find((e) => e.id === id);
+    if (!src) return;
+    const z = elsRef.current.reduce((m, e) => Math.max(m, e.z), 0) + 1;
+    const copy: El = { ...src, id: uid(), x: src.x + 12, y: src.y + 12, z };
+    apply([...elsRef.current, copy]);
+    setSelId(copy.id);
+  };
+
+  // Nudge a snapping candidate onto the nearest canvas/element edge within
+  // THRESHOLD, and report which lines it locked onto so guides can be drawn.
+  const snapMove = (nx: number, ny: number, moving: El) => {
+    const TH = 6;
+    const others = elsRef.current.filter((e) => e.id !== moving.id && !e.rot);
+    const xt = [0, CANVAS_W / 2, CANVAS_W];
+    const yt = [0, heightRef.current / 2, heightRef.current];
+    others.forEach((e) => { xt.push(e.x, e.x + e.w / 2, e.x + e.w); yt.push(e.y, e.y + e.h / 2, e.y + e.h); });
+
+    const axis = (pos: number, size: number, targets: number[]) => {
+      const pts = [pos, pos + size / 2, pos + size];
+      let best: { delta: number; guide: number } | null = null;
+      for (const t of targets) for (const p of pts) {
+        const d = t - p;
+        if (Math.abs(d) <= TH && (!best || Math.abs(d) < Math.abs(best.delta))) best = { delta: d, guide: t };
+      }
+      return best;
+    };
+
+    const bx = moving.rot ? null : axis(nx, moving.w, xt);
+    const by = moving.rot ? null : axis(ny, moving.h, yt);
+    return {
+      x: bx ? nx + bx.delta : nx,
+      y: by ? ny + by.delta : ny,
+      gx: bx ? [bx.guide] : [],
+      gy: by ? [by.guide] : [],
+    };
   };
 
   // ── Pointer interactions ───────────────────────────────────────────────────
@@ -300,7 +361,16 @@ export default function LetterheadDesigner({ value, onChange }: Props) {
     const d = drag.current; if (!d) return;
     const p = pt(ev);
     if (d.mode === 'move') {
-      update(d.id, { x: d.ox + (p.x - d.sx), y: d.oy + (p.y - d.sy) });
+      const moving = elsRef.current.find((e) => e.id === d.id);
+      const rawX = d.ox + (p.x - d.sx), rawY = d.oy + (p.y - d.sy);
+      if (moving && !ev.altKey) {
+        const s = snapMove(rawX, rawY, moving);
+        setGuides({ x: s.gx, y: s.gy });
+        update(d.id, { x: s.x, y: s.y });
+      } else {
+        setGuides({ x: [], y: [] });
+        update(d.id, { x: rawX, y: rawY });
+      }
     } else if (d.mode === 'resize') {
       const v = { x: p.x - d.anchor.x, y: p.y - d.anchor.y };
       const local = rotate(v.x, v.y, -d.rot);
@@ -316,10 +386,34 @@ export default function LetterheadDesigner({ value, onChange }: Props) {
       update(d.id, { rot: Math.round(deg * 10) / 10 });
     }
   };
-  const onWinUp = () => { drag.current = null; removeWindow(); };
+  const onWinUp = () => { drag.current = null; setGuides({ x: [], y: [] }); removeWindow(); };
   const addWindow = () => { window.addEventListener('mousemove', onWinMove); window.addEventListener('mouseup', onWinUp); };
   const removeWindow = () => { window.removeEventListener('mousemove', onWinMove); window.removeEventListener('mouseup', onWinUp); };
   useEffect(() => () => removeWindow(), []); // eslint-disable-line
+
+  // Keyboard: arrow-nudge, delete, duplicate, deselect — but only when a shape
+  // is selected and focus isn't in a text field or a text box being edited.
+  useEffect(() => {
+    const onKey = (ev: KeyboardEvent) => {
+      if (!selId || editingId) return;
+      const t = ev.target as HTMLElement | null;
+      const tag = t?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t?.isContentEditable) return;
+
+      if (ev.key === 'Escape') { setSelId(null); return; }
+      if (ev.key === 'Delete' || ev.key === 'Backspace') { ev.preventDefault(); removeEl(selId); return; }
+      if ((ev.ctrlKey || ev.metaKey) && (ev.key === 'd' || ev.key === 'D')) { ev.preventDefault(); duplicate(selId); return; }
+      const step = ev.shiftKey ? 10 : 1;
+      const cur = elsRef.current.find((e) => e.id === selId);
+      if (!cur) return;
+      if (ev.key === 'ArrowLeft') { ev.preventDefault(); update(selId, { x: cur.x - step }); }
+      else if (ev.key === 'ArrowRight') { ev.preventDefault(); update(selId, { x: cur.x + step }); }
+      else if (ev.key === 'ArrowUp') { ev.preventDefault(); update(selId, { y: cur.y - step }); }
+      else if (ev.key === 'ArrowDown') { ev.preventDefault(); update(selId, { y: cur.y + step }); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selId, editingId]); // eslint-disable-line
 
   const onImagePick = (ev: React.ChangeEvent<HTMLInputElement>) => {
     const file = ev.target.files?.[0]; if (!file) return;
@@ -351,8 +445,22 @@ export default function LetterheadDesigner({ value, onChange }: Props) {
         <TBtn title="Image / logo" onClick={() => fileRef.current?.click()}><RiImageAddLine size={16} /> Image</TBtn>
         <TBtn title="Line" onClick={() => addEl('line')}><RiSeparator size={16} /> Line</TBtn>
         <TBtn title="Rectangle" onClick={() => addEl('rect')}><RiSquareLine size={16} /> Rect</TBtn>
-        <TBtn title="Circle" onClick={() => addEl('circle')}><RiCircleLine size={16} /> Circle</TBtn>
-        <TBtn title="Triangle" onClick={() => addEl('triangle')}><RiTriangleLine size={16} /> Triangle</TBtn>
+        <TBtn title="Circle / ellipse" onClick={() => addEl('circle')}><RiCircleLine size={16} /> Circle</TBtn>
+        <div style={{ position: 'relative' }}>
+          <TBtn title="More shapes" onClick={() => setShapeMenu((v) => !v)}><RiShapesLine size={16} /> Shapes ▾</TBtn>
+          {shapeMenu && (
+            <>
+              <div style={S.menuBackdrop} onClick={() => setShapeMenu(false)} />
+              <div style={S.menu}>
+                <MenuItem onClick={() => { addEl('triangle'); setShapeMenu(false); }}><RiTriangleLine size={15} /> Triangle</MenuItem>
+                <MenuItem onClick={() => { addEl('diamond'); setShapeMenu(false); }}><RiVipDiamondLine size={15} /> Diamond</MenuItem>
+                <MenuItem onClick={() => { addEl('pentagon'); setShapeMenu(false); }}><RiPentagonLine size={15} /> Pentagon</MenuItem>
+                <MenuItem onClick={() => { addEl('hexagon'); setShapeMenu(false); }}><RiHexagonLine size={15} /> Hexagon</MenuItem>
+                <MenuItem onClick={() => { addEl('star'); setShapeMenu(false); }}><RiStarLine size={15} /> Star</MenuItem>
+              </div>
+            </>
+          )}
+        </div>
         <div style={{ flex: 1 }} />
         <span style={{ fontSize: '0.72rem', color: '#64748b' }}>Height</span>
         <input type="number" value={Math.round(height)} onChange={(e) => setHeightSafe(parseInt(e.target.value) || DEFAULT_H)}
@@ -376,14 +484,20 @@ export default function LetterheadDesigner({ value, onChange }: Props) {
                 onTextInput={(html) => update(e.id, { content: html })}
               />
             ))}
+            {guides.x.map((gx, i) => (
+              <div key={`gx${i}`} style={{ position: 'absolute', left: gx, top: 0, width: 1, height: '100%', background: '#ec4899', zIndex: 10000, pointerEvents: 'none' }} />
+            ))}
+            {guides.y.map((gy, i) => (
+              <div key={`gy${i}`} style={{ position: 'absolute', top: gy, left: 0, height: 1, width: '100%', background: '#ec4899', zIndex: 10000, pointerEvents: 'none' }} />
+            ))}
           </div>
         </div>
 
         {/* Inspector */}
         <div style={S.inspector}>
-          {!sel && <div style={S.hint}>Select an element to edit its properties, or add one from the toolbar. Double-click a text box to type.</div>}
+          {!sel && <div style={S.hint}>Select an element to edit its properties, or add one from the toolbar. Double-click a text box to type.<br /><br />Arrow keys nudge (Shift = 10px), Ctrl+D duplicates, Delete removes, Esc deselects. Drag near an edge to snap — hold Alt to turn snapping off.</div>}
           {sel && <Inspector e={sel} onChange={(patch) => update(sel.id, patch)} onDelete={() => removeEl(sel.id)}
-            onFront={() => bringFront(sel.id)} onBack={() => sendBack(sel.id)} />}
+            onFront={() => bringFront(sel.id)} onBack={() => sendBack(sel.id)} onDuplicate={() => duplicate(sel.id)} />}
         </div>
       </div>
     </div>
@@ -437,8 +551,8 @@ function ElementView({ e, selected, editing, onMouseDown, onDoubleClick, onResiz
     Object.assign(shapeStyle, { background: e.fill, borderRadius: e.radius, border: e.borderWidth ? `${e.borderWidth}px solid ${e.borderColor}` : undefined });
   } else if (e.type === 'circle') {
     Object.assign(shapeStyle, { background: e.fill, borderRadius: '50%', border: e.borderWidth ? `${e.borderWidth}px solid ${e.borderColor}` : undefined });
-  } else if (e.type === 'triangle') {
-    Object.assign(shapeStyle, { background: e.fill, clipPath: 'polygon(50% 0%, 0% 100%, 100% 100%)' });
+  } else if (CLIP[e.type]) {
+    Object.assign(shapeStyle, { background: e.fill, clipPath: CLIP[e.type] });
   }
 
   const el = e.type === 'image'
@@ -474,8 +588,9 @@ function ElementView({ e, selected, editing, onMouseDown, onDoubleClick, onResiz
 }
 
 // ── Inspector ────────────────────────────────────────────────────────────────
-function Inspector({ e, onChange, onDelete, onFront, onBack }: {
-  e: El; onChange: (patch: Partial<El>) => void; onDelete: () => void; onFront: () => void; onBack: () => void;
+function Inspector({ e, onChange, onDelete, onFront, onBack, onDuplicate }: {
+  e: El; onChange: (patch: Partial<El>) => void; onDelete: () => void;
+  onFront: () => void; onBack: () => void; onDuplicate: () => void;
 }) {
   const num = (label: string, key: keyof El, step = 1) => (
     <label style={S.field}><span style={S.fLabel}>{label}</span>
@@ -528,8 +643,8 @@ function Inspector({ e, onChange, onDelete, onFront, onBack }: {
         </>
       )}
 
-      {(e.type === 'rect' || e.type === 'circle' || e.type === 'triangle' || e.type === 'line') && color('Fill', 'fill')}
-      {(e.type === 'rect' || e.type === 'circle' || e.type === 'image') && (
+      {FILLED.has(e.type) && color('Fill', 'fill')}
+      {BORDERABLE.has(e.type) && (
         <div style={S.row}>{num('Border', 'borderWidth')}{color('Bd. color', 'borderColor')}</div>
       )}
       {(e.type === 'rect' || e.type === 'image') && <div style={S.row}>{num('Radius', 'radius')}<span style={{ flex: 1 }} /></div>}
@@ -537,6 +652,7 @@ function Inspector({ e, onChange, onDelete, onFront, onBack }: {
       <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
         <TBtn onClick={onFront}><RiBringToFront size={14} /> Front</TBtn>
         <TBtn onClick={onBack}><RiSendToBack size={14} /> Back</TBtn>
+        <TBtn onClick={onDuplicate}><RiFileCopyLine size={14} /> Copy</TBtn>
         <button type="button" onClick={onDelete} style={S.delBtn}><RiDeleteBinLine size={14} /> Delete</button>
       </div>
     </div>
@@ -550,6 +666,16 @@ function TBtn({ children, onClick, title }: { children: React.ReactNode; onClick
     <button type="button" title={title} onClick={onClick} onMouseEnter={() => setH(true)} onMouseLeave={() => setH(false)}
       style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 9px', fontSize: '0.74rem', fontWeight: 600,
         border: '1px solid #e2e8f0', borderRadius: 5, background: h ? '#f1f5f9' : '#fff', color: '#334155', cursor: 'pointer' }}>
+      {children}
+    </button>
+  );
+}
+function MenuItem({ children, onClick }: { children: React.ReactNode; onClick: () => void }) {
+  const [h, setH] = useState(false);
+  return (
+    <button type="button" onClick={onClick} onMouseEnter={() => setH(true)} onMouseLeave={() => setH(false)}
+      style={{ display: 'flex', alignItems: 'center', gap: 7, width: '100%', padding: '7px 12px', fontSize: '0.78rem',
+        fontWeight: 600, border: 'none', background: h ? '#f1f5f9' : '#fff', color: '#334155', cursor: 'pointer', textAlign: 'left' }}>
       {children}
     </button>
   );
@@ -584,4 +710,6 @@ const S: Record<string, React.CSSProperties> = {
   color: { width: '100%', height: 28, padding: 0, border: '1px solid #e2e8f0', borderRadius: 4, background: 'none', cursor: 'pointer' },
   select: { width: '100%', padding: '4px 6px', fontSize: '0.74rem', border: '1px solid #e2e8f0', borderRadius: 4 },
   delBtn: { display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 9px', fontSize: '0.74rem', fontWeight: 600, border: '1px solid #fecaca', borderRadius: 5, background: '#fef2f2', color: '#dc2626', cursor: 'pointer', marginLeft: 'auto' },
+  menuBackdrop: { position: 'fixed', inset: 0, zIndex: 50 },
+  menu: { position: 'absolute', top: '100%', left: 0, marginTop: 4, minWidth: 150, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 6, boxShadow: '0 6px 20px rgba(0,0,0,0.14)', overflow: 'hidden', zIndex: 51, padding: '4px 0' },
 };
