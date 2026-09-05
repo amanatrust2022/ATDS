@@ -2,6 +2,57 @@ import path from 'path';
 
 let dbInstance: any = null;
 
+
+/**
+ * Adds a column if the table has not got one already.
+ *
+ * These used to be `try { ALTER TABLE ... } catch (e) {}` — around twenty-five of
+ * them, run on every single start-up. That is one way to express "the column may
+ * already exist", but it says the same thing about a locked file, a full disk
+ * and a typo in the DDL: nothing. The app then carried on against a schema it
+ * believed was correct.
+ *
+ * Asking what columns exist first means "already there" is a fact rather than an
+ * exception, so anything that still fails is a real failure and gets said out
+ * loud.
+ */
+function addColumn(db: any, table: string, column: string, definition: string): void {
+  let existing: any[];
+  try {
+    existing = db.prepare(`PRAGMA table_info(${table})`).all();
+  } catch (err) {
+    console.error(`[db] cannot inspect ${table}; skipping column ${column}:`, err);
+    return;
+  }
+
+  if (!existing.length) return;                       // table not created yet
+  if (existing.some((c: any) => c.name === column)) return;  // nothing to do
+
+  try {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${definition};`);
+    console.log(`[db] added ${table}.${column}`);
+  } catch (err) {
+    // Loud on purpose. Silently continuing here is how a machine ends up
+    // running against a schema nobody knows is wrong.
+    console.error(`[db] FAILED to add ${table}.${column} — the database is not in the shape the app expects:`, err);
+    throw err;
+  }
+}
+
+/** Bumped when the expected schema changes, so a machine can say where it is. */
+export const EXPECTED_SCHEMA_VERSION = 1;
+
+/** Records which schema this database has been brought up to. */
+function recordSchemaVersion(db: any): void {
+  try {
+    db.prepare(`INSERT INTO sync_metadata (key, value) VALUES ('schema_version', ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value`)
+      .run(String(EXPECTED_SCHEMA_VERSION));
+  } catch (err) {
+    console.warn('[db] could not record the schema version:', err);
+  }
+}
+
 export function getDb(): any {
   if (typeof window !== 'undefined') {
     throw new Error('DatabaseSync can only be used on the server side.');
@@ -275,50 +326,22 @@ function initDb(db: any) {
   `);
 
   // 12. Safe Migrations for existing databases
-  try {
-    db.exec(`ALTER TABLE test_prices ADD COLUMN commission_type TEXT DEFAULT 'percentage';`);
-  } catch (e) {}
-  try {
-    db.exec(`ALTER TABLE test_prices ADD COLUMN commission_value REAL DEFAULT 0.0;`);
-  } catch (e) {}
+    addColumn(db, 'test_prices', 'commission_type', `commission_type TEXT DEFAULT 'percentage'`);
+    addColumn(db, 'test_prices', 'commission_value', `commission_value REAL DEFAULT 0.0`);
 
-  try {
-    db.exec(`ALTER TABLE patient_tests ADD COLUMN price REAL DEFAULT 0.0;`);
-  } catch (e) {}
-  try {
-    db.exec(`ALTER TABLE patient_tests ADD COLUMN commission_type TEXT DEFAULT 'none';`);
-  } catch (e) {}
-  try {
-    db.exec(`ALTER TABLE patient_tests ADD COLUMN commission_value REAL DEFAULT 0.0;`);
-  } catch (e) {}
-  try {
-    db.exec(`ALTER TABLE patient_tests ADD COLUMN commission_amount REAL DEFAULT 0.0;`);
-  } catch (e) {}
+    addColumn(db, 'patient_tests', 'price', `price REAL DEFAULT 0.0`);
+    addColumn(db, 'patient_tests', 'commission_type', `commission_type TEXT DEFAULT 'none'`);
+    addColumn(db, 'patient_tests', 'commission_value', `commission_value REAL DEFAULT 0.0`);
+    addColumn(db, 'patient_tests', 'commission_amount', `commission_amount REAL DEFAULT 0.0`);
 
-  try {
-    db.exec(`ALTER TABLE patients ADD COLUMN total_amount REAL DEFAULT 0.0;`);
-  } catch (e) {}
-  try {
-    db.exec(`ALTER TABLE patients ADD COLUMN discount_type TEXT DEFAULT 'none';`);
-  } catch (e) {}
-  try {
-    db.exec(`ALTER TABLE patients ADD COLUMN discount_value REAL DEFAULT 0.0;`);
-  } catch (e) {}
-  try {
-    db.exec(`ALTER TABLE patients ADD COLUMN discount_amount REAL DEFAULT 0.0;`);
-  } catch (e) {}
-  try {
-    db.exec(`ALTER TABLE patients ADD COLUMN net_amount REAL DEFAULT 0.0;`);
-  } catch (e) {}
-  try {
-    db.exec(`ALTER TABLE patients ADD COLUMN paid_amount REAL DEFAULT 0.0;`);
-  } catch (e) {}
-  try {
-    db.exec(`ALTER TABLE patients ADD COLUMN payment_status TEXT DEFAULT 'paid';`);
-  } catch (e) {}
-  try {
-    db.exec(`ALTER TABLE patients ADD COLUMN payment_method TEXT DEFAULT 'cash';`);
-  } catch (e) {}
+    addColumn(db, 'patients', 'total_amount', `total_amount REAL DEFAULT 0.0`);
+    addColumn(db, 'patients', 'discount_type', `discount_type TEXT DEFAULT 'none'`);
+    addColumn(db, 'patients', 'discount_value', `discount_value REAL DEFAULT 0.0`);
+    addColumn(db, 'patients', 'discount_amount', `discount_amount REAL DEFAULT 0.0`);
+    addColumn(db, 'patients', 'net_amount', `net_amount REAL DEFAULT 0.0`);
+    addColumn(db, 'patients', 'paid_amount', `paid_amount REAL DEFAULT 0.0`);
+    addColumn(db, 'patients', 'payment_status', `payment_status TEXT DEFAULT 'paid'`);
+    addColumn(db, 'patients', 'payment_method', `payment_method TEXT DEFAULT 'cash'`);
 
   // 13. Billing and Wallets Tables
   db.exec(`
@@ -372,51 +395,19 @@ function initDb(db: any) {
     );
   `);
 
-  try {
-    db.exec(`ALTER TABLE patients ADD COLUMN billing_account_id TEXT;`);
-  } catch (e) {}
+    addColumn(db, 'patients', 'billing_account_id', `billing_account_id TEXT`);
 
-  try {
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS patient_profiles (
-        id INTEGER PRIMARY KEY,
-        organization_id TEXT NOT NULL,
-        first_name TEXT NOT NULL,
-        surname TEXT NOT NULL,
-        middle_name TEXT,
-        phone TEXT,
-        email TEXT,
-        address TEXT,
-        sex TEXT,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      );
-    `);
-  } catch (e) {}
+    addColumn(db, 'patients', 'patient_profile_id', `patient_profile_id INTEGER`);
 
-  try {
-    db.exec(`ALTER TABLE patients ADD COLUMN patient_profile_id INTEGER;`);
-  } catch (e) {}
-
-  try {
-    db.exec(`ALTER TABLE profiles ADD COLUMN email TEXT;`);
-  } catch (e) {}
+    addColumn(db, 'profiles', 'email', `email TEXT`);
 
   // Outbox retry bookkeeping. A row that the cloud will not accept is counted
   // and eventually set aside (dead = 1) instead of blocking every change behind
   // it — see lib/sync/outbox.ts.
-  try {
-    db.exec(`ALTER TABLE sync_outbox ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0;`);
-  } catch (e) {}
-  try {
-    db.exec(`ALTER TABLE sync_outbox ADD COLUMN last_error TEXT;`);
-  } catch (e) {}
-  try {
-    db.exec(`ALTER TABLE sync_outbox ADD COLUMN last_attempt_at INTEGER;`);
-  } catch (e) {}
-  try {
-    db.exec(`ALTER TABLE sync_outbox ADD COLUMN dead INTEGER NOT NULL DEFAULT 0;`);
-  } catch (e) {}
+    addColumn(db, 'sync_outbox', 'attempts', `attempts INTEGER NOT NULL DEFAULT 0`);
+    addColumn(db, 'sync_outbox', 'last_error', `last_error TEXT`);
+    addColumn(db, 'sync_outbox', 'last_attempt_at', `last_attempt_at INTEGER`);
+    addColumn(db, 'sync_outbox', 'dead', `dead INTEGER NOT NULL DEFAULT 0`);
 
   // Indexes. There were none at all: every lookup by clinic, every lookup of a
   // patient's tests, and every ordering by registration date was a full scan.
@@ -453,6 +444,10 @@ function initDb(db: any) {
       e?.message,
     );
   }
+
+  // Reached only if every step above succeeded, so this says what shape the
+  // database is actually in rather than what shape it was asked to be in.
+  recordSchemaVersion(db);
 }
 
 

@@ -7,7 +7,7 @@ import {
 } from '@remixicon/react';
 import { useWalletStore } from '@/lib/store/useWalletStore';
 import { 
-  fetchAccountLedger, fetchExternalCharges, linkPatientToAccount, registerPatientAndGetId, logExternalCharge, updateBillingAccountLimit, upgradeBillingAccount, depositToBillingAccount, updatePatientBillingAccount, generateSlipNumber 
+  fetchAccountLedger, fetchExternalCharges, linkPatientToAccount, registerPatientAndGetId, logExternalCharge, updateBillingAccountLimit, upgradeBillingAccount, depositToBillingAccount, updatePatientBillingAccount, generateSlipNumber, reverseLedgerTransaction 
 } from '@/lib/store';
 import { getLedgerStatementTemplate, printHtml } from '@/lib/templates';
 import { Patient, BillingAccount } from '@/lib/store';
@@ -66,6 +66,56 @@ export default function LedgerModal({ organization, patients, profile, onSuccess
   const setShowLedgerModal = (val) => val === null ? store.closeLedger() : store.openLedger(val);
   const setWorkspaceTab = store.setWorkspaceTab;
   const setBillingTransactions = store.setBillingTransactions;
+
+  const [reversing, setReversing] = useState(false);
+
+  /**
+   * Which entries already have a reversal pointing at them.
+   *
+   * Derived from the statement rather than tracked separately: a reversal names
+   * what it undoes in reference_id, so the statement already knows.
+   */
+  const reversedIds = new Set(
+    billingTransactions.filter((t: any) => t.type === 'reversal' && t.reference_id).map((t: any) => t.reference_id),
+  );
+
+  /**
+   * Undoes a charge that should not have been made.
+   *
+   * There was previously no way to do this: a receptionist who charged the
+   * wrong wallet could only make a compensating deposit with a note, leaving
+   * the wrong charge on the patient's statement looking like a real one.
+   */
+  const handleReverse = async (tx: any) => {
+    const reason = prompt(
+      `Reverse this charge?
+
+${tx.description}
+
+The original entry stays on the statement and a matching credit is added beside it.
+
+Why is it being reversed?`,
+    );
+    if (reason === null) return;
+    if (!reason.trim()) { alert('Please give a reason for the reversal.'); return; }
+
+    setReversing(true);
+    try {
+      await reverseLedgerTransaction(tx.id, reason.trim(), profile?.full_name || 'Reception Desk', organization?.id || '');
+
+      const txs = await fetchAccountLedger(tx.billing_account_id);
+      setBillingTransactions(txs);
+
+      const accs = await fetchBillingAccounts(organization?.id || '');
+      store.setBillingAccounts(accs);
+
+      alert('Charge reversed. The original entry remains on the statement.');
+    } catch (err: any) {
+      alert('Could not reverse this charge: ' + (err.message || 'unknown error'));
+    } finally {
+      setReversing(false);
+    }
+  };
   const setShowAddExisting = store.setShowAddExisting;
   const setExistingPatientToLink = store.setExistingPatientToLink;
   const setShowQuickRegisterDep = store.setShowQuickRegisterDep;
@@ -733,16 +783,33 @@ export default function LedgerModal({ organization, patients, profile, onSuccess
                             month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
                           });
                           const isDeposit = tx.type === 'deposit' || tx.amount >= 0;
+                          const isReversal = tx.type === 'reversal';
+                          const wasReversed = reversedIds.has(tx.id);
+                          // A charge that has not already been undone. Deposits
+                          // are not reversible here; that needs a withdrawal.
+                          const canReverse = !isReversal && tx.amount < 0 && !wasReversed && !reversing;
                           return (
-                            <div key={tx.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.6rem 0.75rem', border: '1px solid var(--gray-100)', background: 'var(--gray-50)', borderRadius: 4 }}>
+                            <div key={tx.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.6rem 0.75rem', border: '1px solid var(--gray-100)', background: wasReversed ? 'var(--gray-100)' : 'var(--gray-50)', borderRadius: 4 }}>
                               <div>
-                                <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--gray-800)' }}>{tx.description}</div>
+                                <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--gray-800)', textDecoration: wasReversed ? 'line-through' : undefined }}>{tx.description}</div>
                                 <div style={{ fontSize: '0.65rem', color: 'var(--gray-500)', marginTop: '0.15rem' }}>
                                   {dt} • Ref: {tx.reference_id || '—'} • Staff: {tx.created_by || '—'}
+                                  {wasReversed && <strong style={{ color: '#991b1b' }}> • Reversed</strong>}
                                 </div>
                               </div>
-                              <div style={{ textAlign: 'right', fontWeight: 700, fontSize: '0.82rem', color: isDeposit ? '#166534' : '#991b1b' }}>
-                                {isDeposit ? '+' : ''}₦{tx.amount.toLocaleString('en-NG', { minimumFractionDigits: 2 })}
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                                {canReverse && (
+                                  <button
+                                    onClick={() => handleReverse(tx)}
+                                    title="Record the opposite of this charge. The original entry stays on the statement."
+                                    style={{ background: 'none', border: '1px solid var(--gray-300)', color: 'var(--gray-600)', fontSize: '0.65rem', fontWeight: 700, padding: '0.2rem 0.5rem', borderRadius: 3, cursor: 'pointer' }}
+                                  >
+                                    Reverse
+                                  </button>
+                                )}
+                                <div style={{ textAlign: 'right', fontWeight: 700, fontSize: '0.82rem', color: isDeposit ? '#166534' : '#991b1b' }}>
+                                  {isDeposit ? '+' : ''}₦{tx.amount.toLocaleString('en-NG', { minimumFractionDigits: 2 })}
+                                </div>
                               </div>
                             </div>
                           );

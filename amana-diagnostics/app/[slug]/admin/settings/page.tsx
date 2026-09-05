@@ -7,7 +7,7 @@ import { createClient } from '@/lib/supabase';
 import { RiSettings3Line, RiCheckLine, RiSave3Line, RiHospitalLine } from '@remixicon/react';
 import dynamic from 'next/dynamic';
 import { buildDocCss } from '@/lib/letterheadStyles';
-const RichTextEditor = dynamic(() => import('@/components/RichTextEditor'), { ssr: false });
+const LetterheadDesigner = dynamic(() => import('@/components/LetterheadDesigner'), { ssr: false });
 
 const IS_LOCAL_MODE = typeof window !== 'undefined'
   ? (localStorage.getItem('amana_local_mode') === null
@@ -170,7 +170,7 @@ function OrganizationSettings() {
         </p>
       </div>
 
-      <div style={{ padding: '0 2rem', maxWidth: 950, margin: '0 auto', paddingBottom: '3rem' }}>
+      <div style={{ padding: '0 2rem', maxWidth: 1180, margin: '0 auto', paddingBottom: '3rem' }}>
         <div style={{ background: 'white', border: '1px solid var(--gray-200)', borderRadius: 0, overflow: 'hidden' }}>
           
           <div style={{ padding: '1.5rem 2rem', borderBottom: '1px solid var(--gray-200)', display: 'flex', alignItems: 'center', gap: '1rem', background: 'rgba(249,250,251,0.5)' }}>
@@ -221,15 +221,13 @@ function OrganizationSettings() {
               </div>
 
               <div>
-                <label style={lblStyle}>Custom Designed Letterhead (Google Docs style Editor) *</label>
+                <label style={lblStyle}>Custom Designed Letterhead (Free Design Canvas) *</label>
                 <p style={{ ...hintStyle, marginBottom: '0.75rem' }}>
-                  Use this editor to layout your letterhead. You can change font sizes, text alignments, apply custom colors, insert row/column grids, and click the image icon to embed your hospital logo.
+                  Add text, your logo, lines and shapes, then drag to move, use the corner handles to resize, and the top handle to rotate. Select any element to fine-tune its position, size, colour and angle. Double-click a text box to type.
                 </p>
-                <RichTextEditor
+                <LetterheadDesigner
                   value={formData.letterheadHtml}
                   onChange={val => setFormData({ ...formData, letterheadHtml: val })}
-                  placeholder="Design your custom HTML letterhead here..."
-                  minHeight="320px"
                 />
               </div>
 

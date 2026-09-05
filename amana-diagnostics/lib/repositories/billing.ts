@@ -28,6 +28,21 @@ export interface BillingRepository {
     createdBy: string, organizationId: string, patientId?: number | string,
   ): Promise<void>;
   logExternalCharge(charge: Omit<ExternalDepartmentCharge, 'id' | 'createdAt'>): Promise<void>;
+  /**
+   * Undoes a charge that should not have been made, by recording its opposite.
+   *
+   * There was no way to do this at all. A receptionist who charged the wrong
+   * wallet — easy on a family account — could only make a compensating deposit
+   * with an explanatory note, which left the wrong charge standing in the
+   * patient's statement looking like a real one.
+   *
+   * The original entry is never edited or removed: a statement is a record of
+   * what happened, and "this was reversed, here is why" is the truth, whereas a
+   * charge that quietly vanishes is not.
+   */
+  reverseTransaction(
+    transactionId: string, reason: string, createdBy: string, organizationId: string,
+  ): Promise<void>;
   listLedger(accountId: string): Promise<BillingLedgerTransaction[]>;
   listExternalCharges(organizationId: string): Promise<ExternalDepartmentCharge[]>;
   linkPatient(patientId: number | string, billingAccountId: string | null): Promise<void>;
@@ -79,6 +94,14 @@ export const localBillingRepository: BillingRepository = {
 
   async logExternalCharge(charge) {
     await postJson(ENDPOINT, { action: 'logExternalCharge', charge }, 'Failed to log external charge');
+  },
+
+  async reverseTransaction(transactionId, reason, createdBy, organizationId) {
+    await postJson(
+      ENDPOINT,
+      { action: 'reverseTransaction', transactionId, reason, createdBy, organizationId },
+      'Failed to reverse the transaction',
+    );
   },
 
   async listLedger(accountId) {
@@ -399,6 +422,88 @@ export const cloudBillingRepository: CloudBillingRepository = {
       created_at: now,
     }]);
     if (chErr) throw chErr;
+  },
+
+  /**
+   * Records the opposite of a transaction, leaving the original in place.
+   *
+   * Uses the same deposit_to_wallet function, because a reversal of a charge is
+   * arithmetically a deposit — and it is the one path that already moves the
+   * balance and writes the ledger row together.
+   */
+  async reverseTransaction(transactionId, reason, createdBy, organizationId) {
+    const supabase = createClient();
+    const now = new Date().toISOString();
+
+    const { data: original, error: readErr } = await supabase
+      .from('billing_ledger_transactions')
+      .select('*')
+      .eq('id', transactionId)
+      .eq('organization_id', organizationId)
+      .maybeSingle();
+
+    if (readErr) throw readErr;
+    if (!original) throw new Error('That transaction could not be found');
+
+    const tx = original as any;
+    if (tx.type === 'reversal') throw new Error('That entry is itself a reversal');
+
+    // One reversal per entry, or a charge could be handed back repeatedly.
+    const { count: alreadyReversed } = await supabase
+      .from('billing_ledger_transactions')
+      .select('id', { count: 'exact', head: true })
+      .eq('organization_id', organizationId)
+      .eq('type', 'reversal')
+      .eq('reference_id', transactionId);
+
+    if ((alreadyReversed ?? 0) > 0) throw new Error('That transaction has already been reversed');
+
+    const restored = -Number(tx.amount || 0);
+    if (!Number.isFinite(restored) || restored === 0) {
+      throw new Error('That transaction has no amount to reverse');
+    }
+
+    // Checked before anything is written. deposit_to_wallet only ever adds, so
+    // undoing a deposit — which has to subtract — is not something it can do,
+    // and finding that out after the call would have handed the money over and
+    // then reported failure.
+    if (restored < 0) {
+      throw new Error('Reversing a deposit is not supported yet. Record a withdrawal instead.');
+    }
+
+    const ledger = {
+      id: crypto.randomUUID(),
+      organization_id: organizationId,
+      billing_account_id: tx.billing_account_id,
+      patient_id: tx.patient_id || null,
+      type: 'reversal',
+      amount: restored,
+      description: `Reversal of "${tx.description || 'transaction'}" — ${reason}`,
+      // Points at what it undoes, so a statement can be read straight through.
+      reference_id: transactionId,
+      payment_method: tx.payment_method || null,
+      created_by: createdBy,
+      created_at: now,
+    };
+
+    const { error } = await supabase.rpc('deposit_to_wallet', {
+      p_account: {
+        id: tx.billing_account_id,
+        organization_id: organizationId,
+        amount: restored,
+        updated_at: now,
+      },
+      p_ledger: ledger,
+    });
+
+    if (!error) return;
+
+    if (isMissingFunction(error as RpcError)) {
+      throw new Error(
+        'Reversal needs the deposit_to_wallet database function. Apply supabase_deposit_atomicity.sql first.',
+      );
+    }
+    throw toBillingError(error as RpcError);
   },
 
   async listLedger(accountId) {

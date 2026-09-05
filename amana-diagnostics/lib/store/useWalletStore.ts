@@ -229,13 +229,34 @@ export const useWalletStore = create<WalletState>((set, get) => ({
     const state = get();
     if (!state.accountForm.name.trim() && !state.isOwnerNew) throw new Error('Please enter account name');
 
+    // ── Everything is checked before anything is written ──────────────────
+    //
+    // This used to validate each dependant as it reached them, in the middle of
+    // registering the ones before. A blank surname on the third dependant threw
+    // after the owner and the first two had already been saved: no wallet, and
+    // three patients now loose in the queue owned by nobody. Retrying made three
+    // more.
+    //
+    // Registering people one at a time is still not atomic — that would need a
+    // database function like the ones in supabase_wallet_atomicity.sql. But the
+    // failure that actually happened at the desk was a typo, and a typo can no
+    // longer get past this point.
+    if (state.isOwnerNew && (!state.newOwnerForm.firstName.trim() || !state.newOwnerForm.surname.trim())) {
+      throw new Error('Please fill in new owner first name and surname');
+    }
+    if (!state.isOwnerNew && !state.accountForm.ownerId) {
+      throw new Error('Owner is required');
+    }
+    state.newDependentsToRegister.forEach((nd, i) => {
+      if (!nd.firstName.trim() || !nd.surname.trim()) {
+        throw new Error(`Please fill in first name and surname for dependant ${i + 1}`);
+      }
+    });
+
     let finalOwnerId: number | string = state.accountForm.ownerId;
     let finalAccountName = state.accountForm.name.trim();
 
     if (state.isOwnerNew) {
-      if (!state.newOwnerForm.firstName.trim() || !state.newOwnerForm.surname.trim()) {
-        throw new Error('Please fill in new owner first name and surname');
-      }
       const slipNumber = await params.generateSlipNumber(params.organizationId);
       const patientData = {
         slipNumber,
@@ -259,9 +280,6 @@ export const useWalletStore = create<WalletState>((set, get) => ({
 
     const newlyRegisteredDependentIds: (number | string)[] = [];
     for (const nd of state.newDependentsToRegister) {
-      if (!nd.firstName.trim() || !nd.surname.trim()) {
-        throw new Error('Please fill in all dependents first name and surname');
-      }
       const slipNumber = await params.generateSlipNumber(params.organizationId);
       const dependentData = {
         slipNumber,

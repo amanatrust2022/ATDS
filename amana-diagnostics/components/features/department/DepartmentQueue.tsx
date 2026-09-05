@@ -2,6 +2,7 @@
 import { RiTestTubeLine, RiRadarLine, RiCheckLine, RiMoreLine, RiTimeLine } from '@remixicon/react';
 import type { Department, Patient, PatientTest } from '@/lib/store';
 import type { DepartmentTheme } from './theme';
+import { patientDisplayName } from '@/lib/store/patientName';
 
 interface Props {
   department: Department;
@@ -16,8 +17,7 @@ interface Props {
   theme: DepartmentTheme;
 }
 
-const fullName = (p: Patient) =>
-  p.name || [p.firstName, p.middleName, p.surname].filter(Boolean).join(' ');
+const fullName = patientDisplayName;
 
 function timeAgo(iso: string) {
   const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);

@@ -268,6 +268,88 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, newBalance });
     }
 
+    if (action === 'reverseTransaction') {
+      const { transactionId, reason, createdBy, organizationId } = body;
+      if (!transactionId || !organizationId) {
+        return NextResponse.json({ error: 'Missing transactionId or organizationId' }, { status: 400 });
+      }
+
+      const txId = crypto.randomUUID();
+
+      try {
+        inTransaction(db, () => {
+          const original = db
+            .prepare('SELECT * FROM billing_ledger_transactions WHERE id = ? AND organization_id = ?')
+            .get(transactionId, organizationId) as any;
+          if (!original) throw new HttpError('That transaction could not be found', 404);
+          if (original.type === 'reversal') throw new HttpError('That entry is itself a reversal', 400);
+
+          // One reversal per entry, or a charge could be handed back repeatedly.
+          const seen = db
+            .prepare("SELECT COUNT(*) as count FROM billing_ledger_transactions WHERE organization_id = ? AND type = 'reversal' AND reference_id = ?")
+            .get(organizationId, transactionId) as { count: number };
+          if (seen.count > 0) throw new HttpError('That transaction has already been reversed', 400);
+
+          const restored = -Number(original.amount || 0);
+          if (!Number.isFinite(restored) || restored === 0) {
+            throw new HttpError('That transaction has no amount to reverse', 400);
+          }
+
+          const acc = db
+            .prepare('SELECT balance FROM billing_accounts WHERE id = ? AND organization_id = ?')
+            .get(original.billing_account_id, organizationId) as { balance: number } | undefined;
+          if (!acc) throw new HttpError('Billing account not found', 404);
+
+          const updated = (acc.balance || 0) + restored;
+
+          db.prepare('UPDATE billing_accounts SET balance = ?, updated_at = ? WHERE id = ?')
+            .run(updated, nowStr, original.billing_account_id);
+
+          // The original entry is left exactly as it is. A statement records
+          // what happened; a charge that quietly disappears does not.
+          const description = `Reversal of "${original.description || 'transaction'}" — ${reason || 'no reason given'}`;
+
+          db.prepare(`
+            INSERT INTO billing_ledger_transactions (
+              id, organization_id, billing_account_id, patient_id, type, amount, description, reference_id, payment_method, created_by, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `).run(
+            txId, organizationId, original.billing_account_id, original.patient_id || null,
+            'reversal', restored, description, transactionId,
+            original.payment_method || null, createdBy || null, nowStr,
+          );
+
+          const fullAcc = db.prepare('SELECT * FROM billing_accounts WHERE id = ?').get(original.billing_account_id) as any;
+          if (fullAcc) {
+            queueSync(db, 'billing_accounts', 'UPDATE', original.billing_account_id, {
+              ...fullAcc, balance: updated, updated_at: nowStr,
+            });
+          }
+
+          queueSync(db, 'billing_ledger_transactions', 'INSERT', txId, {
+            id: txId,
+            organization_id: organizationId,
+            billing_account_id: original.billing_account_id,
+            patient_id: original.patient_id || null,
+            type: 'reversal',
+            amount: restored,
+            description,
+            reference_id: transactionId,
+            payment_method: original.payment_method || null,
+            created_by: createdBy || null,
+            created_at: nowStr,
+          });
+        });
+      } catch (err: any) {
+        if (err instanceof HttpError) {
+          return NextResponse.json({ error: err.message }, { status: err.status });
+        }
+        throw err;
+      }
+
+      return NextResponse.json({ success: true, id: txId });
+    }
+
     if (action === 'updateLimit') {
       const { accountId, newLimit } = body;
       const upStmt = db.prepare('UPDATE billing_accounts SET credit_limit = ?, updated_at = ? WHERE id = ?');

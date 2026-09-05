@@ -645,6 +645,18 @@ export const addPatientWithReferral = async (
 ): Promise<number | string> =>
   getPatientsRepository().addWithReferral(patient, tests, organizationId);
 
+/**
+ * Corrects the permanent record as well as the visit.
+ *
+ * Editing only the visit row meant a correction lasted one visit: the profile
+ * kept the old spelling and the next registration prefilled it straight back.
+ */
+export const updatePatientProfile = async (
+  profileId: number | string,
+  updates: Partial<Patient>,
+  organizationId: string,
+): Promise<void> => getPatientsRepository().updateProfile(profileId, updates, organizationId);
+
 export const updatePatient = async (id: number | string, updates: Partial<Patient>): Promise<void> =>
   getPatientsRepository().update(id, updates);
 
@@ -780,6 +792,15 @@ export const depositToBillingAccount = async (
   patientId?: number | string
 ): Promise<void> =>
   getBillingRepository().deposit(accountId, amount, description, paymentMethod, createdBy, organizationId, patientId);
+
+/**
+ * Undoes a charge that should not have been made, by recording its opposite.
+ * The original entry stays: a statement is a record of what happened.
+ */
+export const reverseLedgerTransaction = async (
+  transactionId: string, reason: string, createdBy: string, organizationId: string,
+): Promise<void> =>
+  getBillingRepository().reverseTransaction(transactionId, reason, createdBy, organizationId);
 
 export const logExternalCharge = async (
   charge: Omit<ExternalDepartmentCharge, 'id' | 'createdAt'>

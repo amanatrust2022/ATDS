@@ -183,7 +183,6 @@ export async function GET(request: Request) {
       firstName: p.first_name,
       surname: p.surname,
       middleName: p.middle_name || '',
-      name: [p.first_name, p.middle_name, p.surname].filter(Boolean).join(' '),
       age: p.age,
       sex: p.sex,
       phone: p.phone,
@@ -697,6 +696,39 @@ export async function POST(request: Request) {
         referring_facility: updates.referringFacility || null,
         updated_at: nowStr
       });
+
+      return NextResponse.json({ success: true });
+    }
+
+    if (action === 'updatePatientProfile') {
+      const { profileId, updates, organizationId } = body;
+      if (!profileId || !organizationId) {
+        return NextResponse.json({ error: 'Missing profileId or organizationId' }, { status: 400 });
+      }
+
+      const row = {
+        first_name: updates.firstName,
+        surname: updates.surname,
+        middle_name: updates.middleName || null,
+        phone: updates.phone,
+        email: updates.email || null,
+        address: updates.address,
+        sex: updates.sex,
+        updated_at: nowStr,
+      };
+
+      db.prepare(`
+        UPDATE patient_profiles SET
+          first_name = ?, surname = ?, middle_name = ?, phone = ?,
+          email = ?, address = ?, sex = ?, updated_at = ?
+        WHERE id = ? AND organization_id = ?
+      `).run(
+        row.first_name, row.surname, row.middle_name, row.phone,
+        row.email, row.address, row.sex, row.updated_at,
+        profileId, organizationId,
+      );
+
+      queueSync(db, 'patient_profiles', 'UPDATE', String(profileId), { id: profileId, organization_id: organizationId, ...row });
 
       return NextResponse.json({ success: true });
     }

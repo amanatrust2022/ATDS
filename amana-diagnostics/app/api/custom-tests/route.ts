@@ -134,14 +134,29 @@ export async function POST(request: Request) {
     }
 
     if (action === 'delete') {
+      // Retired, not destroyed. Results recorded months ago still name this
+      // test, and getTestById is what turns that name back into a parameter
+      // list. Deleting the row made an old structured result reopen as a blank
+      // free-text box, because a test definition that cannot be found looks
+      // exactly like a test that never had parameters.
       const stmt = db.prepare(`
-        DELETE FROM custom_tests 
+        UPDATE custom_tests
+        SET is_active = 0, updated_at = ?
         WHERE organization_id = ? AND id = ?
       `);
-      stmt.run(organizationId, id);
+      stmt.run(nowStr, organizationId, id);
 
-      // Log in outbox
-      queueSync(db, 'custom_tests', 'DELETE', `${organizationId}:${id}`, {});
+      const row = db
+        .prepare('SELECT * FROM custom_tests WHERE organization_id = ? AND id = ?')
+        .get(organizationId, id) as any;
+
+      if (row) {
+        queueSync(db, 'custom_tests', 'UPDATE', `${organizationId}:${id}`, {
+          ...row,
+          is_active: 0,
+          updated_at: nowStr,
+        });
+      }
 
       return NextResponse.json({ success: true });
     }

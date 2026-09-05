@@ -3,8 +3,9 @@ import RequireRole from '@/components/RequireRole';
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/components/AuthProvider';
-import { fetchPatients, Patient, PatientTest, updatePatient } from '@/lib/store';
+import { fetchPatients, Patient, PatientTest, updatePatient, updatePatientProfile } from '@/lib/store';
 import Header from '@/components/Header';
+import { patientDisplayName } from '@/lib/store/patientName';
 import {
   RiUserLine, RiSearchLine, RiFilterLine, RiTestTubeLine, RiRadarLine,
   RiCheckLine, RiTimeLine, RiArrowRightLine, RiCloseLine, RiDownloadLine,
@@ -42,7 +43,7 @@ function PatientDatabasePage() {
 
   const filtered = patients.filter(p => {
     const q = search.toLowerCase();
-    const nameMatch = !q || p.name.toLowerCase().includes(q) || p.slipNumber.toLowerCase().includes(q) || (p.phone || '').includes(q);
+    const nameMatch = !q || patientDisplayName(p).toLowerCase().includes(q) || p.slipNumber.toLowerCase().includes(q) || (p.phone || '').includes(q);
     const deptMatch = deptFilter === 'all' || p.tests.some(t => t.department === deptFilter);
     const fromMatch = !dateFrom || new Date(p.registeredAt) >= new Date(dateFrom);
     const toMatch = !dateTo || new Date(p.registeredAt) <= new Date(dateTo + 'T23:59:59');
@@ -53,7 +54,7 @@ function PatientDatabasePage() {
     const rows = [
       ['Slip No', 'Name', 'Age', 'Sex', 'Phone', 'Referred By', 'Facility', 'Tests', 'Registered'],
       ...filtered.map(p => [
-        p.slipNumber, p.name, p.age, p.sex, p.phone,
+        p.slipNumber, patientDisplayName(p), p.age, p.sex, p.phone,
         p.referredBy || '', p.referringFacility || '',
         p.tests.map(t => t.testName).join('; '),
         new Date(p.registeredAt).toLocaleDateString('en-NG'),
@@ -142,7 +143,7 @@ function PatientDatabasePage() {
                       >
                         <td style={{ padding: '0.7rem 0.9rem', fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--teal-700)', fontWeight: 600 }}>{p.slipNumber}</td>
                         <td style={{ padding: '0.7rem 0.9rem' }}>
-                          <div style={{ fontWeight: 700, color: 'var(--gray-900)' }}>{p.name}</div>
+                          <div style={{ fontWeight: 700, color: 'var(--gray-900)' }}>{patientDisplayName(p)}</div>
                           {p.referredBy && <div style={{ fontSize: '0.68rem', color: 'var(--gray-500)' }}>Ref: {p.referredBy}</div>}
                         </td>
                         <td style={{ padding: '0.7rem 0.9rem', color: 'var(--gray-700)' }}>{p.age} / {p.sex}</td>
@@ -248,6 +249,7 @@ function PatientDatabasePage() {
       {editingPatient && (
         <EditPatientModal
           patient={editingPatient}
+          organizationId={organization?.id || ''}
           onClose={() => setEditingPatient(null)}
           onSaved={() => {
             setEditingPatient(null);
@@ -261,11 +263,12 @@ function PatientDatabasePage() {
 
 interface EditModalProps {
   patient: Patient;
+  organizationId: string;
   onClose: () => void;
   onSaved: () => void;
 }
 
-function EditPatientModal({ patient, onClose, onSaved }: EditModalProps) {
+function EditPatientModal({ patient, organizationId, onClose, onSaved }: EditModalProps) {
   const [form, setForm] = useState({
     firstName: patient.firstName || '',
     surname: patient.surname || '',
@@ -289,12 +292,18 @@ function EditPatientModal({ patient, onClose, onSaved }: EditModalProps) {
     setSaving(true);
     setError('');
     try {
-      const updatedName = [form.firstName, form.middleName, form.surname].filter(Boolean).join(' ');
-      await updatePatient(patient.id, {
-        ...form,
-        name: updatedName,
-        sex: form.sex as 'Male' | 'Female',
-      });
+      const edits = { ...form, sex: form.sex as 'Male' | 'Female' };
+
+      // The visit, so this record reads correctly...
+      await updatePatient(patient.id, edits);
+
+      // ...and the permanent record behind it, so the correction survives.
+      // Without this the profile keeps the old spelling and hands it straight
+      // back at the patient's next visit.
+      if (patient.patientProfileId && organizationId) {
+        await updatePatientProfile(patient.patientProfileId, edits, organizationId);
+      }
+
       onSaved();
     } catch (err: any) {
       setError(err.message || 'Failed to update patient');

@@ -117,11 +117,19 @@ export const cloudCustomTestsRepository: CustomTestsRepository = {
     if (error) throw error;
   },
 
+  /**
+   * Retires a test from the catalogue without destroying its definition.
+   *
+   * This used to DELETE. Results recorded against the test keep its id, and
+   * `getTestById` is what turns that id back into a parameter list — so once
+   * the row was gone, reopening an old structured result presented it as a
+   * blank free-text box.
+   */
   async remove(id, organizationId) {
     const supabase = createClient();
     const { error } = await supabase
       .from('custom_tests')
-      .delete()
+      .update({ is_active: false, updated_at: new Date().toISOString() })
       .eq('organization_id', organizationId)
       .eq('id', id);
     if (error) throw error;

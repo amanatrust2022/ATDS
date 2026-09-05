@@ -123,7 +123,12 @@ export async function POST(request: Request) {
     }
 
     let pdfBase64 = clientPdfBase64;
-    const fileName = `DiagnosticReport-${patient.slipNumber}-${patient.name.replace(/\s+/g, '_')}.pdf`;
+    // Derived rather than assumed: `patients` has no `name` column, so a caller
+    // passing a row straight from the database has only the parts.
+    const patientName = patient.name
+      || [patient.firstName, patient.middleName, patient.surname].filter(Boolean).join(' ')
+      || 'Patient';
+    const fileName = `DiagnosticReport-${patient.slipNumber}-${patientName.replace(/\s+/g, '_')}.pdf`;
 
     if (!pdfBase64) {
       try {

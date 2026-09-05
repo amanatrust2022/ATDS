@@ -26,6 +26,8 @@ export default function SignupPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [org, setOrg] = useState({ name: '', slug: '', address: '', phone: '', email: '', letterheadLine2: '' });
+  /** An abandoned workspace holding this slug, which this sign-up will take over. */
+  const [adoptableOrgId, setAdoptableOrgId] = useState<string | null>(null);
   const [admin, setAdmin] = useState({ fullName: '', email: '', password: '', confirm: '' });
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -57,8 +59,23 @@ export default function SignupPage() {
 
       if (checkErr) throw checkErr;
       if (exists) {
-        setError('This Workspace ID (slug) is already taken. Please choose a different one.');
-        return;
+        // Taken is not always in use. A sign-up that failed after reserving the
+        // workspace but before creating the account leaves one behind with
+        // nobody in it, and the clinic could never claim their own name back.
+        const res = await fetch('/api/signup/claim-slug', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ slug: org.slug }),
+        });
+        const claim = res.ok ? await res.json() : null;
+
+        if (!claim?.adoptable) {
+          setError('This Workspace ID (slug) is already taken. Please choose a different one.');
+          return;
+        }
+        setAdoptableOrgId(claim.organizationId);
+      } else {
+        setAdoptableOrgId(null);
       }
       setStep(2);
     } catch (err: any) {
@@ -87,24 +104,35 @@ export default function SignupPage() {
     try {
       localStorage.setItem('pending_org', JSON.stringify(org));
 
-      // 1. Create organization to reserve the slug (fallbacks to direct insert if the RPC is unavailable)
-      const { organization: newOrg } = await withTimeout(
-        createOrganizationWithFallback(supabase, {
-          name: org.name,
-          slug: org.slug,
-          address: org.address || null,
-          phone: org.phone || null,
-          email: org.email || null,
-          letterheadLine2: org.letterheadLine2 || null,
-        }),
-        12000,
-        () => setError('Slow network connection detected. Still setting up workspace... please wait.')
-      );
+      // 1. Create organization to reserve the slug (fallbacks to direct insert if the RPC is unavailable).
+      //
+      // Unless an abandoned one is already sitting on this slug, in which case
+      // take that over rather than leave the clinic unable to use their own
+      // name. Only ever an organisation with no members — see
+      // /api/signup/claim-slug.
+      let orgId = adoptableOrgId;
 
-      if (!newOrg?.id) {
-        throw new Error('Failed to create your workspace. Please try again.');
+      if (!orgId) {
+        const { organization: newOrg } = await withTimeout(
+          createOrganizationWithFallback(supabase, {
+            name: org.name,
+            slug: org.slug,
+            address: org.address || null,
+            phone: org.phone || null,
+            email: org.email || null,
+            letterheadLine2: org.letterheadLine2 || null,
+          }),
+          12000,
+          () => setError('Slow network connection detected. Still setting up workspace... please wait.')
+        );
+
+        if (!newOrg?.id) {
+          throw new Error('Failed to create your workspace. Please try again.');
+        }
+        orgId = newOrg.id;
+        // Only a workspace this attempt created is one this attempt may undo.
+        createdOrgId = newOrg.id;
       }
-      createdOrgId = newOrg.id;
 
       // 2. Sign up user account with organization_id in metadata
       const signUpPromise = supabase.auth.signUp({
@@ -114,7 +142,7 @@ export default function SignupPage() {
           data: { 
             full_name: admin.fullName, 
             role: 'admin',
-            organization_id: createdOrgId,
+            organization_id: orgId,
             pending_org_name: org.name,
             pending_org_slug: org.slug,
             pending_org_address: org.address,
@@ -146,7 +174,7 @@ export default function SignupPage() {
           await upsertProfileForUser(supabase, data.user.id, {
             full_name: admin.fullName,
             role: 'admin',
-            organization_id: createdOrgId,
+            organization_id: orgId,
             email: admin.email,
           });
         } catch (profileErr) {

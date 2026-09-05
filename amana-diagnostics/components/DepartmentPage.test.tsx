@@ -156,7 +156,13 @@ describe('Department queue', () => {
     expect(screen.getByText('New patient tests will appear here automatically.')).toBeDefined();
   });
 
-  it('counts only pending tests in the badge, while the list also shows in-progress ones', async () => {
+  /**
+   * Opening a test marks it in_progress and closing the window without saving
+   * leaves it there. Counting only 'pending' meant a result someone had started
+   * and walked away from dropped out of the bench's workload while still being
+   * outstanding — the number said the work was smaller than it was.
+   */
+  it('counts every unfinished test in the badge, including one left half-entered', async () => {
     fetchPatients.mockResolvedValue([
       patient(),
       patient({
@@ -166,9 +172,22 @@ describe('Department queue', () => {
     ]);
     await renderPage('lab');
 
-    expect(screen.getByText('1 pending')).toBeDefined();
+    expect(screen.getByText('2 pending')).toBeDefined();
     expect(screen.getByText('John Doe')).toBeDefined();
     expect(screen.getByText('Jane Smith')).toBeDefined();
+  });
+
+  it('leaves completed work out of the badge', async () => {
+    fetchPatients.mockResolvedValue([
+      patient(),
+      patient({
+        id: 2, slipNumber: 'ATD-0002', name: 'Jane Smith',
+        tests: [patientTest({ id: 'pt-2', status: 'completed', completedAt: new Date().toISOString() })],
+      }),
+    ]);
+    await renderPage('lab');
+
+    expect(screen.getByText('1 pending')).toBeDefined();
   });
 
   it('labels a pending test Enter Results and an in-progress one Continue', async () => {

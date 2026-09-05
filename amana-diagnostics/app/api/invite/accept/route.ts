@@ -1,6 +1,30 @@
 import { NextResponse } from 'next/server';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 
+
+/**
+ * Finds an auth user by email address, walking every page.
+ *
+ * The admin API has no lookup-by-email, and its list is paginated. Asking for
+ * page one and searching that is the same as asking whether the user happens to
+ * be one of the fifty most recently created in the whole project.
+ */
+async function findUserByEmail(supabaseAdmin: any, email: string) {
+  const target = (email || '').trim().toLowerCase();
+  const perPage = 200;
+
+  for (let page = 1; page <= 100; page++) {
+    const { data, error } = await supabaseAdmin.auth.admin.listUsers({ page, perPage });
+    if (error) return { user: null, error };
+
+    const users = data?.users ?? [];
+    const found = users.find((u: any) => (u.email || '').toLowerCase() === target);
+    if (found) return { user: found, error: null };
+
+    if (users.length < perPage) break; // last page
+  }
+  return { user: null, error: null };
+}
 export async function POST(request: Request) {
   try {
     const { token, password, title, firstName, lastName, surname, publicUrl } = await request.json();
@@ -55,8 +79,15 @@ export async function POST(request: Request) {
       organization_id: invite.organization_id,
     };
 
-    // 2. Check if user already exists in auth.users by email
-    const { data: { users }, error: listErr } = await supabaseAdmin.auth.admin.listUsers();
+    // 2. Check if user already exists in auth.users by email.
+    //
+    // This used to call listUsers() with no arguments, which returns only the
+    // first page — 50 users across every clinic in the project. Past that, an
+    // existing person accepting an invitation was not found, the code took the
+    // "create new user" branch, and creation failed because the email was
+    // already registered. The invitation became unacceptable, and it got worse
+    // with every clinic onboarded.
+    const { user: existingUser, error: listErr } = await findUserByEmail(supabaseAdmin, invite.email);
     if (listErr) {
       let jwtRole = 'unknown';
       try {
@@ -69,8 +100,6 @@ export async function POST(request: Request) {
         error: `Failed to query users: ${listErr.message || JSON.stringify(listErr)}. Diagnosed Key Role: ${jwtRole}` 
       }, { status: 500 });
     }
-
-    const existingUser = users.find(u => u.email === invite.email);
 
     if (existingUser) {
       // 3a. User exists: Update their raw_user_meta_data and profiles table

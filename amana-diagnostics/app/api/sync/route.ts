@@ -170,6 +170,13 @@ export async function POST(request: Request) {
 
     // 3. PULL SYNC: retrieve remote changes, each table since its own cursor.
     //
+    // Every table resolves a conflict the same way: the newer `updated_at`
+    // wins. Wallet accounts already did this; patients and test results simply
+    // took whatever the cloud last said, so a result typed on the hub could be
+    // overwritten by an older cloud copy while a wallet balance in the same
+    // sync would not be. Nobody chose that — the two halves were written at
+    // different times.
+    //
     // Captured before any read: a cursor set to a time after the read began
     // could skip a row written during it. Overlapping costs a repeat upsert.
     const nowStr = new Date().toISOString();
@@ -407,37 +414,37 @@ export async function POST(request: Request) {
           net_amount, paid_amount, payment_status, payment_method, organization_id, updated_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
-          patient_profile_id = excluded.patient_profile_id,
-          slip_number = excluded.slip_number,
-          registered_at = excluded.registered_at,
-          first_name = excluded.first_name,
-          surname = excluded.surname,
-          middle_name = excluded.middle_name,
-          age = excluded.age,
-          sex = excluded.sex,
-          phone = excluded.phone,
-          email = excluded.email,
-          address = excluded.address,
-          referred_by = excluded.referred_by,
-          referring_facility = excluded.referring_facility,
-          referring_doctor_id = excluded.referring_doctor_id,
-          referring_facility_id = excluded.referring_facility_id,
-          commission_assigned = excluded.commission_assigned,
-          commission_type = excluded.commission_type,
-          commission_value = excluded.commission_value,
-          commission_amount = excluded.commission_amount,
-          commission_status = excluded.commission_status,
-          commission_paid_at = excluded.commission_paid_at,
-          commission_paid_notes = excluded.commission_paid_notes,
-          total_amount = excluded.total_amount,
-          discount_type = excluded.discount_type,
-          discount_value = excluded.discount_value,
-          discount_amount = excluded.discount_amount,
-          net_amount = excluded.net_amount,
-          paid_amount = excluded.paid_amount,
-          payment_status = excluded.payment_status,
-          payment_method = excluded.payment_method,
-          updated_at = excluded.updated_at
+          patient_profile_id = CASE WHEN excluded.updated_at >= patients.updated_at THEN excluded.patient_profile_id ELSE patients.patient_profile_id END,
+          slip_number = CASE WHEN excluded.updated_at >= patients.updated_at THEN excluded.slip_number ELSE patients.slip_number END,
+          registered_at = CASE WHEN excluded.updated_at >= patients.updated_at THEN excluded.registered_at ELSE patients.registered_at END,
+          first_name = CASE WHEN excluded.updated_at >= patients.updated_at THEN excluded.first_name ELSE patients.first_name END,
+          surname = CASE WHEN excluded.updated_at >= patients.updated_at THEN excluded.surname ELSE patients.surname END,
+          middle_name = CASE WHEN excluded.updated_at >= patients.updated_at THEN excluded.middle_name ELSE patients.middle_name END,
+          age = CASE WHEN excluded.updated_at >= patients.updated_at THEN excluded.age ELSE patients.age END,
+          sex = CASE WHEN excluded.updated_at >= patients.updated_at THEN excluded.sex ELSE patients.sex END,
+          phone = CASE WHEN excluded.updated_at >= patients.updated_at THEN excluded.phone ELSE patients.phone END,
+          email = CASE WHEN excluded.updated_at >= patients.updated_at THEN excluded.email ELSE patients.email END,
+          address = CASE WHEN excluded.updated_at >= patients.updated_at THEN excluded.address ELSE patients.address END,
+          referred_by = CASE WHEN excluded.updated_at >= patients.updated_at THEN excluded.referred_by ELSE patients.referred_by END,
+          referring_facility = CASE WHEN excluded.updated_at >= patients.updated_at THEN excluded.referring_facility ELSE patients.referring_facility END,
+          referring_doctor_id = CASE WHEN excluded.updated_at >= patients.updated_at THEN excluded.referring_doctor_id ELSE patients.referring_doctor_id END,
+          referring_facility_id = CASE WHEN excluded.updated_at >= patients.updated_at THEN excluded.referring_facility_id ELSE patients.referring_facility_id END,
+          commission_assigned = CASE WHEN excluded.updated_at >= patients.updated_at THEN excluded.commission_assigned ELSE patients.commission_assigned END,
+          commission_type = CASE WHEN excluded.updated_at >= patients.updated_at THEN excluded.commission_type ELSE patients.commission_type END,
+          commission_value = CASE WHEN excluded.updated_at >= patients.updated_at THEN excluded.commission_value ELSE patients.commission_value END,
+          commission_amount = CASE WHEN excluded.updated_at >= patients.updated_at THEN excluded.commission_amount ELSE patients.commission_amount END,
+          commission_status = CASE WHEN excluded.updated_at >= patients.updated_at THEN excluded.commission_status ELSE patients.commission_status END,
+          commission_paid_at = CASE WHEN excluded.updated_at >= patients.updated_at THEN excluded.commission_paid_at ELSE patients.commission_paid_at END,
+          commission_paid_notes = CASE WHEN excluded.updated_at >= patients.updated_at THEN excluded.commission_paid_notes ELSE patients.commission_paid_notes END,
+          total_amount = CASE WHEN excluded.updated_at >= patients.updated_at THEN excluded.total_amount ELSE patients.total_amount END,
+          discount_type = CASE WHEN excluded.updated_at >= patients.updated_at THEN excluded.discount_type ELSE patients.discount_type END,
+          discount_value = CASE WHEN excluded.updated_at >= patients.updated_at THEN excluded.discount_value ELSE patients.discount_value END,
+          discount_amount = CASE WHEN excluded.updated_at >= patients.updated_at THEN excluded.discount_amount ELSE patients.discount_amount END,
+          net_amount = CASE WHEN excluded.updated_at >= patients.updated_at THEN excluded.net_amount ELSE patients.net_amount END,
+          paid_amount = CASE WHEN excluded.updated_at >= patients.updated_at THEN excluded.paid_amount ELSE patients.paid_amount END,
+          payment_status = CASE WHEN excluded.updated_at >= patients.updated_at THEN excluded.payment_status ELSE patients.payment_status END,
+          payment_method = CASE WHEN excluded.updated_at >= patients.updated_at THEN excluded.payment_method ELSE patients.payment_method END,
+          updated_at = CASE WHEN excluded.updated_at >= patients.updated_at THEN excluded.updated_at ELSE patients.updated_at END
       `);
       patients.forEach((p) => {
         insertPatient.run(
@@ -461,23 +468,23 @@ export async function POST(request: Request) {
           price, commission_type, commission_value, commission_amount, organization_id, updated_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
-          patient_id = excluded.patient_id,
-          test_id = excluded.test_id,
-          test_name = excluded.test_name,
-          department = excluded.department,
-          status = excluded.status,
-          specimen = excluded.specimen,
-          results = excluded.results,
-          completed_by = excluded.completed_by,
-          completed_by_signature_url = excluded.completed_by_signature_url,
-          completed_by_title = excluded.completed_by_title,
-          completed_at = excluded.completed_at,
-          notes = excluded.notes,
-          price = excluded.price,
-          commission_type = excluded.commission_type,
-          commission_value = excluded.commission_value,
-          commission_amount = excluded.commission_amount,
-          updated_at = excluded.updated_at
+          patient_id = CASE WHEN excluded.updated_at >= patient_tests.updated_at THEN excluded.patient_id ELSE patient_tests.patient_id END,
+          test_id = CASE WHEN excluded.updated_at >= patient_tests.updated_at THEN excluded.test_id ELSE patient_tests.test_id END,
+          test_name = CASE WHEN excluded.updated_at >= patient_tests.updated_at THEN excluded.test_name ELSE patient_tests.test_name END,
+          department = CASE WHEN excluded.updated_at >= patient_tests.updated_at THEN excluded.department ELSE patient_tests.department END,
+          status = CASE WHEN excluded.updated_at >= patient_tests.updated_at THEN excluded.status ELSE patient_tests.status END,
+          specimen = CASE WHEN excluded.updated_at >= patient_tests.updated_at THEN excluded.specimen ELSE patient_tests.specimen END,
+          results = CASE WHEN excluded.updated_at >= patient_tests.updated_at THEN excluded.results ELSE patient_tests.results END,
+          completed_by = CASE WHEN excluded.updated_at >= patient_tests.updated_at THEN excluded.completed_by ELSE patient_tests.completed_by END,
+          completed_by_signature_url = CASE WHEN excluded.updated_at >= patient_tests.updated_at THEN excluded.completed_by_signature_url ELSE patient_tests.completed_by_signature_url END,
+          completed_by_title = CASE WHEN excluded.updated_at >= patient_tests.updated_at THEN excluded.completed_by_title ELSE patient_tests.completed_by_title END,
+          completed_at = CASE WHEN excluded.updated_at >= patient_tests.updated_at THEN excluded.completed_at ELSE patient_tests.completed_at END,
+          notes = CASE WHEN excluded.updated_at >= patient_tests.updated_at THEN excluded.notes ELSE patient_tests.notes END,
+          price = CASE WHEN excluded.updated_at >= patient_tests.updated_at THEN excluded.price ELSE patient_tests.price END,
+          commission_type = CASE WHEN excluded.updated_at >= patient_tests.updated_at THEN excluded.commission_type ELSE patient_tests.commission_type END,
+          commission_value = CASE WHEN excluded.updated_at >= patient_tests.updated_at THEN excluded.commission_value ELSE patient_tests.commission_value END,
+          commission_amount = CASE WHEN excluded.updated_at >= patient_tests.updated_at THEN excluded.commission_amount ELSE patient_tests.commission_amount END,
+          updated_at = CASE WHEN excluded.updated_at >= patient_tests.updated_at THEN excluded.updated_at ELSE patient_tests.updated_at END
       `);
       patientTests.forEach((t) => {
         insertTest.run(

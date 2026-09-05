@@ -34,8 +34,12 @@ function CommissionsPage() {
     setLoading(true);
     const data = await fetchCommissionReport(
       organization.id,
-      dateFrom ? new Date(dateFrom).toISOString() : undefined,
-      dateTo ? new Date(dateTo + 'T23:59:59').toISOString() : undefined,
+      // Both ends read as local time. A bare "YYYY-MM-DD" is parsed as UTC
+      // midnight while "YYYY-MM-DDTHH:MM:SS" is parsed as local, so the old
+      // pair silently dropped the first hour of the opening day — in Nigeria,
+      // every visit registered between midnight and 1am.
+      dateFrom ? new Date(dateFrom + 'T00:00:00').toISOString() : undefined,
+      dateTo ? new Date(dateTo + 'T23:59:59.999').toISOString() : undefined,
     );
     setEntries(data);
     setLoading(false);

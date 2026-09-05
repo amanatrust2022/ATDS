@@ -664,7 +664,13 @@ export default function TestManager({ organizationId, restrictDepartment, onClos
 
   const handleDelete = async () => {
     if (!editingTest) return;
-    if (!confirm(`Are you sure you want to deactivate/delete "${editingTest.name}" from your catalogue?`)) return;
+    if (!confirm(
+      `Remove "${editingTest.name}" from the catalogue?
+
+` +
+      'It stops appearing when registering a patient. Results already recorded ' +
+      'against it keep working.',
+    )) return;
 
     setSaving(true);
     setError('');

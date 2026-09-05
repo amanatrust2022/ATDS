@@ -68,6 +68,8 @@ export interface PatientsRepository {
   addWithReferral(patient: NewPatient, tests: NewTest[], organizationId: string): Promise<number | string>;
   registerAndGetId(patient: Omit<Patient, 'id' | 'tests'>, organizationId: string): Promise<number | string>;
   update(id: number | string, updates: Partial<Patient>): Promise<void>;
+  /** Corrects the permanent record a returning patient is recognised by. */
+  updateProfile(profileId: number | string, updates: Partial<Patient>, organizationId: string): Promise<void>;
   updateTestResult(testId: string, updates: Partial<PatientTest>): Promise<void>;
   /** Calls back on any change to this organisation's data. Returns an unsubscribe. */
   subscribe(organizationId: string, callback: () => void): () => void;
@@ -133,6 +135,14 @@ export const localPatientsRepository: PatientsRepository = {
 
   async update(id, updates) {
     await postJson(ENDPOINT, { action: 'updatePatient', patientId: id, updates }, 'Failed to update patient locally');
+  },
+
+  async updateProfile(profileId, updates, organizationId) {
+    await postJson(
+      ENDPOINT,
+      { action: 'updatePatientProfile', profileId, updates, organizationId },
+      'Failed to update patient profile locally',
+    );
   },
 
   async updateTestResult(testId, updates) {
@@ -435,11 +445,38 @@ export const cloudPatientsRepository: CloudPatientsRepository = {
     return patientId;
   },
 
+  /**
+   * Registers someone reached through a side door — a wallet owner, or a
+   * dependant being added to a family account.
+   *
+   * This used to write a bare patients row: no registered_at, no profile, no
+   * link to one. Two things followed. The queue drops any patient without a
+   * registration time before it does anything else, so these people were
+   * invisible on every screen; and with no profile they could never be found
+   * again as a returning patient, so the next visit created a duplicate.
+   *
+   * It is a real registration now — same allocated ids and same profile as the
+   * front desk creates.
+   */
   async registerAndGetId(patient, organizationId) {
     const supabase = createClient();
-    const { data, error } = await supabase
+    const [patientId, profileId] = await Promise.all([
+      allocatePatientId(supabase, organizationId, 'patients'),
+      allocatePatientId(supabase, organizationId, 'patient_profiles'),
+    ]);
+
+    const { error: profileError } = await supabase
+      .from('patient_profiles')
+      .insert([toProfileRow(patient, profileId, organizationId)]);
+    if (profileError) throw profileError;
+
+    const { error } = await supabase
       .from('patients')
       .insert([{
+        id: patientId,
+        patient_profile_id: profileId,
+        // Without this the patient exists but appears nowhere.
+        registered_at: patient.registeredAt || new Date().toISOString(),
         slip_number: patient.slipNumber,
         first_name: patient.firstName,
         surname: patient.surname,
@@ -455,11 +492,37 @@ export const cloudPatientsRepository: CloudPatientsRepository = {
         referring_facility_id: patient.referringFacilityId || null,
         organization_id: organizationId,
         billing_account_id: patient.billingAccountId || null,
-      }])
-      .select()
-      .single();
+      }]);
     if (error) throw error;
-    return (data as any).id;
+    return patientId;
+  },
+
+  /**
+   * Corrects the permanent record behind a patient.
+   *
+   * Nothing used to update patient_profiles at all — it was insert-only. The
+   * admin edit screen wrote the visit row, so a correction lasted exactly one
+   * visit and the next registration re-applied the old spelling from the
+   * profile. A wrong email there also decides whether the right person can see
+   * their results in the portal.
+   */
+  async updateProfile(profileId, updates, organizationId) {
+    const supabase = createClient();
+    const { error } = await supabase
+      .from('patient_profiles')
+      .update({
+        first_name: updates.firstName,
+        surname: updates.surname,
+        middle_name: updates.middleName ?? null,
+        phone: updates.phone,
+        email: updates.email ?? null,
+        address: updates.address,
+        sex: updates.sex,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', profileId)
+      .eq('organization_id', organizationId);
+    if (error) throw error;
   },
 
   async update(id, updates) {

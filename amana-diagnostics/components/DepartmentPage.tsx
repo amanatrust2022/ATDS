@@ -97,10 +97,17 @@ export default function DepartmentPage({ department }: Props) {
 
   useNewTestAlerts(patients, department, loadingData, showToast);
 
-  // Pre-fill professional from profile
+  // The result is signed by whoever is logged in. This used to be pre-filled
+  // and then left editable, while the signature image beside it still came from
+  // the signed-in profile — so a report could carry one person's name over
+  // another person's signature. On a clinical document that is a record, not a
+  // label. It stays typeable only where the account has no name to use.
+  const signedBy = profile?.full_name || '';
+  const canEditProfessional = !signedBy;
+
   useEffect(() => {
-    if (profile?.full_name && !professional) setProfessional(profile.full_name);
-  }, [profile?.full_name]);
+    if (signedBy && professional !== signedBy) setProfessional(signedBy);
+  }, [signedBy]);
 
   const deptPatients = patients.filter(p =>
     p.tests.some(t => t.department === department && t.status !== 'completed')
@@ -109,8 +116,12 @@ export default function DepartmentPage({ department }: Props) {
     p.tests.some(t => t.department === department && t.status === 'completed' &&
       new Date(t.completedAt || '').toDateString() === new Date().toDateString())
   );
+  // Anything not finished, not just anything not yet opened. Opening a test
+  // sets it to in_progress and closing the window leaves it there, so counting
+  // only 'pending' quietly under-reported the bench's outstanding work by
+  // however many results someone had started and not saved.
   const pendingCount = deptPatients.reduce((n, p) =>
-    n + p.tests.filter(t => t.department === department && t.status === 'pending').length, 0
+    n + p.tests.filter(t => t.department === department && t.status !== 'completed').length, 0
   );
 
   const openEntry = async (patient: Patient, test: PatientTest) => {
@@ -346,13 +357,21 @@ export default function DepartmentPage({ department }: Props) {
               <div style={{ marginBottom: '1rem', display: 'flex', gap: '1rem', alignItems: 'flex-end' }}>
                 <div style={{ flex: 1 }}>
                   <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--gray-700)', marginBottom: '0.3rem', textTransform: 'uppercase' }}>
-                    Professional Name / Staff ID *
+                    {canEditProfessional ? 'Professional Name / Staff ID *' : 'Signed by'}
                   </label>
                   <input
                     value={professional}
-                    onChange={e => setProfessional(e.target.value)}
+                    onChange={e => canEditProfessional && setProfessional(e.target.value)}
+                    readOnly={!canEditProfessional}
+                    title={canEditProfessional ? undefined : 'Results are signed by the account entering them'}
                     placeholder={isLab ? 'e.g. MLS ABDULLAHI SHEHU' : 'e.g. Dr. Fatima Abdullahi'}
-                    style={{ width: '100%', padding: '0.55rem 0.75rem', border: '1px solid var(--gray-300)', borderRadius: 'var(--radius)', fontSize: '0.82rem', fontFamily: 'var(--font-body)' }}
+                    style={{
+                      width: '100%', padding: '0.55rem 0.75rem', border: '1px solid var(--gray-300)',
+                      borderRadius: 'var(--radius)', fontSize: '0.82rem', fontFamily: 'var(--font-body)',
+                      background: canEditProfessional ? undefined : 'var(--gray-50)',
+                      color: canEditProfessional ? undefined : 'var(--gray-600)',
+                      cursor: canEditProfessional ? undefined : 'not-allowed',
+                    }}
                   />
                 </div>
                 <div style={{ width: 200 }}>
