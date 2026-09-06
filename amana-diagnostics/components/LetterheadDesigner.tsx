@@ -362,7 +362,7 @@ export default function LetterheadDesigner({ value, onChange }: Props) {
     const cx = e.x + e.w / 2, cy = e.y + e.h / 2;
     const anchorLocal = { x: (-sx * e.w) / 2, y: (-sy * e.h) / 2 };
     const ar = rotate(anchorLocal.x, anchorLocal.y, e.rot);
-    drag.current = { mode: 'resize', id: e.id, sx, sy, rot: e.rot, anchor: { x: cx + ar.x, y: cy + ar.y } };
+    drag.current = { mode: 'resize', id: e.id, sx, sy, rot: e.rot, w0: e.w, h0: e.h, anchor: { x: cx + ar.x, y: cy + ar.y } };
     addWindow();
   };
 
@@ -393,14 +393,17 @@ export default function LetterheadDesigner({ value, onChange }: Props) {
       let px = p.x, py = p.y;
       if (d.rot === 0 && !ev.altKey) {
         const s = snapResizePoint(p.x, p.y, d.id);
-        px = s.x; py = s.y; setGuides({ x: s.gx, y: s.gy });
+        if (d.sx !== 0) px = s.x;
+        if (d.sy !== 0) py = s.y;
+        setGuides({ x: d.sx !== 0 ? s.gx : [], y: d.sy !== 0 ? s.gy : [] });
       } else {
         setGuides({ x: [], y: [] });
       }
       const v = { x: px - d.anchor.x, y: py - d.anchor.y };
       const local = rotate(v.x, v.y, -d.rot);
-      const w = Math.max(MIN, d.sx * local.x);
-      const h = Math.max(MIN, d.sy * local.y);
+      // A zero sign means that side handle leaves the dimension untouched.
+      const w = d.sx !== 0 ? Math.max(MIN, d.sx * local.x) : d.w0;
+      const h = d.sy !== 0 ? Math.max(MIN, d.sy * local.y) : d.h0;
       const off = rotate((d.sx * w) / 2, (d.sy * h) / 2, d.rot);
       const cx = d.anchor.x + off.x, cy = d.anchor.y + off.y;
       update(d.id, { w, h, x: cx - w / 2, y: cy - h / 2 });
@@ -590,9 +593,14 @@ function ElementView({ e, selected, editing, onMouseDown, onDoubleClick, onResiz
     ? <img src={e.src} alt="" style={shapeStyle} onMouseDown={onMouseDown} onDoubleClick={onDoubleClick} draggable={false} />
     : <div style={shapeStyle} onMouseDown={onMouseDown} onDoubleClick={onDoubleClick}>{inner}</div>;
 
+  // Corner + side handles. sx/sy ∈ {-1,0,1}; 0 means that side handle only moves
+  // one edge (leaves the other dimension fixed).
   const handles: [number, number, string][] = [
-    [-1, -1, 'nwse-resize'], [1, -1, 'nesw-resize'], [1, 1, 'nwse-resize'], [-1, 1, 'nesw-resize'],
+    [-1, -1, 'nwse-resize'], [0, -1, 'ns-resize'], [1, -1, 'nesw-resize'],
+    [1, 0, 'ew-resize'], [1, 1, 'nwse-resize'], [0, 1, 'ns-resize'],
+    [-1, 1, 'nesw-resize'], [-1, 0, 'ew-resize'],
   ];
+  const hpos = (s: number, size: number) => (s < 0 ? -5 : s > 0 ? size - 5 : size / 2 - 5);
 
   return (
     <>
@@ -605,7 +613,7 @@ function ElementView({ e, selected, editing, onMouseDown, onDoubleClick, onResiz
             <div key={i} onMouseDown={(ev) => onResizeStart(ev, e, sx, sy)}
               style={{ position: 'absolute', width: 10, height: 10, background: '#fff', border: '1.5px solid #2563eb',
                 borderRadius: 2, pointerEvents: 'auto', cursor,
-                left: sx < 0 ? -5 : e.w - 5, top: sy < 0 ? -5 : e.h - 5 }} />
+                left: hpos(sx, e.w), top: hpos(sy, e.h) }} />
           ))}
           {/* rotate handle */}
           <div onMouseDown={(ev) => onRotateStart(ev, e)}
