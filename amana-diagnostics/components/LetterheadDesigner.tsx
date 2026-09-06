@@ -21,6 +21,8 @@ import {
   RiAlignLeft, RiAlignCenter, RiAlignRight, RiShapesLine, RiFileCopyLine,
   RiPentagonLine, RiHexagonLine, RiStarLine, RiVipDiamondLine,
   RiArrowGoBackLine, RiArrowGoForwardLine, RiFocus3Line,
+  RiAlignItemLeftLine, RiAlignItemHorizontalCenterLine, RiAlignItemRightLine,
+  RiAlignItemTopLine, RiAlignItemVerticalCenterLine, RiAlignItemBottomLine,
 } from '@remixicon/react';
 
 // ── Canvas geometry ──────────────────────────────────────────────────────────
@@ -403,7 +405,6 @@ export default function LetterheadDesigner({ value, onChange }: Props) {
     setSelId(e.id);
     const p = pt(ev);
     drag.current = { mode: 'move', id: e.id, sx: p.x, sy: p.y, ox: e.x, oy: e.y, ckpt: false };
-    addWindow();
   };
 
   const startResize = (ev: React.MouseEvent, e: El, sx: number, sy: number) => {
@@ -412,7 +413,6 @@ export default function LetterheadDesigner({ value, onChange }: Props) {
     const anchorLocal = { x: (-sx * e.w) / 2, y: (-sy * e.h) / 2 };
     const ar = rotate(anchorLocal.x, anchorLocal.y, e.rot);
     drag.current = { mode: 'resize', id: e.id, sx, sy, rot: e.rot, w0: e.w, h0: e.h, anchor: { x: cx + ar.x, y: cy + ar.y }, ckpt: false };
-    addWindow();
   };
 
   const startRotate = (ev: React.MouseEvent, e: El) => {
@@ -421,7 +421,6 @@ export default function LetterheadDesigner({ value, onChange }: Props) {
     const p = pt(ev);
     const start = Math.atan2(p.y - cy, p.x - cx);
     drag.current = { mode: 'rotate', id: e.id, cx, cy, start, orot: e.rot, ckpt: false };
-    addWindow();
   };
 
   const onWinMove = (ev: MouseEvent) => {
@@ -466,10 +465,21 @@ export default function LetterheadDesigner({ value, onChange }: Props) {
       update(d.id, { rot: Math.round(deg * 10) / 10 });
     }
   };
-  const onWinUp = () => { drag.current = null; setGuides({ x: [], y: [] }); removeWindow(); };
-  const addWindow = () => { window.addEventListener('mousemove', onWinMove); window.addEventListener('mouseup', onWinUp); };
-  const removeWindow = () => { window.removeEventListener('mousemove', onWinMove); window.removeEventListener('mouseup', onWinUp); };
-  useEffect(() => () => removeWindow(), []); // eslint-disable-line
+  const onWinUp = () => { drag.current = null; setGuides({ x: [], y: [] }); };
+  // Bind the drag listeners ONCE and dispatch through refs. Adding/removing them
+  // per-drag by function identity leaked listeners (every render makes new
+  // closures, so removal never matched what was added) and made dragging erratic.
+  const moveRef = useRef<(e: MouseEvent) => void>(() => {});
+  const upRef = useRef<() => void>(() => {});
+  moveRef.current = onWinMove;
+  upRef.current = onWinUp;
+  useEffect(() => {
+    const m = (e: MouseEvent) => moveRef.current(e);
+    const u = () => upRef.current();
+    window.addEventListener('mousemove', m);
+    window.addEventListener('mouseup', u);
+    return () => { window.removeEventListener('mousemove', m); window.removeEventListener('mouseup', u); };
+  }, []);
 
   // Keyboard: arrow-nudge, delete, duplicate, deselect — but only when a shape
   // is selected and focus isn't in a text field or a text box being edited.
@@ -523,6 +533,22 @@ export default function LetterheadDesigner({ value, onChange }: Props) {
 
   const setHeightSafe = (h: number) => { checkpoint('height'); const v = Math.max(80, Math.min(1000, h)); apply(elsRef.current, v); };
 
+  // Align the selected element to the page (canvas) edges or centre.
+  const alignEl = (how: 'left' | 'hcenter' | 'right' | 'top' | 'vcenter' | 'bottom') => {
+    const e = elsRef.current.find((x) => x.id === selId);
+    if (!e) return;
+    checkpoint('align');
+    const H = heightRef.current;
+    const patch: Partial<El> =
+      how === 'left' ? { x: 0 } :
+      how === 'hcenter' ? { x: (CANVAS_W - e.w) / 2 } :
+      how === 'right' ? { x: CANVAS_W - e.w } :
+      how === 'top' ? { y: 0 } :
+      how === 'vcenter' ? { y: (H - e.h) / 2 } :
+      { y: H - e.h };
+    update(e.id, patch);
+  };
+
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div style={S.wrap}>
@@ -563,8 +589,8 @@ export default function LetterheadDesigner({ value, onChange }: Props) {
         </button>
         <div style={{ flex: 1 }} />
         <span style={{ fontSize: '0.72rem', color: '#64748b' }}>Height</span>
-        <input type="number" value={Math.round(height)} onChange={(e) => setHeightSafe(parseInt(e.target.value) || DEFAULT_H)}
-          style={S.numSm} /> <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>px</span>
+        <NumInput value={height} onCommit={setHeightSafe} style={S.numSm} />
+        <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>px</span>
       </div>
 
       <div style={S.body}>
@@ -597,7 +623,7 @@ export default function LetterheadDesigner({ value, onChange }: Props) {
         <div style={S.inspector}>
           {!sel && <div style={S.hint}>Select an element to edit its properties, or add one from the toolbar. Double-click a text box to type.<br /><br />Undo/redo with the toolbar buttons or Ctrl+Z / Ctrl+Shift+Z. Arrow keys nudge (Shift = 10px), Ctrl+D duplicates, Delete removes, Esc deselects.<br /><br />Snapping is a toolbar toggle; you can also hold Alt to switch it off for a single drag.</div>}
           {sel && <Inspector e={sel} onChange={(patch) => { checkpoint('insp:' + Object.keys(patch)[0]); update(sel.id, patch); }} onDelete={() => removeEl(sel.id)}
-            onFront={() => bringFront(sel.id)} onBack={() => sendBack(sel.id)} onDuplicate={() => duplicate(sel.id)} />}
+            onFront={() => bringFront(sel.id)} onBack={() => sendBack(sel.id)} onDuplicate={() => duplicate(sel.id)} onAlign={alignEl} />}
         </div>
       </div>
     </div>
@@ -699,14 +725,15 @@ function ElementView({ e, selected, editing, onMouseDown, onDoubleClick, onResiz
 }
 
 // ── Inspector ────────────────────────────────────────────────────────────────
-function Inspector({ e, onChange, onDelete, onFront, onBack, onDuplicate }: {
+function Inspector({ e, onChange, onDelete, onFront, onBack, onDuplicate, onAlign }: {
   e: El; onChange: (patch: Partial<El>) => void; onDelete: () => void;
   onFront: () => void; onBack: () => void; onDuplicate: () => void;
+  onAlign: (how: 'left' | 'hcenter' | 'right' | 'top' | 'vcenter' | 'bottom') => void;
 }) {
   const num = (label: string, key: keyof El, step = 1) => (
     <label style={S.field}><span style={S.fLabel}>{label}</span>
-      <input type="number" step={step} value={Math.round((e[key] as number))}
-        onChange={(ev) => onChange({ [key]: parseFloat(ev.target.value) || 0 } as any)} style={S.num} />
+      <NumInput value={e[key] as number} step={step} style={S.num}
+        onCommit={(n) => onChange({ [key]: n } as any)} />
     </label>
   );
   const color = (label: string, key: keyof El) => (
@@ -726,6 +753,19 @@ function Inspector({ e, onChange, onDelete, onFront, onBack, onDuplicate }: {
           <input type="range" min={0.1} max={1} step={0.05} value={e.opacity}
             onChange={(ev) => onChange({ opacity: parseFloat(ev.target.value) })} style={{ width: '100%' }} />
         </label>
+      </div>
+
+      <div>
+        <span style={S.fLabel}>Align to page</span>
+        <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
+          <IconBtn title="Left edge" onClick={() => onAlign('left')}><RiAlignItemLeftLine size={15} /></IconBtn>
+          <IconBtn title="Centre horizontally" onClick={() => onAlign('hcenter')}><RiAlignItemHorizontalCenterLine size={15} /></IconBtn>
+          <IconBtn title="Right edge" onClick={() => onAlign('right')}><RiAlignItemRightLine size={15} /></IconBtn>
+          <span style={{ width: 1, background: '#e2e8f0', margin: '0 2px' }} />
+          <IconBtn title="Top edge" onClick={() => onAlign('top')}><RiAlignItemTopLine size={15} /></IconBtn>
+          <IconBtn title="Centre vertically" onClick={() => onAlign('vcenter')}><RiAlignItemVerticalCenterLine size={15} /></IconBtn>
+          <IconBtn title="Bottom edge" onClick={() => onAlign('bottom')}><RiAlignItemBottomLine size={15} /></IconBtn>
+        </div>
       </div>
 
       {e.type === 'text' && (
@@ -783,12 +823,39 @@ function TBtn({ children, onClick, title, disabled }: { children: React.ReactNod
     </button>
   );
 }
+// A number field that lets you actually TYPE a value — clear it, type digits,
+// paste — instead of the arrows driving a hard-controlled input. It commits any
+// valid number as you type and re-syncs to the real value when focus leaves.
+function NumInput({ value, onCommit, step = 1, style }: {
+  value: number; onCommit: (n: number) => void; step?: number; style?: React.CSSProperties;
+}) {
+  const [text, setText] = useState(String(Math.round(value)));
+  const [focused, setFocused] = useState(false);
+  useEffect(() => { if (!focused) setText(String(Math.round(value))); }, [value, focused]);
+  return (
+    <input type="number" step={step} value={text} style={style}
+      onFocus={(e) => { setFocused(true); e.currentTarget.select(); }}
+      onChange={(e) => { setText(e.target.value); const n = parseFloat(e.target.value); if (!isNaN(n)) onCommit(n); }}
+      onBlur={() => { setFocused(false); const n = parseFloat(text); if (!isNaN(n)) onCommit(n); }}
+    />
+  );
+}
 function MenuItem({ children, onClick }: { children: React.ReactNode; onClick: () => void }) {
   const [h, setH] = useState(false);
   return (
     <button type="button" onClick={onClick} onMouseEnter={() => setH(true)} onMouseLeave={() => setH(false)}
       style={{ display: 'flex', alignItems: 'center', gap: 7, width: '100%', padding: '7px 12px', fontSize: '0.78rem',
         fontWeight: 600, border: 'none', background: h ? '#f1f5f9' : '#fff', color: '#334155', cursor: 'pointer', textAlign: 'left' }}>
+      {children}
+    </button>
+  );
+}
+function IconBtn({ children, onClick, title }: { children: React.ReactNode; onClick: () => void; title?: string }) {
+  const [h, setH] = useState(false);
+  return (
+    <button type="button" title={title} onClick={onClick} onMouseEnter={() => setH(true)} onMouseLeave={() => setH(false)}
+      style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flex: 1, height: 28,
+        border: '1px solid #e2e8f0', borderRadius: 5, background: h ? '#f1f5f9' : '#fff', color: '#334155', cursor: 'pointer' }}>
       {children}
     </button>
   );

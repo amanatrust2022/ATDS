@@ -1,12 +1,11 @@
 'use client';
-import { cleanLetterhead } from '@/lib/sanitizeHtml';
 import RequireRole from '@/components/RequireRole';
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/components/AuthProvider';
 import { createClient } from '@/lib/supabase';
 import { RiSettings3Line, RiCheckLine, RiSave3Line, RiHospitalLine } from '@remixicon/react';
 import dynamic from 'next/dynamic';
-import { buildDocCss } from '@/lib/letterheadStyles';
+import LetterheadA4Preview from '@/components/LetterheadA4Preview';
 const LetterheadDesigner = dynamic(() => import('@/components/LetterheadDesigner'), { ssr: false });
 
 const IS_LOCAL_MODE = typeof window !== 'undefined'
@@ -195,15 +194,12 @@ function OrganizationSettings() {
               </div>
             )}
 
-            {/* Letterhead Preview */}
-            <div style={{ border: '2px solid #4472c4', borderRadius: 0, padding: '1.5rem', marginBottom: '2rem', background: 'white', textAlign: 'left', minHeight: '120px', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.02)' }}>
-              <p style={{ fontSize: '0.65rem', fontWeight: 700, color: '#4472c4', textTransform: 'uppercase', marginBottom: '1rem', letterSpacing: '0.08em', borderBottom: '1px solid var(--gray-200)', paddingBottom: '0.25rem' }}>Live Letterhead Print Preview</p>
-              <style>{buildDocCss('.custom-letterhead')}</style>
-              <div
-                className="custom-letterhead"
-                dangerouslySetInnerHTML={{ __html: cleanLetterhead(formData.letterheadHtml) }}
-                style={{ fontFamily: 'Times New Roman, serif', color: '#000' }}
-              />
+            {/* Letterhead Preview — real A4 page geometry */}
+            <div style={{ border: '2px solid #4472c4', borderRadius: 0, marginBottom: '2rem', background: 'white', textAlign: 'left', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.02)' }}>
+              <p style={{ fontSize: '0.65rem', fontWeight: 700, color: '#4472c4', textTransform: 'uppercase', margin: 0, letterSpacing: '0.08em', borderBottom: '1px solid var(--gray-200)', padding: '0.75rem 1.5rem' }}>
+                Live A4 Print Preview <span style={{ color: 'var(--gray-400)', fontWeight: 600, textTransform: 'none', letterSpacing: 0 }}>— first-page top margin 0, 20px side margins, exactly as printed</span>
+              </p>
+              <LetterheadA4Preview html={formData.letterheadHtml} />
             </div>
 
             <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
