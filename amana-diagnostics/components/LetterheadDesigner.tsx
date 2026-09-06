@@ -20,6 +20,7 @@ import {
   RiDeleteBinLine, RiBringToFront, RiSendToBack, RiBold, RiItalic, RiUnderline,
   RiAlignLeft, RiAlignCenter, RiAlignRight, RiShapesLine, RiFileCopyLine,
   RiPentagonLine, RiHexagonLine, RiStarLine, RiVipDiamondLine,
+  RiArrowGoBackLine, RiArrowGoForwardLine, RiFocus3Line,
 } from '@remixicon/react';
 
 // ── Canvas geometry ──────────────────────────────────────────────────────────
@@ -222,6 +223,9 @@ export default function LetterheadDesigner({ value, onChange }: Props) {
   const [selId, setSelId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [shapeMenu, setShapeMenu] = useState(false);
+  const [snapOn, setSnapOn] = useState(true);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
   // Alignment guides shown live while dragging: canvas/other-element edges the
   // moving element has snapped to. Cleared on mouse-up.
   const [guides, setGuides] = useState<{ x: number[]; y: number[] }>({ x: [], y: [] });
@@ -236,6 +240,47 @@ export default function LetterheadDesigner({ value, onChange }: Props) {
   const heightRef = useRef<number>(DEFAULT_H);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
+  const snapRef = useRef(true); snapRef.current = snapOn;
+
+  // ── Undo / redo ────────────────────────────────────────────────────────────
+  // Each entry is a full snapshot of the canvas. `checkpoint(key)` records the
+  // state *before* a change; consecutive checkpoints with the same key inside a
+  // short window collapse into one step, so a slider drag or a run of arrow-key
+  // nudges is a single undo — not fifty.
+  type Snap = { els: El[]; height: number };
+  const undoRef = useRef<Snap[]>([]);
+  const redoRef = useRef<Snap[]>([]);
+  const lastCkpt = useRef<{ key: string; t: number }>({ key: '', t: 0 });
+  const snapshot = (): Snap => ({ els: elsRef.current.map((e) => ({ ...e })), height: heightRef.current });
+  const checkpoint = useCallback((key: string) => {
+    const now = Date.now();
+    if (key === lastCkpt.current.key && now - lastCkpt.current.t < 700) { lastCkpt.current.t = now; return; }
+    lastCkpt.current = { key, t: now };
+    undoRef.current.push(snapshot());
+    if (undoRef.current.length > 120) undoRef.current.shift();
+    redoRef.current = [];
+    setCanUndo(true); setCanRedo(false);
+  }, []);
+  const restore = useCallback((s: Snap) => {
+    elsRef.current = s.els; heightRef.current = s.height;
+    setEls(s.els); setHeight(s.height);
+    const html = serialize(s.els, s.height);
+    lastEmitted.current = html; onChangeRef.current(html);
+  }, []);
+  const undo = useCallback(() => {
+    if (!undoRef.current.length) return;
+    redoRef.current.push(snapshot());
+    restore(undoRef.current.pop()!);
+    lastCkpt.current = { key: '', t: 0 };
+    setCanUndo(undoRef.current.length > 0); setCanRedo(true);
+  }, [restore]);
+  const redo = useCallback(() => {
+    if (!redoRef.current.length) return;
+    undoRef.current.push(snapshot());
+    restore(redoRef.current.pop()!);
+    lastCkpt.current = { key: '', t: 0 };
+    setCanRedo(redoRef.current.length > 0); setCanUndo(true);
+  }, [restore]);
 
   // Load from value (and pull in external changes) without fighting live edits.
   // Setting state here must NOT emit — legacy letterheads stay untouched until
@@ -264,6 +309,7 @@ export default function LetterheadDesigner({ value, onChange }: Props) {
     apply(elsRef.current.map((e) => (e.id === id ? { ...e, ...patch } : e))), [apply]);
 
   const addEl = (type: ElType, extra?: Partial<El>) => {
+    checkpoint('add');
     const z = (elsRef.current.reduce((m, e) => Math.max(m, e.z), 0) || 0) + 1;
     let e = { ...baseEl(type, z), ...extra };
     if (type === 'line') e = { ...e, w: 300, h: 4, x: 60, y: 90, fill: '#000000' };
@@ -276,19 +322,22 @@ export default function LetterheadDesigner({ value, onChange }: Props) {
     setSelId(e.id);
   };
 
-  const removeEl = (id: string) => { apply(elsRef.current.filter((e) => e.id !== id)); setSelId(null); };
+  const removeEl = (id: string) => { checkpoint('remove'); apply(elsRef.current.filter((e) => e.id !== id)); setSelId(null); };
 
   const bringFront = (id: string) => {
+    checkpoint('layer');
     const max = elsRef.current.reduce((m, e) => Math.max(m, e.z), 0);
     apply(elsRef.current.map((e) => (e.id === id ? { ...e, z: max + 1 } : e)));
   };
   const sendBack = (id: string) => {
+    checkpoint('layer');
     const min = elsRef.current.reduce((m, e) => Math.min(m, e.z), 0);
     apply(elsRef.current.map((e) => (e.id === id ? { ...e, z: min - 1 } : e)));
   };
   const duplicate = (id: string) => {
     const src = elsRef.current.find((e) => e.id === id);
     if (!src) return;
+    checkpoint('dup');
     const z = elsRef.current.reduce((m, e) => Math.max(m, e.z), 0) + 1;
     const copy: El = { ...src, id: uid(), x: src.x + 12, y: src.y + 12, z };
     apply([...elsRef.current, copy]);
@@ -353,7 +402,7 @@ export default function LetterheadDesigner({ value, onChange }: Props) {
     ev.stopPropagation();
     setSelId(e.id);
     const p = pt(ev);
-    drag.current = { mode: 'move', id: e.id, sx: p.x, sy: p.y, ox: e.x, oy: e.y };
+    drag.current = { mode: 'move', id: e.id, sx: p.x, sy: p.y, ox: e.x, oy: e.y, ckpt: false };
     addWindow();
   };
 
@@ -362,7 +411,7 @@ export default function LetterheadDesigner({ value, onChange }: Props) {
     const cx = e.x + e.w / 2, cy = e.y + e.h / 2;
     const anchorLocal = { x: (-sx * e.w) / 2, y: (-sy * e.h) / 2 };
     const ar = rotate(anchorLocal.x, anchorLocal.y, e.rot);
-    drag.current = { mode: 'resize', id: e.id, sx, sy, rot: e.rot, w0: e.w, h0: e.h, anchor: { x: cx + ar.x, y: cy + ar.y } };
+    drag.current = { mode: 'resize', id: e.id, sx, sy, rot: e.rot, w0: e.w, h0: e.h, anchor: { x: cx + ar.x, y: cy + ar.y }, ckpt: false };
     addWindow();
   };
 
@@ -371,17 +420,20 @@ export default function LetterheadDesigner({ value, onChange }: Props) {
     const cx = e.x + e.w / 2, cy = e.y + e.h / 2;
     const p = pt(ev);
     const start = Math.atan2(p.y - cy, p.x - cx);
-    drag.current = { mode: 'rotate', id: e.id, cx, cy, start, orot: e.rot };
+    drag.current = { mode: 'rotate', id: e.id, cx, cy, start, orot: e.rot, ckpt: false };
     addWindow();
   };
 
   const onWinMove = (ev: MouseEvent) => {
     const d = drag.current; if (!d) return;
+    // Record one undo checkpoint the first time a drag actually moves, so a plain
+    // click-to-select never leaves an empty undo step.
+    if (!d.ckpt) { d.ckpt = true; checkpoint(d.mode + ':' + d.id); }
     const p = pt(ev);
     if (d.mode === 'move') {
       const moving = elsRef.current.find((e) => e.id === d.id);
       const rawX = d.ox + (p.x - d.sx), rawY = d.oy + (p.y - d.sy);
-      if (moving && !ev.altKey) {
+      if (moving && snapRef.current && !ev.altKey) {
         const s = snapMove(rawX, rawY, moving);
         setGuides({ x: s.gx, y: s.gy });
         update(d.id, { x: s.x, y: s.y });
@@ -391,7 +443,7 @@ export default function LetterheadDesigner({ value, onChange }: Props) {
       }
     } else if (d.mode === 'resize') {
       let px = p.x, py = p.y;
-      if (d.rot === 0 && !ev.altKey) {
+      if (d.rot === 0 && snapRef.current && !ev.altKey) {
         const s = snapResizePoint(p.x, p.y, d.id);
         if (d.sx !== 0) px = s.x;
         if (d.sy !== 0) py = s.y;
@@ -423,10 +475,20 @@ export default function LetterheadDesigner({ value, onChange }: Props) {
   // is selected and focus isn't in a text field or a text box being edited.
   useEffect(() => {
     const onKey = (ev: KeyboardEvent) => {
-      if (!selId || editingId) return;
       const t = ev.target as HTMLElement | null;
       const tag = t?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t?.isContentEditable) return;
+      const inField = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || !!t?.isContentEditable;
+
+      // Undo / redo work anywhere on the canvas (even with nothing selected).
+      // Inside a text field or a text box being edited we leave the browser's
+      // own undo alone.
+      if (!inField) {
+        const k = ev.key.toLowerCase();
+        if ((ev.ctrlKey || ev.metaKey) && k === 'z') { ev.preventDefault(); ev.shiftKey ? redo() : undo(); return; }
+        if ((ev.ctrlKey || ev.metaKey) && k === 'y') { ev.preventDefault(); redo(); return; }
+      }
+
+      if (inField || !selId || editingId) return;
 
       if (ev.key === 'Escape') { setSelId(null); return; }
       if (ev.key === 'Delete' || ev.key === 'Backspace') { ev.preventDefault(); removeEl(selId); return; }
@@ -434,14 +496,14 @@ export default function LetterheadDesigner({ value, onChange }: Props) {
       const step = ev.shiftKey ? 10 : 1;
       const cur = elsRef.current.find((e) => e.id === selId);
       if (!cur) return;
-      if (ev.key === 'ArrowLeft') { ev.preventDefault(); update(selId, { x: cur.x - step }); }
-      else if (ev.key === 'ArrowRight') { ev.preventDefault(); update(selId, { x: cur.x + step }); }
-      else if (ev.key === 'ArrowUp') { ev.preventDefault(); update(selId, { y: cur.y - step }); }
-      else if (ev.key === 'ArrowDown') { ev.preventDefault(); update(selId, { y: cur.y + step }); }
+      if (ev.key === 'ArrowLeft') { ev.preventDefault(); checkpoint('nudge:' + selId); update(selId, { x: cur.x - step }); }
+      else if (ev.key === 'ArrowRight') { ev.preventDefault(); checkpoint('nudge:' + selId); update(selId, { x: cur.x + step }); }
+      else if (ev.key === 'ArrowUp') { ev.preventDefault(); checkpoint('nudge:' + selId); update(selId, { y: cur.y - step }); }
+      else if (ev.key === 'ArrowDown') { ev.preventDefault(); checkpoint('nudge:' + selId); update(selId, { y: cur.y + step }); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [selId, editingId]); // eslint-disable-line
+  }, [selId, editingId, undo, redo, checkpoint]); // eslint-disable-line
 
   const onImagePick = (ev: React.ChangeEvent<HTMLInputElement>) => {
     const file = ev.target.files?.[0]; if (!file) return;
@@ -459,7 +521,7 @@ export default function LetterheadDesigner({ value, onChange }: Props) {
     ev.target.value = '';
   };
 
-  const setHeightSafe = (h: number) => { const v = Math.max(80, Math.min(1000, h)); apply(elsRef.current, v); };
+  const setHeightSafe = (h: number) => { checkpoint('height'); const v = Math.max(80, Math.min(1000, h)); apply(elsRef.current, v); };
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
@@ -489,6 +551,16 @@ export default function LetterheadDesigner({ value, onChange }: Props) {
             </>
           )}
         </div>
+        <div style={{ width: 1, height: 22, background: '#e2e8f0', margin: '0 2px' }} />
+        <TBtn title="Undo (Ctrl+Z)" onClick={undo} disabled={!canUndo}><RiArrowGoBackLine size={16} /></TBtn>
+        <TBtn title="Redo (Ctrl+Shift+Z)" onClick={redo} disabled={!canRedo}><RiArrowGoForwardLine size={16} /></TBtn>
+        <button type="button" title="Snap to other elements and the page edges while dragging"
+          onClick={() => setSnapOn((v) => !v)}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 9px', fontSize: '0.74rem', fontWeight: 600,
+            border: '1px solid ' + (snapOn ? '#2563eb' : '#e2e8f0'), borderRadius: 5,
+            background: snapOn ? '#e0f2fe' : '#fff', color: snapOn ? '#0369a1' : '#334155', cursor: 'pointer' }}>
+          <RiFocus3Line size={16} /> Snap {snapOn ? 'on' : 'off'}
+        </button>
         <div style={{ flex: 1 }} />
         <span style={{ fontSize: '0.72rem', color: '#64748b' }}>Height</span>
         <input type="number" value={Math.round(height)} onChange={(e) => setHeightSafe(parseInt(e.target.value) || DEFAULT_H)}
@@ -509,7 +581,7 @@ export default function LetterheadDesigner({ value, onChange }: Props) {
                 onMouseDown={(ev) => startMove(ev, e)}
                 onDoubleClick={() => { if (e.type === 'text') { setSelId(e.id); setEditingId(e.id); } }}
                 onResizeStart={startResize} onRotateStart={startRotate}
-                onTextInput={(html, contentH) => update(e.id, { content: html, h: Math.max(e.h, contentH) })}
+                onTextInput={(html, contentH) => { checkpoint('text:' + e.id); update(e.id, { content: html, h: Math.max(e.h, contentH) }); }}
               />
             ))}
             {guides.x.map((gx, i) => (
@@ -523,8 +595,8 @@ export default function LetterheadDesigner({ value, onChange }: Props) {
 
         {/* Inspector */}
         <div style={S.inspector}>
-          {!sel && <div style={S.hint}>Select an element to edit its properties, or add one from the toolbar. Double-click a text box to type.<br /><br />Arrow keys nudge (Shift = 10px), Ctrl+D duplicates, Delete removes, Esc deselects. Drag near an edge to snap — hold Alt to turn snapping off.</div>}
-          {sel && <Inspector e={sel} onChange={(patch) => update(sel.id, patch)} onDelete={() => removeEl(sel.id)}
+          {!sel && <div style={S.hint}>Select an element to edit its properties, or add one from the toolbar. Double-click a text box to type.<br /><br />Undo/redo with the toolbar buttons or Ctrl+Z / Ctrl+Shift+Z. Arrow keys nudge (Shift = 10px), Ctrl+D duplicates, Delete removes, Esc deselects.<br /><br />Snapping is a toolbar toggle; you can also hold Alt to switch it off for a single drag.</div>}
+          {sel && <Inspector e={sel} onChange={(patch) => { checkpoint('insp:' + Object.keys(patch)[0]); update(sel.id, patch); }} onDelete={() => removeEl(sel.id)}
             onFront={() => bringFront(sel.id)} onBack={() => sendBack(sel.id)} onDuplicate={() => duplicate(sel.id)} />}
         </div>
       </div>
@@ -699,12 +771,14 @@ function Inspector({ e, onChange, onDelete, onFront, onBack, onDuplicate }: {
 }
 
 // ── Small primitives ─────────────────────────────────────────────────────────
-function TBtn({ children, onClick, title }: { children: React.ReactNode; onClick?: () => void; title?: string }) {
+function TBtn({ children, onClick, title, disabled }: { children: React.ReactNode; onClick?: () => void; title?: string; disabled?: boolean }) {
   const [h, setH] = useState(false);
   return (
-    <button type="button" title={title} onClick={onClick} onMouseEnter={() => setH(true)} onMouseLeave={() => setH(false)}
+    <button type="button" title={title} onClick={onClick} disabled={disabled}
+      onMouseEnter={() => setH(true)} onMouseLeave={() => setH(false)}
       style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 9px', fontSize: '0.74rem', fontWeight: 600,
-        border: '1px solid #e2e8f0', borderRadius: 5, background: h ? '#f1f5f9' : '#fff', color: '#334155', cursor: 'pointer' }}>
+        border: '1px solid #e2e8f0', borderRadius: 5, background: disabled ? '#f8fafc' : h ? '#f1f5f9' : '#fff',
+        color: disabled ? '#cbd5e1' : '#334155', cursor: disabled ? 'default' : 'pointer' }}>
       {children}
     </button>
   );
