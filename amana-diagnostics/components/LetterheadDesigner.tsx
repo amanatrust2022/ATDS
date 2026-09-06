@@ -71,6 +71,7 @@ interface El {
   italic: boolean;
   underline: boolean;
   align: 'left' | 'center' | 'right';
+  ph?: boolean; // still the untouched placeholder — cleared on first real edit
   // image-only. The box (w,h) is a crop window; the picture is drawn at iw×ih
   // and offset by (ox,oy), so resizing the box crops rather than scaling.
   src: string;
@@ -351,7 +352,7 @@ export default function LetterheadDesigner({ value, onChange }: Props) {
     const z = (elsRef.current.reduce((m, e) => Math.max(m, e.z), 0) || 0) + 1;
     let e = { ...baseEl(type, z), ...extra };
     if (type === 'line') e = { ...e, w: 300, h: 4, x: 60, y: 90, fill: '#000000' };
-    if (type === 'text') e = { ...e, w: 320, h: 48, x: 60, y: 40, content: 'Double-click to edit' };
+    if (type === 'text') e = { ...e, w: 320, h: 48, x: 60, y: 40, content: 'Double-click to edit', ph: true };
     if (type === 'circle') e = { ...e, w: 100, h: 100 };
     if (type === 'triangle' || type === 'diamond' || type === 'pentagon' || type === 'hexagon' || type === 'star') {
       e = { ...e, w: 110, h: 100 };
@@ -685,7 +686,7 @@ export default function LetterheadDesigner({ value, onChange }: Props) {
                 onMouseDown={(ev) => startMove(ev, e)}
                 onDoubleClick={() => { if (e.type === 'text') { setSelId(e.id); setEditingId(e.id); } }}
                 onResizeStart={startResize} onRotateStart={startRotate}
-                onTextInput={(html, contentH) => { checkpoint('text:' + e.id); update(e.id, { content: html, h: Math.max(e.h, contentH) }); }}
+                onTextInput={(html, contentH) => { checkpoint('text:' + e.id); update(e.id, { content: html, h: Math.max(e.h, contentH), ph: false }); }}
               />
             ))}
             {guides.x.map((gx, i) => (
@@ -717,12 +718,26 @@ function ElementView({ e, selected, editing, onMouseDown, onDoubleClick, onResiz
   onTextInput: (html: string, contentH: number) => void;
 }) {
   const editRef = useRef<HTMLDivElement>(null);
+  // Keep the DOM text in sync with the model ONLY while not editing (so undo and
+  // external changes show up). While editing we never rewrite the node, so the
+  // caret and the text are never wiped out from under the user.
   useEffect(() => {
-    if (editing && editRef.current) {
-      editRef.current.focus();
-      // Fit the box to whatever content is already there when editing begins.
-      onTextInput(editRef.current.innerHTML, editRef.current.scrollHeight);
-    }
+    if (e.type !== 'text' || editing || !editRef.current) return;
+    if (editRef.current.innerHTML !== e.content) editRef.current.innerHTML = e.content;
+  }, [e.type, e.content, editing]);
+
+  // On entering edit: clear the box only if it's still the untouched placeholder,
+  // then focus and drop the caret at the end. Existing text is left intact.
+  useEffect(() => {
+    if (!editing || !editRef.current) return;
+    if (e.ph) editRef.current.innerHTML = '';
+    editRef.current.focus();
+    const range = document.createRange();
+    range.selectNodeContents(editRef.current);
+    range.collapse(false);
+    const selctn = window.getSelection();
+    selctn?.removeAllRanges();
+    selctn?.addRange(range);
   }, [editing]); // eslint-disable-line
 
   const common: React.CSSProperties = {
@@ -747,7 +762,6 @@ function ElementView({ e, selected, editing, onMouseDown, onDoubleClick, onResiz
         ref={editRef} contentEditable={editing} suppressContentEditableWarning
         onInput={(ev) => { const el = ev.target as HTMLElement; onTextInput(el.innerHTML, el.scrollHeight); }}
         style={{ width: '100%', height: '100%', outline: 'none', cursor: editing ? 'text' : 'move' }}
-        dangerouslySetInnerHTML={editing ? undefined : { __html: e.content }}
       />
     );
   } else if (e.type === 'image') {
