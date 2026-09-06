@@ -71,8 +71,10 @@ interface El {
   italic: boolean;
   underline: boolean;
   align: 'left' | 'center' | 'right';
-  // image-only
+  // image-only. The box (w,h) is a crop window; the picture is drawn at iw×ih
+  // and offset by (ox,oy), so resizing the box crops rather than scaling.
   src: string;
+  iw: number; ih: number; ox: number; oy: number; nar: number; // display w/h, crop offset, natural aspect (h/w)
 }
 
 interface Props {
@@ -98,6 +100,7 @@ function baseEl(type: ElType, z: number): El {
     fill: '#4472c4', borderColor: '#000000', borderWidth: 0, radius: 0,
     content: 'Text', color: '#0f172a', fontSize: 24, fontFamily: FONTS[0],
     bold: false, italic: false, underline: false, align: 'center', src: '',
+    iw: 0, ih: 0, ox: 0, oy: 0, nar: 1,
   };
 }
 
@@ -119,7 +122,8 @@ function elStyle(e: El): string {
       `text-decoration:${e.underline ? 'underline' : 'none'}`, `text-align:${e.align}`,
       'line-height:1.25', 'overflow:visible', 'white-space:pre-wrap');
   } else if (e.type === 'image') {
-    parts.push('object-fit:contain');
+    // The box is a crop window over the picture.
+    parts.push('overflow:hidden');
     if (e.borderWidth) parts.push(`border:${e.borderWidth}px solid ${e.borderColor}`);
     if (e.radius) parts.push(`border-radius:${e.radius}px`);
   } else if (e.type === 'line') {
@@ -136,11 +140,20 @@ function elStyle(e: El): string {
   return parts.join(';');
 }
 
+// Display size / offset for an image's inner picture, falling back to the box
+// (older images saved before cropping existed had no iw/ih).
+function imgDisplay(e: El) {
+  const iw = e.iw || e.w, ih = e.ih || e.h;
+  return { iw: round(iw), ih: round(ih), ox: round(e.ox || 0), oy: round(e.oy || 0) };
+}
+
 function serialize(els: El[], height: number): string {
   if (els.length === 0) return '';
   const children = [...els].sort((a, b) => a.z - b.z).map((e) => {
     if (e.type === 'image') {
-      return `<img data-type="image" src="${escapeAttr(e.src)}" style="${elStyle(e)}" alt="" />`;
+      const { iw, ih, ox, oy } = imgDisplay(e);
+      const imgStyle = `position:absolute;left:${-ox}px;top:${-oy}px;width:${iw}px;height:${ih}px;max-width:none;display:block`;
+      return `<div data-type="image" data-shape="1" style="${elStyle(e)}"><img src="${escapeAttr(e.src)}" style="${imgStyle}" alt="" /></div>`;
     }
     const inner = e.type === 'text' ? e.content : '';
     // Shapes are empty divs; `data-shape` stops cleanLetterhead's "trailing empty
@@ -196,7 +209,17 @@ function deserialize(value: string): { els: El[]; height: number } {
     e.radius = px(styleVal(s, 'border-radius')) || 0;
     const bw = /(\d+(?:\.\d+)?)px\s+solid\s+([^;]+)/.exec(styleVal(s, 'border'));
     if (bw) { e.borderWidth = parseFloat(bw[1]); e.borderColor = bw[2].trim(); }
-    if (type === 'image') e.src = el.getAttribute('src') || '';
+    if (type === 'image') {
+      // New format: <div data-type=image><img .../></div>. Legacy: a bare <img>.
+      const imgEl = (el.tagName.toLowerCase() === 'img' ? el : el.querySelector('img')) as HTMLElement | null;
+      e.src = imgEl?.getAttribute('src') || '';
+      const is = imgEl?.getAttribute('style') || '';
+      e.iw = px(styleVal(is, 'width'), e.w) || e.w;
+      e.ih = px(styleVal(is, 'height'), e.h) || e.h;
+      e.ox = Math.abs(px(styleVal(is, 'left'), 0));
+      e.oy = Math.abs(px(styleVal(is, 'top'), 0));
+      e.nar = e.iw ? e.ih / e.iw : 1;
+    }
     if (type === 'text') {
       e.content = el.innerHTML;
       e.color = styleVal(s, 'color') || e.color;
@@ -296,12 +319,23 @@ export default function LetterheadDesigner({ value, onChange }: Props) {
     setEls(e); setHeight(h); lastEmitted.current = value;
   }, [value]);
 
-  // The single write path: update state AND emit, both outside any React
-  // updater so the parent reliably receives the change.
+  // While a drag is in flight we update local state every frame but DON'T emit
+  // to the parent — emitting serialises the whole letterhead (a big base64
+  // import included) and re-renders the settings page + A4 preview on every
+  // mouse move, which made dragging crawl. We emit once when the drag ends.
+  const emitPaused = useRef(false);
+  const emitNow = useCallback(() => {
+    const html = serialize(elsRef.current, heightRef.current);
+    lastEmitted.current = html;
+    onChangeRef.current(html);
+  }, []);
+
+  // The single write path: update state, and emit unless a drag has paused it.
   const apply = useCallback((next: El[], nextH?: number) => {
     const h = nextH ?? heightRef.current;
     elsRef.current = next; heightRef.current = h;
     setEls(next); setHeight(h);
+    if (emitPaused.current) return;
     const html = serialize(next, h);
     lastEmitted.current = html;
     onChangeRef.current(html);
@@ -403,7 +437,9 @@ export default function LetterheadDesigner({ value, onChange }: Props) {
 
   const startMove = (ev: React.MouseEvent, e: El) => {
     if (editingId === e.id) return;
+    if (ev.button !== 0) return; // left button only
     ev.stopPropagation();
+    ev.preventDefault(); // stop the browser starting a text selection / image drag
     setSelId(e.id);
     const p = pt(ev);
     drag.current = { mode: 'move', id: e.id, sx: p.x, sy: p.y, ox: e.x, oy: e.y, ckpt: false };
@@ -411,6 +447,7 @@ export default function LetterheadDesigner({ value, onChange }: Props) {
 
   const startResize = (ev: React.MouseEvent, e: El, sx: number, sy: number) => {
     ev.stopPropagation();
+    ev.preventDefault();
     const cx = e.x + e.w / 2, cy = e.y + e.h / 2;
     const anchorLocal = { x: (-sx * e.w) / 2, y: (-sy * e.h) / 2 };
     const ar = rotate(anchorLocal.x, anchorLocal.y, e.rot);
@@ -419,6 +456,7 @@ export default function LetterheadDesigner({ value, onChange }: Props) {
 
   const startRotate = (ev: React.MouseEvent, e: El) => {
     ev.stopPropagation();
+    ev.preventDefault();
     const cx = e.x + e.w / 2, cy = e.y + e.h / 2;
     const p = pt(ev);
     const start = Math.atan2(p.y - cy, p.x - cx);
@@ -428,8 +466,9 @@ export default function LetterheadDesigner({ value, onChange }: Props) {
   const onWinMove = (ev: MouseEvent) => {
     const d = drag.current; if (!d) return;
     // Record one undo checkpoint the first time a drag actually moves, so a plain
-    // click-to-select never leaves an empty undo step.
-    if (!d.ckpt) { d.ckpt = true; checkpoint(d.mode + ':' + d.id); }
+    // click-to-select never leaves an empty undo step. Pause parent emits for the
+    // duration of the drag; onWinUp flushes a single update.
+    if (!d.ckpt) { d.ckpt = true; checkpoint(d.mode + ':' + d.id); emitPaused.current = true; }
     const p = pt(ev);
     if (d.mode === 'move') {
       const moving = elsRef.current.find((e) => e.id === d.id);
@@ -467,7 +506,11 @@ export default function LetterheadDesigner({ value, onChange }: Props) {
       update(d.id, { rot: Math.round(deg * 10) / 10 });
     }
   };
-  const onWinUp = () => { drag.current = null; setGuides({ x: [], y: [] }); };
+  const onWinUp = () => {
+    drag.current = null;
+    setGuides({ x: [], y: [] });
+    if (emitPaused.current) { emitPaused.current = false; emitNow(); }
+  };
   // Bind the drag listeners ONCE and dispatch through refs. Adding/removing them
   // per-drag by function identity leaked listeners (every render makes new
   // closures, so removal never matched what was added) and made dragging erratic.
@@ -525,7 +568,8 @@ export default function LetterheadDesigner({ value, onChange }: Props) {
       const img = new window.Image();
       img.onload = () => {
         const scale = Math.min(1, 200 / img.width);
-        addEl('image', { src, w: Math.round(img.width * scale), h: Math.round(img.height * scale), x: 60, y: 40 });
+        const w = Math.round(img.width * scale), h = Math.round(img.height * scale);
+        addEl('image', { src, w, h, x: 60, y: 40, iw: w, ih: h, ox: 0, oy: 0, nar: img.height / img.width });
       };
       img.src = src;
     };
@@ -544,9 +588,10 @@ export default function LetterheadDesigner({ value, onChange }: Props) {
       const src = e.target?.result as string;
       const img = new window.Image();
       img.onload = () => {
-        const h = Math.round(CANVAS_W * (img.height / img.width));
+        const nar = img.height / img.width;
+        const h = Math.round(CANVAS_W * nar);
         checkpoint('import');
-        const el: El = { ...baseEl('image', 1), src, x: 0, y: 0, w: CANVAS_W, h };
+        const el: El = { ...baseEl('image', 1), src, x: 0, y: 0, w: CANVAS_W, h, iw: CANVAS_W, ih: h, ox: 0, oy: 0, nar };
         apply([el], Math.max(80, Math.min(1000, h)));
         setSelId(el.id);
       };
@@ -684,6 +729,7 @@ function ElementView({ e, selected, editing, onMouseDown, onDoubleClick, onResiz
     position: 'absolute', left: e.x, top: e.y, width: e.w, height: e.h,
     transform: e.rot ? `rotate(${e.rot}deg)` : undefined, opacity: e.opacity,
     zIndex: e.z, boxSizing: 'border-box', cursor: editing ? 'text' : 'move',
+    userSelect: editing ? 'text' : 'none', WebkitUserSelect: editing ? 'text' : 'none',
   };
 
   let inner: React.ReactNode = null;
@@ -706,10 +752,15 @@ function ElementView({ e, selected, editing, onMouseDown, onDoubleClick, onResiz
     );
   } else if (e.type === 'image') {
     Object.assign(shapeStyle, {
-      objectFit: 'contain' as const,
+      overflow: 'hidden',
       border: e.borderWidth ? `${e.borderWidth}px solid ${e.borderColor}` : undefined,
       borderRadius: e.radius || undefined,
     });
+    const { iw, ih, ox, oy } = imgDisplay(e);
+    inner = (
+      <img src={e.src} alt="" draggable={false}
+        style={{ position: 'absolute', left: -ox, top: -oy, width: iw, height: ih, maxWidth: 'none', display: 'block', pointerEvents: 'none' }} />
+    );
   } else if (e.type === 'line') {
     Object.assign(shapeStyle, { background: e.fill });
   } else if (e.type === 'rect') {
@@ -720,9 +771,7 @@ function ElementView({ e, selected, editing, onMouseDown, onDoubleClick, onResiz
     Object.assign(shapeStyle, { background: e.fill, clipPath: CLIP[e.type] });
   }
 
-  const el = e.type === 'image'
-    ? <img src={e.src} alt="" style={shapeStyle} onMouseDown={onMouseDown} onDoubleClick={onDoubleClick} draggable={false} />
-    : <div style={shapeStyle} onMouseDown={onMouseDown} onDoubleClick={onDoubleClick}>{inner}</div>;
+  const el = <div style={shapeStyle} onMouseDown={onMouseDown} onDoubleClick={onDoubleClick}>{inner}</div>;
 
   // Corner + side handles. sx/sy ∈ {-1,0,1}; 0 means that side handle only moves
   // one edge (leaves the other dimension fixed).
@@ -832,6 +881,25 @@ function Inspector({ e, onChange, onDelete, onFront, onBack, onDuplicate, onAlig
         <div style={S.row}>{num('Border', 'borderWidth')}{color('Bd. color', 'borderColor')}</div>
       )}
       {(e.type === 'rect' || e.type === 'image') && <div style={S.row}>{num('Radius', 'radius')}<span style={{ flex: 1 }} /></div>}
+
+      {e.type === 'image' && (() => {
+        const iw = e.iw || e.w, nar = e.nar || (e.ih || e.h) / (e.iw || e.w);
+        const zoom = Math.round((iw / e.w) * 100);
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, borderTop: '1px solid #f1f5f9', paddingTop: 8 }}>
+            <span style={S.fLabel}>Picture — resize the box to crop</span>
+            <label style={S.field}><span style={S.fLabel}>Zoom {zoom}%</span>
+              <input type="range" min={100} max={400} step={1} value={Math.max(100, Math.min(400, zoom))}
+                onChange={(ev) => { const f = parseInt(ev.target.value) / 100; onChange({ iw: e.w * f, ih: e.w * f * nar }); }} style={{ width: '100%' }} />
+            </label>
+            <div style={S.row}>{num('Crop X', 'ox')}{num('Crop Y', 'oy')}</div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <TBtn title="Fit the picture to the box width" onClick={() => onChange({ iw: e.w, ih: e.w * nar, ox: 0, oy: 0 })}>Fit width</TBtn>
+              <TBtn title="Fill the whole box, cropping the overflow" onClick={() => { const s = Math.max(e.w, e.h / nar); onChange({ iw: s, ih: s * nar, ox: (s - e.w) / 2, oy: (s * nar - e.h) / 2 }); }}>Fill box</TBtn>
+            </div>
+          </div>
+        );
+      })()}
 
       <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
         <TBtn onClick={onFront}><RiBringToFront size={14} /> Front</TBtn>
