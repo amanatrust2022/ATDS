@@ -324,6 +324,24 @@ export default function LetterheadDesigner({ value, onChange }: Props) {
     };
   };
 
+  // Snap the corner being dragged during a resize onto the nearest canvas /
+  // other-element edge or centre. Only for un-rotated elements (a rotated box's
+  // corner doesn't lie on an axis-aligned line).
+  const snapResizePoint = (px: number, py: number, id: string) => {
+    const TH = 6;
+    const others = elsRef.current.filter((e) => e.id !== id && !e.rot);
+    const xt = [0, CANVAS_W / 2, CANVAS_W];
+    const yt = [0, heightRef.current / 2, heightRef.current];
+    others.forEach((e) => { xt.push(e.x, e.x + e.w / 2, e.x + e.w); yt.push(e.y, e.y + e.h / 2, e.y + e.h); });
+    const nearest = (v: number, targets: number[]) => {
+      let best: { t: number; d: number } | null = null;
+      for (const t of targets) { const d = t - v; if (Math.abs(d) <= TH && (!best || Math.abs(d) < Math.abs(best.d))) best = { t, d }; }
+      return best;
+    };
+    const bx = nearest(px, xt), by = nearest(py, yt);
+    return { x: bx ? bx.t : px, y: by ? by.t : py, gx: bx ? [bx.t] : [], gy: by ? [by.t] : [] };
+  };
+
   // ── Pointer interactions ───────────────────────────────────────────────────
   const pt = (ev: MouseEvent | React.MouseEvent) => {
     const r = canvasRef.current!.getBoundingClientRect();
@@ -372,7 +390,14 @@ export default function LetterheadDesigner({ value, onChange }: Props) {
         update(d.id, { x: rawX, y: rawY });
       }
     } else if (d.mode === 'resize') {
-      const v = { x: p.x - d.anchor.x, y: p.y - d.anchor.y };
+      let px = p.x, py = p.y;
+      if (d.rot === 0 && !ev.altKey) {
+        const s = snapResizePoint(p.x, p.y, d.id);
+        px = s.x; py = s.y; setGuides({ x: s.gx, y: s.gy });
+      } else {
+        setGuides({ x: [], y: [] });
+      }
+      const v = { x: px - d.anchor.x, y: py - d.anchor.y };
       const local = rotate(v.x, v.y, -d.rot);
       const w = Math.max(MIN, d.sx * local.x);
       const h = Math.max(MIN, d.sy * local.y);
@@ -481,7 +506,7 @@ export default function LetterheadDesigner({ value, onChange }: Props) {
                 onMouseDown={(ev) => startMove(ev, e)}
                 onDoubleClick={() => { if (e.type === 'text') { setSelId(e.id); setEditingId(e.id); } }}
                 onResizeStart={startResize} onRotateStart={startRotate}
-                onTextInput={(html) => update(e.id, { content: html })}
+                onTextInput={(html, contentH) => update(e.id, { content: html, h: Math.max(e.h, contentH) })}
               />
             ))}
             {guides.x.map((gx, i) => (
@@ -510,10 +535,16 @@ function ElementView({ e, selected, editing, onMouseDown, onDoubleClick, onResiz
   onMouseDown: (ev: React.MouseEvent) => void; onDoubleClick: () => void;
   onResizeStart: (ev: React.MouseEvent, e: El, sx: number, sy: number) => void;
   onRotateStart: (ev: React.MouseEvent, e: El) => void;
-  onTextInput: (html: string) => void;
+  onTextInput: (html: string, contentH: number) => void;
 }) {
   const editRef = useRef<HTMLDivElement>(null);
-  useEffect(() => { if (editing && editRef.current) { editRef.current.focus(); } }, [editing]);
+  useEffect(() => {
+    if (editing && editRef.current) {
+      editRef.current.focus();
+      // Fit the box to whatever content is already there when editing begins.
+      onTextInput(editRef.current.innerHTML, editRef.current.scrollHeight);
+    }
+  }, [editing]); // eslint-disable-line
 
   const common: React.CSSProperties = {
     position: 'absolute', left: e.x, top: e.y, width: e.w, height: e.h,
@@ -534,7 +565,7 @@ function ElementView({ e, selected, editing, onMouseDown, onDoubleClick, onResiz
     inner = (
       <div
         ref={editRef} contentEditable={editing} suppressContentEditableWarning
-        onInput={(ev) => onTextInput((ev.target as HTMLElement).innerHTML)}
+        onInput={(ev) => { const el = ev.target as HTMLElement; onTextInput(el.innerHTML, el.scrollHeight); }}
         style={{ width: '100%', height: '100%', outline: 'none', cursor: editing ? 'text' : 'move' }}
         dangerouslySetInnerHTML={editing ? undefined : { __html: e.content }}
       />
