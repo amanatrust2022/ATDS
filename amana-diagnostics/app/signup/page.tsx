@@ -48,35 +48,37 @@ export default function SignupPage() {
     const statusTimer = setTimeout(() => setOrgStatusText('Verifying workspace ID availability...'), 1000);
 
     try {
-      const checkPromise = supabase.rpc('check_slug_exists', { p_slug: org.slug });
-      const { data: exists, error: checkErr } = await withTimeout(
+      // One question, asked of the server: is this workspace ID free, and if it
+      // is taken, is it actually in use? Nobody has an account at this point in
+      // sign-up, so an anonymous browser can no longer read `organizations`
+      // itself (supabase_tighten_rls.sql). /api/signup/claim-slug answers both
+      // halves with the service key and discloses nothing else.
+      const checkPromise = fetch('/api/signup/claim-slug', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slug: org.slug }),
+      });
+      const res = await withTimeout(
         checkPromise,
         10000,
         () => setError('Slow network connection detected. Still verifying workspace ID availability... please wait.')
       );
-      
+
       clearTimeout(statusTimer);
 
-      if (checkErr) throw checkErr;
-      if (exists) {
-        // Taken is not always in use. A sign-up that failed after reserving the
-        // workspace but before creating the account leaves one behind with
-        // nobody in it, and the clinic could never claim their own name back.
-        const res = await fetch('/api/signup/claim-slug', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ slug: org.slug }),
-        });
-        const claim = res.ok ? await res.json() : null;
-
-        if (!claim?.adoptable) {
-          setError('This Workspace ID (slug) is already taken. Please choose a different one.');
-          return;
-        }
-        setAdoptableOrgId(claim.organizationId);
-      } else {
-        setAdoptableOrgId(null);
+      if (!res.ok) {
+        throw new Error('Could not check that workspace ID. Please try again.');
       }
+      const claim = await res.json();
+
+      // Taken is not always in use. A sign-up that failed after reserving the
+      // workspace but before creating the account leaves one behind with
+      // nobody in it, and the clinic could never claim their own name back.
+      if (!claim.available && !claim.adoptable) {
+        setError('This Workspace ID (slug) is already taken. Please choose a different one.');
+        return;
+      }
+      setAdoptableOrgId(claim.adoptable ? claim.organizationId : null);
       setStep(2);
     } catch (err: any) {
       clearTimeout(statusTimer);

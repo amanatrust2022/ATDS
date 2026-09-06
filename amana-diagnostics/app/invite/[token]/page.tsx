@@ -44,25 +44,29 @@ export default function InviteAcceptPage() {
   useEffect(() => {
     const fetchInvite = async () => {
       try {
-        const fetchPromise = supabase
-          .from('invitations')
-          .select('*, organizations(*)')
-          .eq('token', token)
-          .is('accepted_at', null)
-          .gt('expires_at', new Date().toISOString())
-          .single();
+        // Read through the server, not straight from the table. The anon-read
+        // policy that used to make the direct query work also let anyone list
+        // every pending invitation in the system; it is gone. Holding the token
+        // is still the whole of the authorisation — it just cannot be guessed
+        // by asking for the list any more.
+        const fetchPromise = fetch('/api/invite/lookup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token }),
+        });
 
-        const { data, error } = await withTimeout(
+        const res = await withTimeout(
           fetchPromise,
           10000,
           () => setError('Slow network connection detected. Still retrieving invitation details... please wait.')
         );
 
-        if (error || !data) {
+        if (!res.ok) {
           setInvalid(true);
         } else {
+          const data = await res.json();
           setInvite(data);
-          setOrg(data.organizations);
+          setOrg({ name: data.organizationName });
         }
       } catch (err: any) {
         console.error('Invite fetch error:', err);
