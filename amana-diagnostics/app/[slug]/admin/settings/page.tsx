@@ -219,7 +219,7 @@ function OrganizationSettings() {
               <div>
                 <label style={lblStyle}>Custom Designed Letterhead (Free Design Canvas) *</label>
                 <p style={{ ...hintStyle, marginBottom: '0.75rem' }}>
-                  Add text, your logo, lines and shapes, then drag to move, use the corner handles to resize, and the top handle to rotate. Select any element to fine-tune its position, size, colour and angle. Double-click a text box to type.
+                  Already have a letterhead? Click <strong>Import letterhead</strong> to drop in a picture of it (a high-resolution PNG/JPG export or scan) — it fills the page exactly as-is, and you can overlay editable text on top. Or build from scratch: add text, your logo, lines and shapes, then drag to move, use the corner handles to resize, and the top handle to rotate. Double-click a text box to type.
                 </p>
                 <LetterheadDesigner
                   value={formData.letterheadHtml}

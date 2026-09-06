@@ -23,6 +23,7 @@ import {
   RiArrowGoBackLine, RiArrowGoForwardLine, RiFocus3Line,
   RiAlignItemLeftLine, RiAlignItemHorizontalCenterLine, RiAlignItemRightLine,
   RiAlignItemTopLine, RiAlignItemVerticalCenterLine, RiAlignItemBottomLine,
+  RiUploadCloud2Line,
 } from '@remixicon/react';
 
 // ── Canvas geometry ──────────────────────────────────────────────────────────
@@ -234,6 +235,7 @@ export default function LetterheadDesigner({ value, onChange }: Props) {
 
   const canvasRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const importRef = useRef<HTMLInputElement>(null);
   const lastEmitted = useRef<string>('');
   const drag = useRef<any>(null);
   // Refs mirror the latest state so drag listeners bound once at mousedown, and
@@ -531,6 +533,29 @@ export default function LetterheadDesigner({ value, onChange }: Props) {
     ev.target.value = '';
   };
 
+  // Import an existing letterhead: the picture becomes the letterhead itself —
+  // dropped in at full page width with the canvas sized to its aspect ratio, an
+  // exact raster of what the clinic already has. It replaces the current design
+  // (undoable), and they can then overlay editable text on top if they wish.
+  const onLetterheadImport = (ev: React.ChangeEvent<HTMLInputElement>) => {
+    const file = ev.target.files?.[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const src = e.target?.result as string;
+      const img = new window.Image();
+      img.onload = () => {
+        const h = Math.round(CANVAS_W * (img.height / img.width));
+        checkpoint('import');
+        const el: El = { ...baseEl('image', 1), src, x: 0, y: 0, w: CANVAS_W, h };
+        apply([el], Math.max(80, Math.min(1000, h)));
+        setSelId(el.id);
+      };
+      img.src = src;
+    };
+    reader.readAsDataURL(file);
+    ev.target.value = '';
+  };
+
   const setHeightSafe = (h: number) => { checkpoint('height'); const v = Math.max(80, Math.min(1000, h)); apply(elsRef.current, v); };
 
   // Align the selected element to the page (canvas) edges or centre.
@@ -553,9 +578,17 @@ export default function LetterheadDesigner({ value, onChange }: Props) {
   return (
     <div style={S.wrap}>
       <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={onImagePick} />
+      <input ref={importRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={onLetterheadImport} />
 
       {/* Toolbar */}
       <div style={S.toolbar}>
+        <button type="button" title="Import an existing letterhead image — fills the page width, exact copy"
+          onClick={() => importRef.current?.click()}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 10px', fontSize: '0.74rem', fontWeight: 700,
+            border: '1px solid #2563eb', borderRadius: 5, background: '#2563eb', color: '#fff', cursor: 'pointer' }}>
+          <RiUploadCloud2Line size={16} /> Import letterhead
+        </button>
+        <div style={{ width: 1, height: 22, background: '#e2e8f0', margin: '0 2px' }} />
         <span style={S.tGroupLabel}>Add</span>
         <TBtn title="Text box" onClick={() => addEl('text')}><RiText size={16} /> Text</TBtn>
         <TBtn title="Image / logo" onClick={() => fileRef.current?.click()}><RiImageAddLine size={16} /> Image</TBtn>
