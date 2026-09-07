@@ -11,7 +11,7 @@ import { cleanLetterhead } from './sanitizeHtml';
 import { Patient, PatientTest, getTestById } from './store';
 import { patientDisplayName } from './store/patientName';
 import { deserializeRadiologyResults, convertTextToFormattedHtml } from './radiology-templates';
-import { buildDocCss } from './letterheadStyles';
+import { buildDocCss, splitLetterhead } from './letterheadStyles';
 
 /** Minimal org shape needed for rendering letterheads */
 export type OrgForTemplate = {
@@ -61,7 +61,15 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
   // Sanitised, not merely tidied: this HTML is authored in the app and then
   // injected into reports, into the page the patient is shown, and into a
   // headless browser run without a sandbox.
-  const cleanLetterheadHtml = cleanLetterhead(org?.letterhead_html);
+  // The stored field carries a header (top of page 1) and an optional footer
+  // (bottom of every page); split BEFORE cleaning, since the separator is a
+  // comment the sanitiser strips.
+  const { header: rawHeader, footer: rawFooter } = splitLetterhead(org?.letterhead_html);
+  const cleanLetterheadHtml = cleanLetterhead(rawHeader);
+  const cleanFooterHtml = rawFooter.trim() ? cleanLetterhead(rawFooter) : '';
+  // Reserve bottom space on every page for the running footer.
+  const footerH = cleanFooterHtml ? parseFloat((/width:740px;height:(\d+(?:\.\d+)?)px/.exec(rawFooter) || [])[1] || '120') : 0;
+  const pageMarginBottom = cleanFooterHtml ? `${Math.round(footerH + 20)}px` : '15mm';
 
   const testSections = completedTests.map(t => {
     const isMcs = t.testId.toLowerCase().endsWith('_mcs') || t.testId.toLowerCase().includes('mcs') || t.testId.toLowerCase() === 'sfmcs' || t.testName.toLowerCase().includes('mcs') || t.testName.toLowerCase().includes('culture & sensitivity') || t.testName.toLowerCase().includes('culture and sensitivity');
@@ -439,12 +447,23 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
       }
       @page {
         margin-top: 20mm;
-        margin-bottom: 15mm;
+        margin-bottom: ${pageMarginBottom};
         margin-left: 20px;
         margin-right: 20px;
       }
       @page :first {
         margin-top: 0;
+      }
+      /* Running letterhead footer: repeats at the bottom of every printed page. */
+      .page-footer { display: none; }
+      @media print {
+        .page-footer {
+          display: block;
+          position: fixed;
+          left: 0; right: 0; bottom: 0;
+          text-align: center;
+        }
+        .page-footer .custom-letterhead { margin: 0 auto; }
       }
       @media screen {
         body { max-width: 860px; margin: 0 auto; padding: 32px 40px; background: #f0f2f5; }
@@ -541,6 +560,7 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
         <div class="sig-line">${completedTests[0]?.completedBy || 'Authorised Professional'}</div>
       </div>
     </div>
+    ${cleanFooterHtml ? `<div class="page-footer"><div class="custom-letterhead">${cleanFooterHtml}</div></div>` : ''}
     </body></html>`;
 };
 

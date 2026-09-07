@@ -25,8 +25,9 @@ const vGuide = (left: number): React.CSSProperties => ({
   borderLeft: '1px dashed #cbd5e1', pointerEvents: 'none',
 });
 
-export default function LetterheadA4Preview({ html }: { html: string }) {
+export default function LetterheadA4Preview({ html, footerHtml }: { html: string; footerHtml?: string }) {
   const clean = cleanLetterhead(html);
+  const footerClean = footerHtml && footerHtml.trim() ? cleanLetterhead(footerHtml) : '';
   return (
     <div style={{ background: '#e9edf2', padding: 20, overflow: 'auto', display: 'flex', justifyContent: 'center' }}>
       {/* Reserve the scaled footprint so surrounding layout stays correct. */}
@@ -71,6 +72,13 @@ export default function LetterheadA4Preview({ html }: { html: string }) {
               — results, signature and the rest of the report continue below —
             </div>
           </div>
+
+          {/* Footer — repeats at the bottom of every printed page. */}
+          {footerClean && (
+            <div className="a4-report" style={{ position: 'absolute', left: MARGIN_X, right: MARGIN_X, bottom: 6 }}>
+              <div className="custom-letterhead" dangerouslySetInnerHTML={{ __html: footerClean }} />
+            </div>
+          )}
         </div>
       </div>
     </div>
