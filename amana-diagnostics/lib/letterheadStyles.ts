@@ -15,27 +15,38 @@
  */
 
 /**
- * A letterhead is stored as a single HTML string but can carry two designs: the
- * header (top of page 1) and an optional footer (bottom of every page). They are
- * joined by this sentinel comment so the pair rides inside the existing
- * `letterhead_html` column with no schema change. The sentinel is a comment, so
- * it is stripped by cleanLetterhead — always split BEFORE cleaning.
+ * A letterhead is stored as a single HTML string but can carry three designs:
+ * the header (top of page 1), an optional footer (bottom of every page), and an
+ * optional full-page background/frame (behind content on every page). They are
+ * joined by sentinel comments so all three ride inside the existing
+ * `letterhead_html` column with no schema change. The sentinels are comments, so
+ * they are stripped by cleanLetterhead — always split BEFORE cleaning. Combine
+ * always writes them in a fixed order (header, footer, bg) so split can peel
+ * them off from the end.
  */
 export const LH_FOOTER_SEP = '<!--AMANA_LH_FOOTER-->';
+export const LH_BG_SEP = '<!--AMANA_LH_BG-->';
 
-/** Split stored letterhead HTML into its header and footer parts. */
-export function splitLetterhead(stored: string | null | undefined): { header: string; footer: string } {
+export interface LetterheadParts { header: string; footer: string; bg: string }
+
+/** Split stored letterhead HTML into its header, footer and background parts. */
+export function splitLetterhead(stored: string | null | undefined): LetterheadParts {
   const s = stored || '';
-  const i = s.indexOf(LH_FOOTER_SEP);
-  if (i === -1) return { header: s, footer: '' };
-  return { header: s.slice(0, i), footer: s.slice(i + LH_FOOTER_SEP.length) };
+  const [beforeBg, bg = ''] = s.split(LH_BG_SEP);
+  const [header, footer = ''] = beforeBg.split(LH_FOOTER_SEP);
+  return { header, footer, bg };
 }
 
-/** Join a header and (optional) footer design back into one stored string. */
-export function combineLetterhead(header: string | null | undefined, footer: string | null | undefined): string {
+/** Join header + optional footer + optional background back into one string. */
+export function combineLetterhead(
+  header: string | null | undefined,
+  footer: string | null | undefined,
+  bg?: string | null | undefined,
+): string {
   const h = (header || '').trim();
   const f = (footer || '').trim();
-  return f ? h + LH_FOOTER_SEP + f : h;
+  const b = (bg || '').trim();
+  return h + (f ? LH_FOOTER_SEP + f : '') + (b ? LH_BG_SEP + b : '');
 }
 
 export const DOC_BASE = {

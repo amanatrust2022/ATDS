@@ -81,6 +81,7 @@ interface El {
 interface Props {
   value: string;
   onChange: (html: string) => void;
+  defaultHeight?: number; // starting canvas height when empty (footer strips want a small one)
 }
 
 const FONTS = [
@@ -94,6 +95,37 @@ const FONTS = [
 
 let seq = 0;
 const uid = () => `el_${Date.now().toString(36)}_${(seq++).toString(36)}`;
+
+// Turn a picked file into a raster image (data URL + pixel size). Images load
+// directly; a PDF has its first page rendered to a canvas at 2× for crisp print.
+async function fileToImage(file: File): Promise<{ src: string; w: number; h: number }> {
+  const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+  if (isPdf) {
+    const pdfjs: any = await import('pdfjs-dist');
+    pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+    const data = await file.arrayBuffer();
+    const doc = await pdfjs.getDocument({ data }).promise;
+    const page = await doc.getPage(1);
+    const viewport = page.getViewport({ scale: 2 });
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(viewport.width);
+    canvas.height = Math.round(viewport.height);
+    await page.render({ canvasContext: canvas.getContext('2d')!, viewport }).promise;
+    return { src: canvas.toDataURL('image/png'), w: canvas.width, h: canvas.height };
+  }
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const src = e.target?.result as string;
+      const img = new window.Image();
+      img.onload = () => resolve({ src, w: img.width, h: img.height });
+      img.onerror = () => reject(new Error('image decode failed'));
+      img.src = src;
+    };
+    reader.onerror = () => reject(new Error('file read failed'));
+    reader.readAsDataURL(file);
+  });
+}
 
 function baseEl(type: ElType, z: number): El {
   return {
@@ -176,10 +208,10 @@ const px = (v: string, d = 0) => { const n = parseFloat(v); return isNaN(n) ? d 
 
 // Rebuild the element model from previously-saved canvas HTML, or import a
 // legacy flow letterhead as a single full-width text block.
-function deserialize(value: string): { els: El[]; height: number } {
+function deserialize(value: string, defaultH: number = DEFAULT_H): { els: El[]; height: number } {
   const html = (value || '').trim();
-  if (!html) return { els: [], height: DEFAULT_H };
-  if (typeof window === 'undefined' || typeof DOMParser === 'undefined') return { els: [], height: DEFAULT_H };
+  if (!html) return { els: [], height: defaultH };
+  if (typeof window === 'undefined' || typeof DOMParser === 'undefined') return { els: [], height: defaultH };
 
   const doc = new DOMParser().parseFromString(html, 'text/html');
   const container = doc.querySelector('[data-letterhead-canvas]') as HTMLElement | null;
@@ -187,13 +219,13 @@ function deserialize(value: string): { els: El[]; height: number } {
   if (!container) {
     // Legacy letterhead → one text block spanning the canvas.
     const legacy = baseEl('text', 1);
-    legacy.x = 0; legacy.y = 16; legacy.w = CANVAS_W; legacy.h = DEFAULT_H - 32;
+    legacy.x = 0; legacy.y = 16; legacy.w = CANVAS_W; legacy.h = defaultH - 32;
     legacy.content = html;
     legacy.align = 'center';
-    return { els: [legacy], height: DEFAULT_H };
+    return { els: [legacy], height: defaultH };
   }
 
-  const height = px(styleVal(container.getAttribute('style') || '', 'height'), DEFAULT_H);
+  const height = px(styleVal(container.getAttribute('style') || '', 'height'), defaultH);
   const els: El[] = [];
   Array.from(container.children).forEach((node, i) => {
     const el = node as HTMLElement;
@@ -244,9 +276,9 @@ function rotate(vx: number, vy: number, deg: number) {
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
-export default function LetterheadDesigner({ value, onChange }: Props) {
+export default function LetterheadDesigner({ value, onChange, defaultHeight = DEFAULT_H }: Props) {
   const [els, setEls] = useState<El[]>([]);
-  const [height, setHeight] = useState(DEFAULT_H);
+  const [height, setHeight] = useState(defaultHeight);
   const [selId, setSelId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [shapeMenu, setShapeMenu] = useState(false);
@@ -265,7 +297,7 @@ export default function LetterheadDesigner({ value, onChange }: Props) {
   // Refs mirror the latest state so drag listeners bound once at mousedown, and
   // any handler, always compute from current values rather than a stale closure.
   const elsRef = useRef<El[]>([]);
-  const heightRef = useRef<number>(DEFAULT_H);
+  const heightRef = useRef<number>(defaultHeight);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
   const snapRef = useRef(true); snapRef.current = snapOn;
@@ -315,7 +347,7 @@ export default function LetterheadDesigner({ value, onChange }: Props) {
   // the user actually edits.
   useEffect(() => {
     if (value === lastEmitted.current) return;
-    const { els: e, height: h } = deserialize(value);
+    const { els: e, height: h } = deserialize(value, defaultHeight);
     elsRef.current = e; heightRef.current = h;
     setEls(e); setHeight(h); lastEmitted.current = value;
   }, [value]);
@@ -582,27 +614,26 @@ export default function LetterheadDesigner({ value, onChange }: Props) {
   // dropped in at full page width with the canvas sized to its aspect ratio, an
   // exact raster of what the clinic already has. It replaces the current design
   // (undoable), and they can then overlay editable text on top if they wish.
-  const onLetterheadImport = (ev: React.ChangeEvent<HTMLInputElement>) => {
-    const file = ev.target.files?.[0]; if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const src = e.target?.result as string;
-      const img = new window.Image();
-      img.onload = () => {
-        const nar = img.height / img.width;
-        const h = Math.round(CANVAS_W * nar);
-        checkpoint('import');
-        const el: El = { ...baseEl('image', 1), src, x: 0, y: 0, w: CANVAS_W, h, iw: CANVAS_W, ih: h, ox: 0, oy: 0, nar };
-        apply([el], Math.max(80, Math.min(1000, h)));
-        setSelId(el.id);
-      };
-      img.src = src;
-    };
-    reader.readAsDataURL(file);
+  // Accepts an image or a PDF (first page rendered to an image).
+  const onLetterheadImport = async (ev: React.ChangeEvent<HTMLInputElement>) => {
+    const file = ev.target.files?.[0];
     ev.target.value = '';
+    if (!file) return;
+    try {
+      const { src, w: iw0, h: ih0 } = await fileToImage(file);
+      const nar = ih0 / iw0;
+      const h = Math.round(CANVAS_W * nar);
+      checkpoint('import');
+      const el: El = { ...baseEl('image', 1), src, x: 0, y: 0, w: CANVAS_W, h, iw: CANVAS_W, ih: h, ox: 0, oy: 0, nar };
+      apply([el], Math.max(80, Math.min(1400, h)));
+      setSelId(el.id);
+    } catch (err) {
+      console.error('Letterhead import failed:', err);
+      window.alert('Could not import that file. Please use a PNG, JPG, or PDF.');
+    }
   };
 
-  const setHeightSafe = (h: number) => { checkpoint('height'); const v = Math.max(80, Math.min(1000, h)); apply(elsRef.current, v); };
+  const setHeightSafe = (h: number) => { checkpoint('height'); const v = Math.max(80, Math.min(1400, h)); apply(elsRef.current, v); };
 
   // Align the selected element to the page (canvas) edges or centre.
   const alignEl = (how: 'left' | 'hcenter' | 'right' | 'top' | 'vcenter' | 'bottom') => {
@@ -624,11 +655,11 @@ export default function LetterheadDesigner({ value, onChange }: Props) {
   return (
     <div style={S.wrap}>
       <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={onImagePick} />
-      <input ref={importRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={onLetterheadImport} />
+      <input ref={importRef} type="file" accept="image/*,application/pdf" style={{ display: 'none' }} onChange={onLetterheadImport} />
 
       {/* Toolbar */}
       <div style={S.toolbar}>
-        <button type="button" title="Import an existing letterhead image — fills the page width, exact copy"
+        <button type="button" title="Import an existing letterhead (PNG, JPG or PDF) — fills the page, exact copy"
           onClick={() => importRef.current?.click()}
           style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 10px', fontSize: '0.74rem', fontWeight: 700,
             border: '1px solid #2563eb', borderRadius: 5, background: '#2563eb', color: '#fff', cursor: 'pointer' }}>

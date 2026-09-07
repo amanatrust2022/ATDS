@@ -31,12 +31,13 @@ function OrganizationSettings() {
     phone: '',
     address: '',
     letterheadHtml: '',
-    letterheadFooterHtml: ''
+    letterheadFooterHtml: '',
+    letterheadBgHtml: ''
   });
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState({ text: '', type: '' });
   const [isInitialized, setIsInitialized] = useState(false);
-  const [lhTab, setLhTab] = useState<'header' | 'footer'>('header');
+  const [lhTab, setLhTab] = useState<'header' | 'footer' | 'fullpage'>('header');
 
   // Pre-fill from live org data
   useEffect(() => {
@@ -54,7 +55,7 @@ function OrganizationSettings() {
         </div>
       `;
 
-      const { header, footer } = splitLetterhead(organization.letterhead_html);
+      const { header, footer, bg } = splitLetterhead(organization.letterhead_html);
       setFormData({
         name: organization.name || '',
         letterheadLine2: organization.letterhead_line2 || '',
@@ -62,7 +63,8 @@ function OrganizationSettings() {
         phone: organization.phone || '',
         address: organization.address || '',
         letterheadHtml: header || defaultHtml.trim(),
-        letterheadFooterHtml: footer
+        letterheadFooterHtml: footer,
+        letterheadBgHtml: bg
       });
       setIsInitialized(true);
     }
@@ -75,8 +77,9 @@ function OrganizationSettings() {
     setSaving(true);
     setMessage({ text: '', type: '' });
 
-    // Header + optional footer ride inside the one letterhead_html field.
-    const combinedLetterhead = combineLetterhead(formData.letterheadHtml, formData.letterheadFooterHtml);
+    // Header + optional footer + optional full-page background ride inside the
+    // one letterhead_html field.
+    const combinedLetterhead = combineLetterhead(formData.letterheadHtml, formData.letterheadFooterHtml, formData.letterheadBgHtml);
 
     try {
       const orgUpdates = {
@@ -207,7 +210,7 @@ function OrganizationSettings() {
               <p style={{ fontSize: '0.65rem', fontWeight: 700, color: '#4472c4', textTransform: 'uppercase', margin: 0, letterSpacing: '0.08em', borderBottom: '1px solid var(--gray-200)', padding: '0.75rem 1.5rem' }}>
                 Live A4 Print Preview <span style={{ color: 'var(--gray-400)', fontWeight: 600, textTransform: 'none', letterSpacing: 0 }}>— header on page 1, footer on every page, exactly as printed</span>
               </p>
-              <LetterheadA4Preview html={formData.letterheadHtml} footerHtml={formData.letterheadFooterHtml} />
+              <LetterheadA4Preview html={formData.letterheadHtml} footerHtml={formData.letterheadFooterHtml} bgHtml={formData.letterheadBgHtml} />
             </div>
 
             <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
@@ -230,20 +233,22 @@ function OrganizationSettings() {
                   Design the <strong>Header</strong> (top of the first page) and, optionally, a <strong>Footer</strong> that repeats at the bottom of every printed page — together they make a complete letterhead sheet. Already have one? Click <strong>Import letterhead</strong> to drop in a picture of it (a high-resolution PNG/JPG export or scan). Otherwise add text, your logo, lines and shapes, drag to move, use the handles to resize/rotate, and double-click a text box to type.
                 </p>
 
-                {/* Header / Footer tabs */}
-                <div style={{ display: 'flex', gap: 4, marginBottom: '0.75rem' }}>
-                  {(['header', 'footer'] as const).map(t => (
-                    <button key={t} type="button" onClick={() => setLhTab(t)}
-                      style={{
-                        padding: '0.5rem 1.1rem', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer',
-                        border: '1px solid ' + (lhTab === t ? '#2563eb' : 'var(--gray-300)'),
-                        borderBottom: lhTab === t ? '2px solid #2563eb' : '1px solid var(--gray-300)',
-                        background: lhTab === t ? '#eff6ff' : 'white', color: lhTab === t ? '#1d4ed8' : 'var(--gray-600)',
-                        textTransform: 'capitalize',
-                      }}>
-                      {t}{t === 'footer' && !formData.letterheadFooterHtml.trim() ? ' (none yet)' : ''}
-                    </button>
-                  ))}
+                {/* Header / Footer / Full-page tabs */}
+                <div style={{ display: 'flex', gap: 4, marginBottom: '0.75rem', flexWrap: 'wrap' }}>
+                  {([['header', 'Header'], ['footer', 'Footer'], ['fullpage', 'Full page']] as const).map(([t, label]) => {
+                    const empty = (t === 'footer' && !formData.letterheadFooterHtml.trim()) || (t === 'fullpage' && !formData.letterheadBgHtml.trim());
+                    return (
+                      <button key={t} type="button" onClick={() => setLhTab(t)}
+                        style={{
+                          padding: '0.5rem 1.1rem', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer',
+                          border: '1px solid ' + (lhTab === t ? '#2563eb' : 'var(--gray-300)'),
+                          borderBottom: lhTab === t ? '2px solid #2563eb' : '1px solid var(--gray-300)',
+                          background: lhTab === t ? '#eff6ff' : 'white', color: lhTab === t ? '#1d4ed8' : 'var(--gray-600)',
+                        }}>
+                        {label}{empty ? ' (none yet)' : ''}
+                      </button>
+                    );
+                  })}
                   <div style={{ flex: 1 }} />
                   {lhTab === 'footer' && formData.letterheadFooterHtml.trim() && (
                     <button type="button" onClick={() => setFormData({ ...formData, letterheadFooterHtml: '' })}
@@ -251,9 +256,15 @@ function OrganizationSettings() {
                       Remove footer
                     </button>
                   )}
+                  {lhTab === 'fullpage' && formData.letterheadBgHtml.trim() && (
+                    <button type="button" onClick={() => setFormData({ ...formData, letterheadBgHtml: '' })}
+                      style={{ padding: '0.5rem 0.9rem', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', border: '1px solid #fecaca', background: '#fef2f2', color: '#dc2626' }}>
+                      Remove background
+                    </button>
+                  )}
                 </div>
 
-                {/* Both stay mounted so each keeps its own undo history; the inactive one is hidden. */}
+                {/* All stay mounted so each keeps its own undo history; inactive ones are hidden. */}
                 <div hidden={lhTab !== 'header'}>
                   <LetterheadDesigner
                     value={formData.letterheadHtml}
@@ -266,7 +277,18 @@ function OrganizationSettings() {
                   </p>
                   <LetterheadDesigner
                     value={formData.letterheadFooterHtml}
+                    defaultHeight={90}
                     onChange={val => setFormData(fd => ({ ...fd, letterheadFooterHtml: val }))}
+                  />
+                </div>
+                <div hidden={lhTab !== 'fullpage'}>
+                  <p style={{ ...hintStyle, marginBottom: '0.5rem' }}>
+                    A full-page background — a frame, border or watermark that sits <em>behind</em> the report on every page. Easiest is <strong>Import letterhead</strong> with a full-page design (PNG/JPG/PDF); it fills the whole sheet. Your report content prints on top, inside the margins. Leave empty for none.
+                  </p>
+                  <LetterheadDesigner
+                    value={formData.letterheadBgHtml}
+                    defaultHeight={1040}
+                    onChange={val => setFormData(fd => ({ ...fd, letterheadBgHtml: val }))}
                   />
                 </div>
               </div>

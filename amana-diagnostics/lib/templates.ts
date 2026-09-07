@@ -64,12 +64,16 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
   // The stored field carries a header (top of page 1) and an optional footer
   // (bottom of every page); split BEFORE cleaning, since the separator is a
   // comment the sanitiser strips.
-  const { header: rawHeader, footer: rawFooter } = splitLetterhead(org?.letterhead_html);
+  const { header: rawHeader, footer: rawFooter, bg: rawBg } = splitLetterhead(org?.letterhead_html);
   const cleanLetterheadHtml = cleanLetterhead(rawHeader);
   const cleanFooterHtml = rawFooter.trim() ? cleanLetterhead(rawFooter) : '';
+  const cleanBgHtml = rawBg.trim() ? cleanLetterhead(rawBg) : '';
   // Reserve bottom space on every page for the running footer.
   const footerH = cleanFooterHtml ? parseFloat((/width:740px;height:(\d+(?:\.\d+)?)px/.exec(rawFooter) || [])[1] || '120') : 0;
   const pageMarginBottom = cleanFooterHtml ? `${Math.round(footerH + 20)}px` : '15mm';
+  // The full-page background is authored on the 740px canvas; scale it up to the
+  // full A4 width (210mm) so it covers the whole sheet behind the content.
+  const bgScale = 210 / (740 / 96 * 25.4);
 
   const testSections = completedTests.map(t => {
     const isMcs = t.testId.toLowerCase().endsWith('_mcs') || t.testId.toLowerCase().includes('mcs') || t.testId.toLowerCase() === 'sfmcs' || t.testName.toLowerCase().includes('mcs') || t.testName.toLowerCase().includes('culture & sensitivity') || t.testName.toLowerCase().includes('culture and sensitivity');
@@ -456,6 +460,8 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
       }
       /* Running letterhead footer: repeats at the bottom of every printed page. */
       .page-footer { display: none; }
+      /* Full-page background/frame: sits behind the content on every page. */
+      .page-bg { display: none; }
       @media print {
         .page-footer {
           display: block;
@@ -464,6 +470,18 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
           text-align: center;
         }
         .page-footer .custom-letterhead { margin: 0 auto; }
+        .page-bg {
+          display: block;
+          position: fixed;
+          top: 0; left: 0; right: 0; bottom: 0;
+          overflow: hidden;
+          z-index: -1;
+        }
+        .page-bg .bg-scale {
+          width: 740px;
+          transform-origin: top left;
+          transform: scale(${bgScale});
+        }
       }
       @media screen {
         body { max-width: 860px; margin: 0 auto; padding: 32px 40px; background: #f0f2f5; }
@@ -519,6 +537,7 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
         th, td { font-size: 10pt !important; padding: 4px 6px !important; }
       }
     </style></head><body>
+    ${cleanBgHtml ? `<div class="page-bg"><div class="bg-scale">${cleanBgHtml}</div></div>` : ''}
     <div class="header" style="${org?.letterhead_html ? 'border-bottom: none; text-align: left;' : ''}">
       ${org?.letterhead_html ? `
         <div class="custom-letterhead">${cleanLetterheadHtml}</div>

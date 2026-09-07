@@ -1,0 +1,2 @@
+# Vendored, minified PDF.js worker — keep byte-for-byte, no line-ending rewrites.
+public/pdf.worker.min.mjs binary

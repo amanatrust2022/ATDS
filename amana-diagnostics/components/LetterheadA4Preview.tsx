@@ -25,9 +25,12 @@ const vGuide = (left: number): React.CSSProperties => ({
   borderLeft: '1px dashed #cbd5e1', pointerEvents: 'none',
 });
 
-export default function LetterheadA4Preview({ html, footerHtml }: { html: string; footerHtml?: string }) {
+const CANVAS_W = 740; // must match LetterheadDesigner's CANVAS_W
+
+export default function LetterheadA4Preview({ html, footerHtml, bgHtml }: { html: string; footerHtml?: string; bgHtml?: string }) {
   const clean = cleanLetterhead(html);
   const footerClean = footerHtml && footerHtml.trim() ? cleanLetterhead(footerHtml) : '';
+  const bgClean = bgHtml && bgHtml.trim() ? cleanLetterhead(bgHtml) : '';
   return (
     <div style={{ background: '#e9edf2', padding: 20, overflow: 'auto', display: 'flex', justifyContent: 'center' }}>
       {/* Reserve the scaled footprint so surrounding layout stays correct. */}
@@ -47,6 +50,14 @@ export default function LetterheadA4Preview({ html, footerHtml }: { html: string
             .a4-report .pi-label { font-weight: bold; margin-right: 8px; }
           `}</style>
 
+          {/* Full-page background/frame — scaled to cover the whole sheet, behind content. */}
+          {bgClean && (
+            <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', zIndex: 0 }}>
+              <div style={{ width: CANVAS_W, transformOrigin: 'top left', transform: `scale(${PAGE_W / CANVAS_W})` }}
+                dangerouslySetInnerHTML={{ __html: bgClean }} />
+            </div>
+          )}
+
           {/* Margin guides (dashed) */}
           <div style={vGuide(MARGIN_X)} />
           <div style={vGuide(PAGE_W - MARGIN_X)} />
@@ -55,7 +66,7 @@ export default function LetterheadA4Preview({ html, footerHtml }: { html: string
 
           {/* Body content area: inset by the @page side margins, 10px top padding,
               first-page top margin 0. This is exactly where the report renders. */}
-          <div className="a4-report" style={{ position: 'absolute', left: MARGIN_X, right: MARGIN_X, top: PAD_TOP }}>
+          <div className="a4-report" style={{ position: 'absolute', left: MARGIN_X, right: MARGIN_X, top: PAD_TOP, zIndex: 1 }}>
             <div className="header" style={{ textAlign: 'left' }}>
               <div className="custom-letterhead" dangerouslySetInnerHTML={{ __html: clean }} />
             </div>
@@ -75,7 +86,7 @@ export default function LetterheadA4Preview({ html, footerHtml }: { html: string
 
           {/* Footer — repeats at the bottom of every printed page. */}
           {footerClean && (
-            <div className="a4-report" style={{ position: 'absolute', left: MARGIN_X, right: MARGIN_X, bottom: 6 }}>
+            <div className="a4-report" style={{ position: 'absolute', left: MARGIN_X, right: MARGIN_X, bottom: 6, zIndex: 1 }}>
               <div className="custom-letterhead" dangerouslySetInnerHTML={{ __html: footerClean }} />
             </div>
           )}
