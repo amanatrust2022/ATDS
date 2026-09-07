@@ -195,6 +195,13 @@ export function debounce(fn: () => void, ms: number): (() => void) & { cancel: (
  *  registration, short enough that the queue still feels live. */
 export const REALTIME_DEBOUNCE_MS = 400;
 
+/**
+ * How often to re-read the queue while the realtime channel is down. Slow
+ * enough not to be the old five-second whole-clinic refetch, often enough that
+ * a result reaching reception is noticed within a patient's patience.
+ */
+export const REALTIME_FALLBACK_POLL_MS = 20000;
+
 // ─── CLOUD (Supabase) ─────────────────────────────────────────────────────────
 
 /** Tables whose changes should refresh a reception or department screen. */
@@ -564,6 +571,26 @@ export const cloudPatientsRepository: CloudPatientsRepository = {
   subscribe(organizationId, callback) {
     const supabase = createClient();
     const onChange = debounce(callback, REALTIME_DEBOUNCE_MS);
+
+    // A realtime channel is not something the app can assume it has. The tables
+    // have to be in the `supabase_realtime` publication, the project has to
+    // have realtime enabled, and the websocket has to survive whatever sits
+    // between the clinic and the internet. When any of that is missing the
+    // channel simply never comes up — no error, no events — and reception sits
+    // looking at a queue that stopped changing, which is how a completed result
+    // goes unnoticed.
+    //
+    // So: poll while the channel is down, and stop the moment it is up.
+    let stopped = false;
+    let poll: ReturnType<typeof setInterval> | null = null;
+    const startPolling = () => {
+      if (stopped || poll) return;
+      poll = setInterval(callback, REALTIME_FALLBACK_POLL_MS);
+    };
+    const stopPolling = () => {
+      if (poll) { clearInterval(poll); poll = null; }
+    };
+
     const channel = REALTIME_TABLES.reduce(
       (ch, table) => ch.on(
         'postgres_changes' as any,
@@ -571,8 +598,17 @@ export const cloudPatientsRepository: CloudPatientsRepository = {
         onChange,
       ),
       supabase.channel(`patients-org-${organizationId}`) as any,
-    ).subscribe();
-    return () => { onChange.cancel(); supabase.removeChannel(channel); };
+    ).subscribe((status: string) => {
+      if (status === 'SUBSCRIBED') stopPolling();
+      else startPolling();
+    });
+
+    return () => {
+      stopped = true;
+      onChange.cancel();
+      stopPolling();
+      supabase.removeChannel(channel);
+    };
   },
 };
 

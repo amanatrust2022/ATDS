@@ -209,7 +209,12 @@ export default function DepartmentPage({ department }: Props) {
     setNotes(test.notes || '');
     setSelected({ patient, test });
     if (test.status === 'pending') {
-      try { await updateTestResult(test.id!, { status: 'in_progress' }); } catch { /* non-critical */ }
+      // Same reason as in handleSubmit: the "in progress" marker is what stops
+      // two people typing the same result, so it has to show without a reload.
+      try {
+        await updateTestResult(test.id!, { status: 'in_progress' });
+        await refresh();
+      } catch { /* non-critical */ }
     }
   };
 
@@ -244,6 +249,13 @@ export default function DepartmentPage({ department }: Props) {
         completedAt: new Date().toISOString(),
         notes,
       });
+      // Refresh here rather than waiting to be told. The realtime channel is
+      // the only other thing that moves this test out of the bench's queue, and
+      // a screen whose own work does not disappear from it until the operator
+      // reloads is a screen nobody trusts. When the channel is working this is
+      // a duplicate fetch a moment early; when it is not, it is the difference
+      // between the queue being right and being wrong.
+      await refresh();
       showToast(`"${selected.test.testName}" result sent to reception ✓`);
       setSelected(null);
       setResults([]);

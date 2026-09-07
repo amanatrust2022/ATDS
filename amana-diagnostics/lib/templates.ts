@@ -8,7 +8,8 @@ import { cleanLetterhead } from './sanitizeHtml';
  * To modify the header, footer, or styles globally, edit this file.
  */
 
-import { Patient, PatientTest } from './store';
+import { Patient, PatientTest, getTestById } from './store';
+import { patientDisplayName } from './store/patientName';
 import { deserializeRadiologyResults, convertTextToFormattedHtml } from './radiology-templates';
 import { buildDocCss } from './letterheadStyles';
 
@@ -32,10 +33,22 @@ export type OrgForTemplate = {
  * @param org The organisation object for letterhead data.
  * @returns A complete HTML string for printing.
  */
+
+/**
+ * The specimen a test was taken from.
+ *
+ * Reports were printing a dash for this. The column is filled in at
+ * registration from the catalogue entry, so it is empty for anything
+ * registered before that was so, and for any test whose catalogue entry has
+ * since gained a specimen it did not have then. The catalogue is the source
+ * either way, so fall back to it rather than printing nothing.
+ */
+const specimenOf = (t: PatientTest): string =>
+  t.specimen || getTestById(t.testId)?.specimen || '';
 export const getResultTemplate = (patient: Patient, completedTests: PatientTest[], org?: OrgForTemplate) => {
   const regDate = new Date(patient.registeredAt).toLocaleDateString('en-NG');
   const reportingDate = completedTests[0]?.completedAt ? new Date(completedTests[0].completedAt).toLocaleDateString('en-NG') : '—';
-  const specimens = Array.from(new Set(completedTests.map(t => t.specimen))).filter(Boolean).join(', ') || '—';
+  const specimens = Array.from(new Set(completedTests.map(specimenOf))).filter(Boolean).join(', ') || '—';
   const investigationList = completedTests.map(t => t.testName).join(', ');
 
   // Letterhead values — fall back gracefully if org not provided
@@ -500,7 +513,7 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
     </div>
     <div class="report-title">${reportTitle}</div>
     <div class="patient-info">
-      <div><span class="pi-label">Patient Name;</span> ${patient.name}</div>
+      <div><span class="pi-label">Patient Name;</span> ${patientDisplayName(patient)}</div>
       <div><span class="pi-label">Patient ID;</span> ${patient.slipNumber}</div>
       <div>
         <span style="margin-right: 30px;"><span class="pi-label">Age;</span> ${patient.age}</span>
@@ -541,10 +554,10 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
  */
 export const getSlipTemplate = (patient: Patient, org?: OrgForTemplate) => {
   const regDate = new Date(patient.registeredAt).toLocaleDateString('en-NG');
-  const specimens = Array.from(new Set(patient.tests.map(t => t.specimen))).filter(Boolean).join(', ') || '—';
+  const specimens = Array.from(new Set(patient.tests.map(specimenOf))).filter(Boolean).join(', ') || '—';
   const testRows = patient.tests.map(t => `
     <tr>
-      <td>${t.testName} ${t.specimen ? `<span style="font-size:10px; color:#666">(${t.specimen})</span>` : ''}</td>
+      <td>${t.testName} ${specimenOf(t) ? `<span style="font-size:10px; color:#666">(${specimenOf(t)})</span>` : ''}</td>
       <td style="text-align:right">${t.department === 'lab' ? 'Lab' : 'Radio'}</td>
     </tr>`).join('');
 
@@ -583,7 +596,7 @@ export const getSlipTemplate = (patient: Patient, org?: OrgForTemplate) => {
     <div class="slip-title">INVESTIGATION SLIP</div>
     <div class="patient-info">
       <div class="pi-row"><span class="pi-label">ID:</span> <span>${patient.slipNumber}</span></div>
-      <div class="pi-row"><span class="pi-label">Name:</span> <span>${patient.name}</span></div>
+      <div class="pi-row"><span class="pi-label">Name:</span> <span>${patientDisplayName(patient)}</span></div>
       <div class="pi-row"><span class="pi-label">Age/Sex:</span> <span>${patient.age} / ${patient.sex}</span></div>
       <div class="pi-row"><span class="pi-label">Date:</span> <span>${regDate}</span></div>
       <div class="pi-row"><span class="pi-label">Specimen(s):</span> <span>${specimens}</span></div>
@@ -659,7 +672,7 @@ export const getInvoiceTemplate = (patient: Patient, org?: OrgForTemplate) => {
     <div class="slip-title">PAYMENT RECEIPT / INVOICE</div>
     <div class="patient-info">
       <div class="pi-row"><span class="pi-label">Invoice No:</span> <span>${patient.slipNumber}</span></div>
-      <div class="pi-row"><span class="pi-label">Patient Name:</span> <span>${patient.name}</span></div>
+      <div class="pi-row"><span class="pi-label">Patient Name:</span> <span>${patientDisplayName(patient)}</span></div>
       <div class="pi-row"><span class="pi-label">Age/Sex:</span> <span>${patient.age} / ${patient.sex}</span></div>
       <div class="pi-row"><span class="pi-label">Date:</span> <span>${regDate}</span></div>
     </div>

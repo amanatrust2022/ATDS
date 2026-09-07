@@ -47,7 +47,10 @@ export const toPatient = (p: any): Patient => ({
   registeredAt: p.registered_at,
   firstName: p.first_name,
   surname: p.surname,
-  middle_name: p.middle_name,
+  // camelCase, like every other field here. Spelled `middle_name` it left
+  // `middleName` undefined, so the derived display name dropped it and every
+  // report showed a patient with no middle name.
+  middleName: p.middle_name,
   referredBy: p.referred_by,
   referringFacility: p.referring_facility,
   referringDoctorId: p.referring_doctor_id,

@@ -61,8 +61,11 @@ export function PatientCard({ patient, mode, onViewSlip, onViewResult }: Patient
         </div>
         <div style={{ marginTop: '0.4rem', fontSize: '0.7rem', color: 'var(--gray-500)' }}>
           Registered: {new Date(patient.registeredAt).toLocaleString('en-NG')}
-          {patient.referredBy && ` ? Ref: ${patient.referredBy}`}
-          {completedCount > 0 && <span style={{ color: 'var(--green)', fontWeight: 600 }}> ? {completedCount}/{patient.tests.length} completed</span>}
+          {/* Both separators below were literal question marks: an editing
+              pass wrote this file in an encoding that could not hold a bullet,
+              and the queue has shown "Registered: … ? Ref: …" ever since. */}
+          {patient.referredBy && ` • Ref: ${patient.referredBy}`}
+          {completedCount > 0 && <span style={{ color: 'var(--green)', fontWeight: 600 }}> {'•'} {completedCount}/{patient.tests.length} completed</span>}
         </div>
       </div>
       <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>

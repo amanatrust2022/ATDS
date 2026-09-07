@@ -3,7 +3,12 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 const createClientMock = vi.fn();
 vi.mock('@/lib/supabase', () => ({ createClient: () => createClientMock() }));
 
-import { getPatientsRepository, localPatientsRepository, cloudPatientsRepository } from './patients';
+import {
+  getPatientsRepository,
+  localPatientsRepository,
+  cloudPatientsRepository,
+  REALTIME_FALLBACK_POLL_MS,
+} from './patients';
 import {
   formatSlipNumber, slipPrefixFor, toPatient, toPatientProfile,
   toPatientRow, toPatientRowWithBilling, toTestRows, toTestRowsWithBilling,
@@ -302,6 +307,43 @@ describe('Cloud realtime subscription', () => {
 
     unsubscribe();
     expect(removeChannel).toHaveBeenCalledWith('channel-handle');
+  });
+
+  /**
+   * A channel that never comes up is the ordinary case when the tables are not
+   * in the `supabase_realtime` publication: no events, no error, and reception
+   * looking at a queue that stopped changing an hour ago. The screen has to
+   * keep itself honest by asking.
+   */
+  it('polls while the channel is down, and stops as soon as it is up', () => {
+    vi.useFakeTimers();
+
+    let statusCallback: ((s: string) => void) | undefined;
+    const on = vi.fn().mockReturnThis();
+    const channel = {
+      on,
+      subscribe: vi.fn((cb?: (s: string) => void) => { statusCallback = cb; return 'channel-handle'; }),
+    };
+    createClientMock.mockReturnValue({ channel: () => channel, removeChannel: vi.fn() });
+
+    const callback = vi.fn();
+    const unsubscribe = cloudPatientsRepository.subscribe('org-1', callback);
+
+    statusCallback?.('CHANNEL_ERROR');
+    vi.advanceTimersByTime(REALTIME_FALLBACK_POLL_MS * 2);
+    expect(callback).toHaveBeenCalledTimes(2);
+
+    statusCallback?.('SUBSCRIBED');
+    vi.advanceTimersByTime(REALTIME_FALLBACK_POLL_MS * 3);
+    expect(callback).toHaveBeenCalledTimes(2);
+
+    // And nothing keeps ticking after the screen is gone.
+    statusCallback?.('CHANNEL_ERROR');
+    unsubscribe();
+    vi.advanceTimersByTime(REALTIME_FALLBACK_POLL_MS * 3);
+    expect(callback).toHaveBeenCalledTimes(2);
+
+    vi.useRealTimers();
   });
 });
 

@@ -267,11 +267,21 @@ function StaffManagement() {
         }),
       });
 
-      if (!emailRes.ok) throw new Error('Failed to send email');
+      if (!emailRes.ok) {
+        // The route already says what went wrong — a missing BREVO_API_KEY, a
+        // sender Brevo will not accept, a rejected address. Throwing "Failed to
+        // send email" over the top of that left nothing to act on.
+        let reason = `${emailRes.status}`;
+        try {
+          const body = await emailRes.json();
+          if (body?.error) reason = body.error;
+        } catch { /* not JSON; the status will have to do */ }
+        throw new Error(reason);
+      }
       showToast('Invitation email sent successfully!');
     } catch (err: any) {
       console.error('Email send error:', err);
-      showToast('Invitation created, but email failed. Copy the link manually.', 'error');
+      showToast(`Invitation created, but the email failed: ${err.message}. Copy the link manually.`, 'error');
     } finally {
       setSubmitting(false);
       setSendingEmail(false);
