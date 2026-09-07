@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getDb, queueSync } from '@/lib/localDb';
 import { sendEmail } from '@/lib/brevo';
 import { getNextNumericID } from '@/lib/idGenerator';
+import { partialTestUpdate } from '@/lib/repositories/testUpdate';
 
 /**
  * Decodes a stored result blob, returning an empty result rather than throwing.
@@ -539,46 +540,14 @@ export async function POST(request: Request) {
     if (action === 'updateTestResult') {
       const { testId, updates } = body;
 
-      const updateStmt = db.prepare(`
-        UPDATE patient_tests SET
-          status = ?,
-          results = ?,
-          completed_by = ?,
-          completed_by_signature_url = ?,
-          completed_by_title = ?,
-          completed_at = ?,
-          notes = ?,
-          specimen = ?,
-          updated_at = ?
-        WHERE id = ?
-      `);
+      // Write only the fields the caller actually sent — see
+      // lib/repositories/testUpdate.ts for why that matters.
+      const { setClause, values, syncPayload } = partialTestUpdate(updates, nowStr);
 
-      const resultsStr = updates.results ? JSON.stringify(updates.results) : null;
-      updateStmt.run(
-        updates.status,
-        resultsStr,
-        updates.completedBy || null,
-        updates.completedBySignatureUrl || null,
-        updates.completedByTitle || null,
-        updates.completedAt || null,
-        updates.notes || null,
-        updates.specimen || null,
-        nowStr,
-        testId
-      );
+      db.prepare(`UPDATE patient_tests SET ${setClause} WHERE id = ?`)
+        .run(...values, testId);
 
-      // Log update in outbox
-      queueSync(db, 'patient_tests', 'UPDATE', testId, {
-        status: updates.status,
-        results: updates.results || null,
-        completed_by: updates.completedBy || null,
-        completed_by_signature_url: updates.completedBySignatureUrl || null,
-        completed_by_title: updates.completedByTitle || null,
-        completed_at: updates.completedAt || null,
-        notes: updates.notes || null,
-        specimen: updates.specimen || null,
-        updated_at: nowStr
-      });
+      queueSync(db, 'patient_tests', 'UPDATE', testId, syncPayload);
 
       // Send result ready notification if this completes the order (async, safe)
       if (updates.status === 'completed') {
