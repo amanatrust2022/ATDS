@@ -14,6 +14,30 @@
  * Keep this file free of DOM/browser APIs so it is safe to import on the server.
  */
 
+/**
+ * A letterhead is stored as a single HTML string but can carry two designs: the
+ * header (top of page 1) and an optional footer (bottom of every page). They are
+ * joined by this sentinel comment so the pair rides inside the existing
+ * `letterhead_html` column with no schema change. The sentinel is a comment, so
+ * it is stripped by cleanLetterhead — always split BEFORE cleaning.
+ */
+export const LH_FOOTER_SEP = '<!--AMANA_LH_FOOTER-->';
+
+/** Split stored letterhead HTML into its header and footer parts. */
+export function splitLetterhead(stored: string | null | undefined): { header: string; footer: string } {
+  const s = stored || '';
+  const i = s.indexOf(LH_FOOTER_SEP);
+  if (i === -1) return { header: s, footer: '' };
+  return { header: s.slice(0, i), footer: s.slice(i + LH_FOOTER_SEP.length) };
+}
+
+/** Join a header and (optional) footer design back into one stored string. */
+export function combineLetterhead(header: string | null | undefined, footer: string | null | undefined): string {
+  const h = (header || '').trim();
+  const f = (footer || '').trim();
+  return f ? h + LH_FOOTER_SEP + f : h;
+}
+
 export const DOC_BASE = {
   fontFamily: "'Times New Roman', Times, serif",
   fontSize: '11pt',

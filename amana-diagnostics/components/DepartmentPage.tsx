@@ -5,6 +5,7 @@ import { Department, Patient, PatientTest, getTestById, fetchPatients, updateTes
 import { RiTestTubeLine, RiRadarLine, RiCheckLine, RiSettings3Line } from '@remixicon/react';
 import { useAuth } from '@/components/AuthProvider';
 import { RADIOLOGY_TEMPLATES, serializeRadiologyResults, deserializeRadiologyResults, RadiologyFormState, convertTextToFormattedHtml } from '@/lib/radiology-templates';
+import { windowStartIso } from '@/lib/store/useQueueStore';
 import DepartmentQueue from '@/components/features/department/DepartmentQueue';
 import ParameterTable from '@/components/features/department/ParameterTable';
 import { departmentTheme } from '@/components/features/department/theme';
@@ -30,6 +31,7 @@ interface Props { department: Department; }
 export default function DepartmentPage({ department }: Props) {
   const { profile, organization, signOut } = useAuth();
   const [patients, setPatients] = useState<Patient[]>([]);
+  const [completedPatients, setCompletedPatients] = useState<Patient[]>([]);
   const [selected, setSelected] = useState<{ patient: Patient; test: PatientTest } | null>(null);
   const [results, setResults] = useState<{ parameter: string; result: string; unit: string; range: string; flag: string }[]>([]);
   const [isMcs, setIsMcs] = useState(false);
@@ -80,11 +82,22 @@ export default function DepartmentPage({ department }: Props) {
     } catch (e) {
       console.error('Failed to pre-cache custom tests:', e);
     }
-    // Only this department's work. The screen never reads another
-    // department's tests, so nothing is lost by not fetching them — and it no
-    // longer downloads the whole clinic to show one bench's queue.
-    const data = await fetchPatients(organization.id, { department });
-    setPatients(data);
+    // The bench shows two things, so it asks two questions, and neither answer
+    // grows with the clinic's history.
+    //
+    // Filtering by department alone still meant "every patient who has ever had
+    // a test at this bench" — the whole archive, fetched to display a morning's
+    // work. Outstanding work is small by its nature and must not be bounded by
+    // date, or a specimen left waiting since last month would vanish from the
+    // queue. Finished work is bounded by when it was finished, not by when the
+    // patient was registered, because a result can be entered days after a
+    // visit.
+    const [waiting, finished] = await Promise.all([
+      fetchPatients(organization.id, { department, unfinished: true }),
+      fetchPatients(organization.id, { department, completedSince: windowStartIso('today') }),
+    ]);
+    setPatients(waiting);
+    setCompletedPatients(finished);
     setLoadingData(false);
   }, [organization?.id, department]);
 
@@ -112,7 +125,9 @@ export default function DepartmentPage({ department }: Props) {
   const deptPatients = patients.filter(p =>
     p.tests.some(t => t.department === department && t.status !== 'completed')
   );
-  const completedToday = patients.filter(p =>
+  // Already narrowed to today by the query; this keeps the exact
+  // same-calendar-day reading the screen has always had.
+  const completedToday = completedPatients.filter(p =>
     p.tests.some(t => t.department === department && t.status === 'completed' &&
       new Date(t.completedAt || '').toDateString() === new Date().toDateString())
   );

@@ -53,6 +53,22 @@ export interface PatientQuery {
    * queue is showing.
    */
   patientProfileId?: number | string;
+  /**
+   * Only patients with a test that is not finished — pending or in progress.
+   *
+   * Deliberately unbounded by date. A bench's outstanding work is small however
+   * long the clinic has been running, and a specimen left waiting three weeks
+   * ago is still waiting: a date window would hide it, which is the one thing a
+   * queue must never do.
+   */
+  unfinished?: boolean;
+  /**
+   * ISO timestamp. Only tests completed at or after this moment.
+   *
+   * Bounds "what did this bench finish today" without bounding it by
+   * registration date, because a result can be entered long after the visit.
+   */
+  completedSince?: string;
 }
 
 export interface PatientsRepository {
@@ -87,6 +103,8 @@ export function patientQueryParams(organizationId: string, query: PatientQuery =
   if (query.search) params.set('search', query.search);
   if (query.limit) params.set('limit', String(query.limit));
   if (query.patientProfileId != null) params.set('patientProfileId', String(query.patientProfileId));
+  if (query.unfinished) params.set('unfinished', '1');
+  if (query.completedSince) params.set('completedSince', query.completedSince);
   return params.toString();
 }
 
@@ -237,12 +255,19 @@ export const cloudPatientsRepository: CloudPatientsRepository = {
     // `!inner` makes the department a condition on the patient, not just a
     // filter on the tests that come back — without it every patient would be
     // returned, most of them carrying an empty test list.
+    // Any condition on a test has to be an inner join, for the same reason.
+    const testCondition = Boolean(query.department || query.unfinished || query.completedSince);
+
     let request = supabase
       .from('patients')
-      .select(query.department ? '*, tests:patient_tests!inner(*)' : '*, tests:patient_tests(*)')
+      .select(testCondition ? '*, tests:patient_tests!inner(*)' : '*, tests:patient_tests(*)')
       .eq('organization_id', organizationId);
 
     if (query.department) request = request.eq('tests.department', query.department);
+    if (query.unfinished) request = request.neq('tests.status', 'completed');
+    if (query.completedSince) {
+      request = request.eq('tests.status', 'completed').gte('tests.completed_at', query.completedSince);
+    }
     if (query.since) request = request.gte('registered_at', query.since);
     if (query.until) request = request.lte('registered_at', query.until);
     if (query.withBillingAccount) request = request.not('billing_account_id', 'is', null);

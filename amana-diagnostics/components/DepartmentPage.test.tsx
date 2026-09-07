@@ -630,16 +630,22 @@ describe('Data loading', () => {
 
     expect(fetchCustomTests).toHaveBeenCalledWith('org-1');
     expect(setCustomCatalogueCache).toHaveBeenCalled();
-    // Bounded to this bench's own work. The screen never reads another
-    // department's tests, and it used to download every patient the centre had
-    // ever registered to show one queue.
-    expect(fetchPatients).toHaveBeenCalledWith('org-1', { department: 'lab' });
+    // Two questions, neither of which grows with the clinic's history.
+    // Outstanding work carries no date bound — a specimen left waiting since
+    // last month is still waiting, and a window would hide it. Finished work is
+    // bounded by when it was finished, not by when the patient was registered.
+    expect(fetchPatients).toHaveBeenCalledWith('org-1', { department: 'lab', unfinished: true });
+    expect(fetchPatients).toHaveBeenCalledWith(
+      'org-1',
+      expect.objectContaining({ department: 'lab', completedSince: expect.any(String) }),
+    );
   });
 
   it('asks only for its own department, so a radiology screen never loads lab work', async () => {
     await renderPage('radiology');
 
-    expect(fetchPatients).toHaveBeenCalledWith('org-1', { department: 'radiology' });
+    const departmentsAsked = (fetchPatients as any).mock.calls.map((c: any[]) => c[1].department);
+    expect(departmentsAsked).toEqual(['radiology', 'radiology']);
   });
 
   it('subscribes to patient changes and unsubscribes on unmount', async () => {

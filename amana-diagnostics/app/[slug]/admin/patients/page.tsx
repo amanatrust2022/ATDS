@@ -12,13 +12,27 @@ import {
   RiUserHeartLine,
 } from '@remixicon/react';
 
+/** Thirty days ago, as the `yyyy-mm-dd` a date input wants. */
+const defaultFrom = (() => {
+  const d = new Date();
+  d.setDate(d.getDate() - 30);
+  return d.toISOString().slice(0, 10);
+})();
+
 function PatientDatabasePage() {
   const { organization } = useAuth();
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [deptFilter, setDeptFilter] = useState<'all' | 'lab' | 'radiology'>('all');
-  const [dateFrom, setDateFrom] = useState('');
+  // Opens on the last thirty days rather than on everything.
+  //
+  // This screen used to fetch every patient the centre had ever registered and
+  // then filter them in the browser — on the first day that is nothing, and in
+  // year three it is the slowest page in the building. The window is a real
+  // date in the box, not a hidden cap: widen it and the wider set is fetched,
+  // so nothing is out of reach, it just has to be asked for.
+  const [dateFrom, setDateFrom] = useState(defaultFrom);
   const [dateTo, setDateTo] = useState('');
   const [selected, setSelected] = useState<Patient | null>(null);
   const [editingPatient, setEditingPatient] = useState<Patient | null>(null);
@@ -26,7 +40,13 @@ function PatientDatabasePage() {
   const loadPatients = () => {
     if (!organization?.id) return;
     setLoading(true);
-    fetchPatients(organization.id).then(data => {
+    // The date range and the department go to the database. Search stays in the
+    // browser: it matches the slip number too, which the query does not.
+    fetchPatients(organization.id, {
+      since: dateFrom ? new Date(dateFrom).toISOString() : undefined,
+      until: dateTo ? new Date(dateTo + 'T23:59:59').toISOString() : undefined,
+      department: deptFilter === 'all' ? undefined : deptFilter,
+    }).then(data => {
       setPatients(data);
       if (selected) {
         const updatedSelected = data.find(p => p.id === selected.id);
@@ -39,15 +59,14 @@ function PatientDatabasePage() {
   useEffect(() => {
     if (!organization?.id) return;
     loadPatients();
-  }, [organization?.id]);
+  }, [organization?.id, dateFrom, dateTo, deptFilter]);
 
   const filtered = patients.filter(p => {
     const q = search.toLowerCase();
-    const nameMatch = !q || patientDisplayName(p).toLowerCase().includes(q) || p.slipNumber.toLowerCase().includes(q) || (p.phone || '').includes(q);
-    const deptMatch = deptFilter === 'all' || p.tests.some(t => t.department === deptFilter);
-    const fromMatch = !dateFrom || new Date(p.registeredAt) >= new Date(dateFrom);
-    const toMatch = !dateTo || new Date(p.registeredAt) <= new Date(dateTo + 'T23:59:59');
-    return nameMatch && deptMatch && fromMatch && toMatch;
+    return !q
+      || patientDisplayName(p).toLowerCase().includes(q)
+      || p.slipNumber.toLowerCase().includes(q)
+      || (p.phone || '').includes(q);
   });
 
   const exportCsv = () => {

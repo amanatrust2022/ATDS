@@ -108,6 +108,8 @@ export async function GET(request: Request) {
     const search = searchParams.get('search')?.trim();
     const limit = Number(searchParams.get('limit')) || 0;
     const patientProfileId = searchParams.get('patientProfileId');
+    const unfinished = searchParams.get('unfinished') === '1';
+    const completedSince = searchParams.get('completedSince');
 
     const where: string[] = ['p.organization_id = ?'];
     const args: any[] = [orgId];
@@ -116,9 +118,18 @@ export async function GET(request: Request) {
     if (until) { where.push('p.registered_at <= ?'); args.push(until); }
     if (withBillingAccount) where.push('p.billing_account_id IS NOT NULL');
     if (patientProfileId) { where.push('p.patient_profile_id = ?'); args.push(Number(patientProfileId)); }
-    if (department) {
-      where.push('EXISTS (SELECT 1 FROM patient_tests t WHERE t.patient_id = p.id AND t.department = ?)');
-      args.push(department);
+    // One EXISTS covering every condition on a test, so "an unfinished test in
+    // radiology" means one test that is both, not one of each.
+    if (department || unfinished || completedSince) {
+      const testWhere: string[] = ['t.patient_id = p.id'];
+      if (department) { testWhere.push('t.department = ?'); args.push(department); }
+      if (unfinished) testWhere.push("t.status <> 'completed'");
+      if (completedSince) {
+        testWhere.push("t.status = 'completed'");
+        testWhere.push('t.completed_at >= ?');
+        args.push(completedSince);
+      }
+      where.push(`EXISTS (SELECT 1 FROM patient_tests t WHERE ${testWhere.join(' AND ')})`);
     }
     if (search) {
       const like = `%${search.toLowerCase()}%`;

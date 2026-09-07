@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase';
 import { RiSettings3Line, RiCheckLine, RiSave3Line, RiHospitalLine } from '@remixicon/react';
 import dynamic from 'next/dynamic';
 import LetterheadA4Preview from '@/components/LetterheadA4Preview';
+import { splitLetterhead, combineLetterhead } from '@/lib/letterheadStyles';
 const LetterheadDesigner = dynamic(() => import('@/components/LetterheadDesigner'), { ssr: false });
 
 const IS_LOCAL_MODE = typeof window !== 'undefined'
@@ -29,11 +30,13 @@ function OrganizationSettings() {
     email: '',
     phone: '',
     address: '',
-    letterheadHtml: ''
+    letterheadHtml: '',
+    letterheadFooterHtml: ''
   });
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState({ text: '', type: '' });
   const [isInitialized, setIsInitialized] = useState(false);
+  const [lhTab, setLhTab] = useState<'header' | 'footer'>('header');
 
   // Pre-fill from live org data
   useEffect(() => {
@@ -51,13 +54,15 @@ function OrganizationSettings() {
         </div>
       `;
 
+      const { header, footer } = splitLetterhead(organization.letterhead_html);
       setFormData({
         name: organization.name || '',
         letterheadLine2: organization.letterhead_line2 || '',
         email: organization.email || '',
         phone: organization.phone || '',
         address: organization.address || '',
-        letterheadHtml: organization.letterhead_html || defaultHtml.trim()
+        letterheadHtml: header || defaultHtml.trim(),
+        letterheadFooterHtml: footer
       });
       setIsInitialized(true);
     }
@@ -70,6 +75,9 @@ function OrganizationSettings() {
     setSaving(true);
     setMessage({ text: '', type: '' });
 
+    // Header + optional footer ride inside the one letterhead_html field.
+    const combinedLetterhead = combineLetterhead(formData.letterheadHtml, formData.letterheadFooterHtml);
+
     try {
       const orgUpdates = {
         id: organization.id,
@@ -80,7 +88,7 @@ function OrganizationSettings() {
         phone: formData.phone,
         address: formData.address,
         letterhead_line2: formData.letterheadLine2 || null,
-        letterhead_html: formData.letterheadHtml || null
+        letterhead_html: combinedLetterhead || null
       };
 
       if (IS_LOCAL_MODE) {
@@ -104,7 +112,7 @@ function OrganizationSettings() {
               email: formData.email,
               phone: formData.phone,
               address: formData.address,
-              letterhead_html: formData.letterheadHtml || null
+              letterhead_html: combinedLetterhead || null
             })
             .eq('id', organization.id);
           if (error) {
@@ -123,7 +131,7 @@ function OrganizationSettings() {
             email: formData.email,
             phone: formData.phone,
             address: formData.address,
-            letterhead_html: formData.letterheadHtml || null
+            letterhead_html: combinedLetterhead || null
           })
           .eq('id', organization.id);
 
@@ -197,9 +205,9 @@ function OrganizationSettings() {
             {/* Letterhead Preview — real A4 page geometry */}
             <div style={{ border: '2px solid #4472c4', borderRadius: 0, marginBottom: '2rem', background: 'white', textAlign: 'left', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.02)' }}>
               <p style={{ fontSize: '0.65rem', fontWeight: 700, color: '#4472c4', textTransform: 'uppercase', margin: 0, letterSpacing: '0.08em', borderBottom: '1px solid var(--gray-200)', padding: '0.75rem 1.5rem' }}>
-                Live A4 Print Preview <span style={{ color: 'var(--gray-400)', fontWeight: 600, textTransform: 'none', letterSpacing: 0 }}>— first-page top margin 0, 20px side margins, exactly as printed</span>
+                Live A4 Print Preview <span style={{ color: 'var(--gray-400)', fontWeight: 600, textTransform: 'none', letterSpacing: 0 }}>— header on page 1, footer on every page, exactly as printed</span>
               </p>
-              <LetterheadA4Preview html={formData.letterheadHtml} />
+              <LetterheadA4Preview html={formData.letterheadHtml} footerHtml={formData.letterheadFooterHtml} />
             </div>
 
             <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
@@ -219,12 +227,48 @@ function OrganizationSettings() {
               <div>
                 <label style={lblStyle}>Custom Designed Letterhead (Free Design Canvas) *</label>
                 <p style={{ ...hintStyle, marginBottom: '0.75rem' }}>
-                  Already have a letterhead? Click <strong>Import letterhead</strong> to drop in a picture of it (a high-resolution PNG/JPG export or scan) — it fills the page exactly as-is, and you can overlay editable text on top. Or build from scratch: add text, your logo, lines and shapes, then drag to move, use the corner handles to resize, and the top handle to rotate. Double-click a text box to type.
+                  Design the <strong>Header</strong> (top of the first page) and, optionally, a <strong>Footer</strong> that repeats at the bottom of every printed page — together they make a complete letterhead sheet. Already have one? Click <strong>Import letterhead</strong> to drop in a picture of it (a high-resolution PNG/JPG export or scan). Otherwise add text, your logo, lines and shapes, drag to move, use the handles to resize/rotate, and double-click a text box to type.
                 </p>
-                <LetterheadDesigner
-                  value={formData.letterheadHtml}
-                  onChange={val => setFormData({ ...formData, letterheadHtml: val })}
-                />
+
+                {/* Header / Footer tabs */}
+                <div style={{ display: 'flex', gap: 4, marginBottom: '0.75rem' }}>
+                  {(['header', 'footer'] as const).map(t => (
+                    <button key={t} type="button" onClick={() => setLhTab(t)}
+                      style={{
+                        padding: '0.5rem 1.1rem', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer',
+                        border: '1px solid ' + (lhTab === t ? '#2563eb' : 'var(--gray-300)'),
+                        borderBottom: lhTab === t ? '2px solid #2563eb' : '1px solid var(--gray-300)',
+                        background: lhTab === t ? '#eff6ff' : 'white', color: lhTab === t ? '#1d4ed8' : 'var(--gray-600)',
+                        textTransform: 'capitalize',
+                      }}>
+                      {t}{t === 'footer' && !formData.letterheadFooterHtml.trim() ? ' (none yet)' : ''}
+                    </button>
+                  ))}
+                  <div style={{ flex: 1 }} />
+                  {lhTab === 'footer' && formData.letterheadFooterHtml.trim() && (
+                    <button type="button" onClick={() => setFormData({ ...formData, letterheadFooterHtml: '' })}
+                      style={{ padding: '0.5rem 0.9rem', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', border: '1px solid #fecaca', background: '#fef2f2', color: '#dc2626' }}>
+                      Remove footer
+                    </button>
+                  )}
+                </div>
+
+                {/* Both stay mounted so each keeps its own undo history; the inactive one is hidden. */}
+                <div hidden={lhTab !== 'header'}>
+                  <LetterheadDesigner
+                    value={formData.letterheadHtml}
+                    onChange={val => setFormData(fd => ({ ...fd, letterheadHtml: val }))}
+                  />
+                </div>
+                <div hidden={lhTab !== 'footer'}>
+                  <p style={{ ...hintStyle, marginBottom: '0.5rem' }}>
+                    The footer prints at the bottom of every page. Keep it short — a thin strip (address, tagline, a line or logo). Leave it empty for no footer.
+                  </p>
+                  <LetterheadDesigner
+                    value={formData.letterheadFooterHtml}
+                    onChange={val => setFormData(fd => ({ ...fd, letterheadFooterHtml: val }))}
+                  />
+                </div>
               </div>
 
               {/* Collapsible Accordion for standard fallback fields */}

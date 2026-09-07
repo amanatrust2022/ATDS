@@ -17,12 +17,13 @@ beforeEach(() => {
  * bound reached the database rather than the browser.
  */
 function recordingSupabase() {
-  const calls: { select?: string; eq: [string, any][]; gte: [string, any][]; lte: [string, any][]; not: any[]; or: string[]; limit?: number } = {
-    eq: [], gte: [], lte: [], not: [], or: [],
+  const calls: { select?: string; eq: [string, any][]; neq: [string, any][]; gte: [string, any][]; lte: [string, any][]; not: any[]; or: string[]; limit?: number } = {
+    eq: [], neq: [], gte: [], lte: [], not: [], or: [],
   };
   const builder: any = {
     select: (cols: string) => { calls.select = cols; return builder; },
     eq: (col: string, val: any) => { calls.eq.push([col, val]); return builder; },
+    neq: (col: string, val: any) => { calls.neq.push([col, val]); return builder; },
     gte: (col: string, val: any) => { calls.gte.push([col, val]); return builder; },
     lte: (col: string, val: any) => { calls.lte.push([col, val]); return builder; },
     not: (...a: any[]) => { calls.not.push(a); return builder; },
@@ -133,6 +134,52 @@ describe('Bounding the commission report to its period', () => {
 
     expect(qs).toContain('since=2026-08-01T00%3A00%3A00.000Z');
     expect(qs).toContain('until=2026-08-31T22%3A59%3A59.000Z');
+  });
+});
+
+/**
+ * A department screen asks two questions instead of one, because the two lists
+ * on it are bounded by different things. Asking only by department meant "every
+ * patient who has ever had a test at this bench" — the whole archive, fetched
+ * to show a morning's work.
+ */
+describe('Bounding a department screen', () => {
+  it('asks for outstanding work with no date bound at all', async () => {
+    const calls = recordingSupabase();
+
+    await cloudPatientsRepository.list('org-1', { department: 'lab', unfinished: true });
+
+    expect(calls.select).toContain('patient_tests!inner');
+    expect(calls.neq).toContainEqual(['tests.status', 'completed']);
+    // A specimen left waiting since last month is still waiting; a date window
+    // would take it off the queue, which is the one thing a queue must not do.
+    expect(calls.gte).toEqual([]);
+    expect(calls.lte).toEqual([]);
+  });
+
+  it('bounds finished work by when it was finished, not by when the patient arrived', async () => {
+    const calls = recordingSupabase();
+
+    await cloudPatientsRepository.list('org-1', {
+      department: 'lab',
+      completedSince: '2026-09-07T00:00:00.000Z',
+    });
+
+    expect(calls.eq).toContainEqual(['tests.status', 'completed']);
+    expect(calls.gte).toContainEqual(['tests.completed_at', '2026-09-07T00:00:00.000Z']);
+    // Not registered_at: a result can be entered days after the visit.
+    expect(calls.gte).not.toContainEqual(['registered_at', '2026-09-07T00:00:00.000Z']);
+  });
+
+  it('carries both through to the hub', () => {
+    const params = new URLSearchParams(patientQueryParams('org-1', {
+      department: 'lab',
+      unfinished: true,
+      completedSince: '2026-09-07T00:00:00.000Z',
+    }));
+
+    expect(params.get('unfinished')).toBe('1');
+    expect(params.get('completedSince')).toBe('2026-09-07T00:00:00.000Z');
   });
 });
 
