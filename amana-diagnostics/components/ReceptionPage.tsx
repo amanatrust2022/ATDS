@@ -66,7 +66,10 @@ export default function ReceptionPage() {
   const [patients, setPatients] = useState<Patient[]>([]);
   // Everyone attached to a wallet, whenever they were registered. The queue
   // above is bounded to the chosen date window; account membership is not.
-  const [walletPatients, setWalletPatients] = useState<Patient[]>([]);
+  /** One patient per wallet: the owner, for the name column on the wallet table. */
+  const [accountOwners, setAccountOwners] = useState<Patient[]>([]);
+  /** Every visit charged to the wallet currently open. Loaded when it is opened. */
+  const [ledgerMembers, setLedgerMembers] = useState<Patient[]>([]);
   const [patientProfiles, setPatientProfiles] = useState<PatientProfile[]>([]);
 
   // Searchable dropdown states for open billing account modal
@@ -184,34 +187,42 @@ export default function ReceptionPage() {
       if (id === undefined || id === null || id === '') return undefined;
       const numericId = Number(id);
       return patients.find(p => p.id === numericId)
-        ?? walletPatients.find(p => p.id === numericId)
+        ?? accountOwners.find(p => p.id === numericId)
+        ?? ledgerMembers.find(p => p.id === numericId)
         ?? pickedPatients.find(p => p.id === numericId);
     },
-    [patients, walletPatients, pickedPatients],
+    [patients, accountOwners, ledgerMembers, pickedPatients],
   );
 
   const refresh = useCallback(async () => {
     if (!organization?.id) return;
     try {
-      // Two different sets, because the screen wants two different things.
-      //
       // The queue wants the window the user has chosen — that filter used to
       // run in the browser after downloading every patient the centre has ever
       // registered.
-      //
-      // The wallet screens want every patient attached to an account, whenever
-      // they were registered: a family member seen six months ago must still
-      // be found when their wallet is opened. Bounding that set by date would
-      // have quietly emptied the account membership lists.
-      const [data, walletMembers, profiles, accs, charges] = await Promise.all([
+      const [data, profiles, accs, charges] = await Promise.all([
         fetchPatients(organization.id, { since: windowStartIso(dateFilter) }),
-        fetchPatients(organization.id, { withBillingAccount: true }),
         fetchPatientProfiles(organization.id),
         fetchBillingAccounts(organization.id),
         fetchExternalCharges(organization.id)
       ]);
+
+      // The wallet table shows one thing about a patient — the owner's name —
+      // so it fetches the owners, not everybody who has ever been charged to a
+      // wallet. That set had no date bound, for a good reason: a family member
+      // seen six months ago must still appear when their wallet is opened. But
+      // it grew with every visit ever billed to an account, and it was being
+      // loaded to print a column of names. Membership itself is loaded per
+      // account, when an account is actually opened.
+      const ownerIds = Array.from(new Set(
+        (accs || []).map((a: any) => a.owner_patient_id).filter((id: any) => id != null)
+      ));
+      const owners = ownerIds.length
+        ? await fetchPatients(organization.id, { ids: ownerIds })
+        : [];
+
       setPatients(data);
-      setWalletPatients(walletMembers);
+      setAccountOwners(owners);
       setPatientProfiles(profiles);
       setBillingAccounts(accs);
       setExternalCharges(charges as any[]);
@@ -363,8 +374,16 @@ export default function ReceptionPage() {
   useEffect(() => {
     if (showLedgerModal) {
       setLoadingLedger(true);
-      fetchAccountLedger(showLedgerModal.id)
-        .then(txs => setBillingTransactions(txs))
+      // This wallet's membership, whenever those visits happened. Fetched here
+      // rather than kept for every wallet in the centre — the screen only ever
+      // shows one at a time.
+      Promise.all([
+        fetchAccountLedger(showLedgerModal.id),
+        organization?.id
+          ? fetchPatients(organization.id, { billingAccountId: showLedgerModal.id })
+          : Promise.resolve([] as Patient[]),
+      ])
+        .then(([txs, members]) => { setBillingTransactions(txs); setLedgerMembers(members); })
         .catch(err => console.error(err))
         .finally(() => setLoadingLedger(false));
 
@@ -375,8 +394,9 @@ export default function ReceptionPage() {
       setExistingPatientToLink('');
     } else {
       setBillingTransactions([]);
+      setLedgerMembers([]);
     }
-  }, [showLedgerModal]);
+  }, [showLedgerModal, organization?.id]);
 
   const handleLinkExistingDependent = async (accountId: string) => {
     if (!existingPatientToLink) return;
@@ -482,8 +502,15 @@ export default function ReceptionPage() {
   };
 
 
-  const handlePrintStatement = (account: BillingAccount) => {
-    const members = walletPatients.filter(p => p.billingAccountId === account.id);
+  const handlePrintStatement = async (account: BillingAccount) => {
+    // Printed from the open wallet, whose membership is already loaded — but
+    // fetch it if this is somehow reached without that, so a statement can
+    // never go out with the members missing.
+    const members = ledgerMembers.length && ledgerMembers[0]?.billingAccountId === account.id
+      ? ledgerMembers
+      : organization?.id
+        ? await fetchPatients(organization.id, { billingAccountId: account.id })
+        : [];
     const html = getLedgerStatementTemplate(account, billingTransactions, members, organization as any);
     printHtml(html);
   };
@@ -712,7 +739,7 @@ export default function ReceptionPage() {
                     {billingAccounts
                       .filter(acc => acc.name.toLowerCase().includes(billingSearchQuery.toLowerCase()))
                       .map(acc => {
-                        const owner = walletPatients.find(p => p.id === Number(acc.owner_patient_id));
+                        const owner = accountOwners.find(p => p.id === Number(acc.owner_patient_id));
                         const ownerName = owner ? `${owner.firstName} ${owner.surname}` : 'Unknown';
                         return (
                           <tr key={acc.id} style={{ borderBottom: '1px solid var(--gray-100)' }}>
@@ -1302,7 +1329,7 @@ export default function ReceptionPage() {
                   <button
                     type="button"
                     onClick={() => {
-                      const allVisits = walletPatients.filter(p => p.billingAccountId === showLedgerModal.id);
+                      const allVisits = ledgerMembers.filter(p => p.billingAccountId === showLedgerModal.id);
                   const uniqueMembersMap = new Map();
                   allVisits.forEach(v => {
                     const key = `${v.firstName?.toLowerCase()}-${v.surname?.toLowerCase()}`;
@@ -1387,7 +1414,7 @@ export default function ReceptionPage() {
                         onChange={e => setWorkspaceExpenseForm({ ...workspaceExpenseForm, patientId: e.target.value })}
                       >
                         <option value="">-- Select Member --</option>
-                        {walletPatients.filter(p => p.billingAccountId === showLedgerModal.id).map(p => (
+                        {ledgerMembers.filter(p => p.billingAccountId === showLedgerModal.id).map(p => (
                           <option key={p.id} value={p.id}>{p.firstName} {p.surname} ({p.slipNumber})</option>
                         ))}
                       </select>
@@ -1491,7 +1518,7 @@ export default function ReceptionPage() {
 
                 {/* Inner Tab contents */}
                 {workspaceTab === 'members' && (() => {
-                  const members = walletPatients.filter(p => p.billingAccountId === showLedgerModal.id);
+                  const members = ledgerMembers.filter(p => p.billingAccountId === showLedgerModal.id);
                   return (
                     <div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>

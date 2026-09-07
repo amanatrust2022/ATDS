@@ -17,13 +17,14 @@ beforeEach(() => {
  * bound reached the database rather than the browser.
  */
 function recordingSupabase() {
-  const calls: { select?: string; eq: [string, any][]; neq: [string, any][]; gte: [string, any][]; lte: [string, any][]; not: any[]; or: string[]; limit?: number } = {
-    eq: [], neq: [], gte: [], lte: [], not: [], or: [],
+  const calls: { select?: string; eq: [string, any][]; neq: [string, any][]; in: [string, any][]; gte: [string, any][]; lte: [string, any][]; not: any[]; or: string[]; limit?: number } = {
+    eq: [], neq: [], in: [], gte: [], lte: [], not: [], or: [],
   };
   const builder: any = {
     select: (cols: string) => { calls.select = cols; return builder; },
     eq: (col: string, val: any) => { calls.eq.push([col, val]); return builder; },
     neq: (col: string, val: any) => { calls.neq.push([col, val]); return builder; },
+    in: (col: string, val: any) => { calls.in.push([col, val]); return builder; },
     gte: (col: string, val: any) => { calls.gte.push([col, val]); return builder; },
     lte: (col: string, val: any) => { calls.lte.push([col, val]); return builder; },
     not: (...a: any[]) => { calls.not.push(a); return builder; },
@@ -180,6 +181,52 @@ describe('Bounding a department screen', () => {
 
     expect(params.get('unfinished')).toBe('1');
     expect(params.get('completedSince')).toBe('2026-09-07T00:00:00.000Z');
+  });
+});
+
+/**
+ * The wallet screens used to load every patient ever charged to any account —
+ * no date bound, deliberately, because a family member seen six months ago must
+ * still appear when their wallet is opened. That reasoning was right and the
+ * query was still wrong: the table needs one name per wallet, and membership is
+ * only ever wanted for the wallet actually open.
+ */
+describe('Bounding the wallet screens', () => {
+  it('loads one wallet\'s membership, not every wallet\'s', async () => {
+    const calls = recordingSupabase();
+
+    await cloudPatientsRepository.list('org-1', { billingAccountId: 'acct-7' });
+
+    expect(calls.eq).toContainEqual(['billing_account_id', 'acct-7']);
+    // Still no date bound: that part was never the problem.
+    expect(calls.gte).toEqual([]);
+  });
+
+  it('fetches the account owners by id rather than everyone with a wallet', async () => {
+    const calls = recordingSupabase();
+
+    await cloudPatientsRepository.list('org-1', { ids: [11, 22, 33] });
+
+    expect(calls.in).toContainEqual(['id', [11, 22, 33]]);
+    expect(calls.not).toEqual([]);
+  });
+
+  it('asks for nothing when there are no accounts, rather than for everything', async () => {
+    const calls = recordingSupabase();
+
+    const rows = await cloudPatientsRepository.list('org-1', { ids: [] });
+
+    expect(rows).toEqual([]);
+    expect(calls.in).toEqual([]);
+  });
+
+  it('carries both through to the hub', () => {
+    const params = new URLSearchParams(
+      patientQueryParams('org-1', { billingAccountId: 'acct-7', ids: [11, 22] }),
+    );
+
+    expect(params.get('billingAccountId')).toBe('acct-7');
+    expect(params.get('ids')).toBe('11,22');
   });
 });
 

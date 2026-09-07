@@ -69,6 +69,22 @@ export interface PatientQuery {
    * registration date, because a result can be entered long after the visit.
    */
   completedSince?: string;
+  /**
+   * Every visit charged to one wallet, of any age.
+   *
+   * The wallet screens need a family's whole membership, not the part of it
+   * that happens to have visited this week — but they only ever need it one
+   * account at a time, which is what this is for.
+   */
+  billingAccountId?: string;
+  /**
+   * These particular patients, by id.
+   *
+   * Used to put a name against each wallet's owner without loading everyone
+   * who has ever been charged to a wallet. The list is as long as the number
+   * of accounts, which is small.
+   */
+  ids?: Array<number | string>;
 }
 
 export interface PatientsRepository {
@@ -105,6 +121,8 @@ export function patientQueryParams(organizationId: string, query: PatientQuery =
   if (query.patientProfileId != null) params.set('patientProfileId', String(query.patientProfileId));
   if (query.unfinished) params.set('unfinished', '1');
   if (query.completedSince) params.set('completedSince', query.completedSince);
+  if (query.billingAccountId) params.set('billingAccountId', query.billingAccountId);
+  if (query.ids?.length) params.set('ids', query.ids.join(','));
   return params.toString();
 }
 
@@ -271,6 +289,12 @@ export const cloudPatientsRepository: CloudPatientsRepository = {
     if (query.since) request = request.gte('registered_at', query.since);
     if (query.until) request = request.lte('registered_at', query.until);
     if (query.withBillingAccount) request = request.not('billing_account_id', 'is', null);
+    if (query.billingAccountId) request = request.eq('billing_account_id', query.billingAccountId);
+    if (query.ids) {
+      // An empty list means nothing, not everything.
+      if (query.ids.length === 0) return [];
+      request = request.in('id', query.ids as any);
+    }
     if (query.patientProfileId != null) request = request.eq('patient_profile_id', query.patientProfileId);
     if (query.search) {
       // Commas and parentheses would be read as more filter clauses.

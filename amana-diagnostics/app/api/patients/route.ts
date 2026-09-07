@@ -110,6 +110,8 @@ export async function GET(request: Request) {
     const patientProfileId = searchParams.get('patientProfileId');
     const unfinished = searchParams.get('unfinished') === '1';
     const completedSince = searchParams.get('completedSince');
+    const billingAccountId = searchParams.get('billingAccountId');
+    const idsParam = searchParams.get('ids');
 
     const where: string[] = ['p.organization_id = ?'];
     const args: any[] = [orgId];
@@ -117,6 +119,16 @@ export async function GET(request: Request) {
     if (since) { where.push('p.registered_at >= ?'); args.push(since); }
     if (until) { where.push('p.registered_at <= ?'); args.push(until); }
     if (withBillingAccount) where.push('p.billing_account_id IS NOT NULL');
+    if (billingAccountId) { where.push('p.billing_account_id = ?'); args.push(billingAccountId); }
+    if (idsParam !== null) {
+      const ids = idsParam.split(',').map(s => s.trim()).filter(Boolean);
+      if (ids.length === 0) {
+        // An empty list means nothing, not everything.
+        return NextResponse.json([]);
+      }
+      where.push(`p.id IN (${ids.map(() => '?').join(',')})`);
+      args.push(...ids.map(Number));
+    }
     if (patientProfileId) { where.push('p.patient_profile_id = ?'); args.push(Number(patientProfileId)); }
     // One EXISTS covering every condition on a test, so "an unfinished test in
     // radiology" means one test that is both, not one of each.
