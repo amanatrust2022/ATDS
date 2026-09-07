@@ -1,7 +1,7 @@
 import { test, expect } from 'vitest';
 import { buildFallbackProfile, createOrganizationWithFallback, upsertProfileForUser } from './workspace.js';
 
-test('upserts a profile row for the authenticated user', async () => {
+test('upserts a profile row the database will accept for the authenticated user', async () => {
   const calls = [];
   const supabase = {
     from: (table) => {
@@ -24,14 +24,56 @@ test('upserts a profile row for the authenticated user', async () => {
 
   await upsertProfileForUser(supabase, 'user-1', {
     full_name: 'Ada Lovelace',
-    role: 'admin',
-    organization_id: 'org-1',
     email: 'ada@example.com',
   });
 
   expect(calls[0].payload.id).toBe('user-1');
   expect(calls[0].options.onConflict).toBe('id');
-  expect(calls[0].payload.organization_id).toBe('org-1');
+  expect(calls[0].payload.role).toBe('reception');
+  expect(calls[0].payload.organization_id).toBe(null);
+});
+
+test('a profile claiming a role or a clinic is never offered to the table', async () => {
+  // `profiles_insert_self` accepts your own row with no organisation and no
+  // role above reception, and nothing else — so asking the table for admin of
+  // a named clinic is refused every time. It is therefore not asked. That
+  // decision belongs to /api/auth/profile, which grants admin only when the
+  // workspace has no members yet.
+  const originalWindow = globalThis.window;
+  const originalFetch = globalThis.fetch;
+  globalThis.window = globalThis.window ?? {};
+
+  const urls = [];
+  globalThis.fetch = async (url) => {
+    urls.push(url);
+    return { ok: true, json: async () => ({ success: true, data: { id: 'user-1' } }) };
+  };
+
+  const supabase = {
+    from: () => {
+      throw new Error('the profiles table must not be asked for standing');
+    },
+    auth: {
+      getSession: async () => ({ data: { session: { access_token: 'token-1' } } }),
+    },
+  };
+
+  await upsertProfileForUser(supabase, 'user-1', {
+    full_name: 'Ada Lovelace',
+    role: 'admin',
+    organization_id: 'org-1',
+    email: 'ada@example.com',
+  });
+
+  expect(urls.length).toBe(1);
+  expect(urls[0]).toMatch(/\/api\/auth\/profile$/);
+
+  globalThis.fetch = originalFetch;
+  if (originalWindow === undefined) {
+    delete globalThis.window;
+  } else {
+    globalThis.window = originalWindow;
+  }
 });
 
 test('reuses an existing organization when the slug already exists', async () => {
@@ -115,7 +157,16 @@ test('creates a new organization when no matching slug exists', async () => {
 
       throw new Error(`Unexpected table ${table}`);
     },
+    auth: {
+      getSession: async () => ({ data: { session: { access_token: 'token-1' } } }),
+    },
   };
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({
+    ok: true,
+    json: async () => ({ success: true, data: { id: 'user-1' } }),
+  });
 
   const result = await createOrganizationWithFallback(supabase, {
     name: 'New Clinic',
@@ -126,9 +177,13 @@ test('creates a new organization when no matching slug exists', async () => {
     letterheadLine2: '',
   }, { userId: 'user-1' });
 
+  globalThis.fetch = originalFetch;
+
   expect(result.organization.id).toBe('org-456');
   expect(result.created).toBe(true);
-  expect(calls).toEqual(['rpc', 'select:organizations', 'insert:organizations', 'update:profiles']);
+  // No 'update:profiles'. The founder's row names a clinic and asks for admin,
+  // which the table refuses by policy, so it goes to /api/auth/profile instead.
+  expect(calls).toEqual(['rpc', 'select:organizations', 'insert:organizations']);
 });
 
 test('builds a fallback profile payload from auth metadata when no profile row exists', () => {

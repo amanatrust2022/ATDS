@@ -70,40 +70,52 @@ export async function upsertProfileForUser(supabase, userId, profileData = {}) {
     organization_id: profileData.organization_id ?? null,
   };
 
-  try {
-    const profilesTable = supabase.from('profiles');
+  // Standing in a clinic is the server's to grant. `profiles_insert_self`
+  // accepts a row for yourself with no organisation and no role above
+  // reception, and nothing else — so a sign-up, which asks for admin of a
+  // named clinic, is refused by the database every time. The fallback below
+  // would carry it, but only after spending a round trip to be told no and
+  // leaving a warning in the console on every successful sign-up. When the
+  // payload is one only the server can grant, go straight there.
+  const needsServer =
+    payload.organization_id != null || (payload.role && payload.role !== 'reception');
 
-    if (typeof profilesTable.upsert === 'function') {
-      const { data, error } = await profilesTable
-        .upsert(payload, { onConflict: 'id' })
-        .select('id')
-        .maybeSingle();
+  if (!needsServer) {
+    try {
+      const profilesTable = supabase.from('profiles');
 
-      if (!error) {
-        return data;
+      if (typeof profilesTable.upsert === 'function') {
+        const { data, error } = await profilesTable
+          .upsert(payload, { onConflict: 'id' })
+          .select('id')
+          .maybeSingle();
+
+        if (!error) {
+          return data;
+        }
+        console.warn('[workspace] Supabase profile upsert failed, falling back to server endpoint:', error);
+      } else {
+        const { data, error } = await profilesTable
+          .update(payload)
+          .eq('id', userId)
+          .select('id')
+          .maybeSingle();
+
+        if (!error) {
+          return data;
+        }
+        console.warn('[workspace] Supabase profile update failed, falling back to server endpoint:', error);
       }
-      console.warn('[workspace] Supabase profile upsert failed, falling back to server endpoint:', error);
-    } else {
-      const { data, error } = await profilesTable
-        .update(payload)
-        .eq('id', userId)
-        .select('id')
-        .maybeSingle();
-
-      if (!error) {
-        return data;
-      }
-      console.warn('[workspace] Supabase profile update failed, falling back to server endpoint:', error);
+    } catch (error) {
+      console.warn('[workspace] Supabase profile write threw, falling back to server endpoint:', error);
     }
-  } catch (error) {
-    console.warn('[workspace] Supabase profile write threw, falling back to server endpoint:', error);
   }
 
   if (typeof window !== 'undefined') {
     try {
       // The endpoint writes the caller's own row, identified from this token,
       // and ignores any user id in the body. Without a token it refuses.
-      const sessionRes = await supabase.auth.getSession();
+      const sessionRes = await supabase?.auth?.getSession?.();
       const accessToken = sessionRes?.data?.session?.access_token;
       const headers = { 'Content-Type': 'application/json' };
       if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
