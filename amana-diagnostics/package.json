@@ -4,6 +4,7 @@
   "description": "Amana Diagnostics Hub — offline-first LIS for African diagnostic centres",
   "author": "Amana Diagnostics",
   "scripts": {
+    "postinstall": "node scripts/copy-pdf-worker.js",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
