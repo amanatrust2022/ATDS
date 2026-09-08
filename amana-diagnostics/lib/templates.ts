@@ -64,7 +64,7 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
   // The stored field carries a header (top of page 1) and an optional footer
   // (bottom of every page); split BEFORE cleaning, since the separator is a
   // comment the sanitiser strips.
-  const { header: rawHeader, footer: rawFooter, bg: rawBg } = splitLetterhead(org?.letterhead_html);
+  const { header: rawHeader, footer: rawFooter, bg: rawBg, bgTop, bgBottom } = splitLetterhead(org?.letterhead_html);
   const cleanLetterheadHtml = cleanLetterhead(rawHeader);
   const cleanFooterHtml = rawFooter.trim() ? cleanLetterhead(rawFooter) : '';
   const cleanBgHtml = rawBg.trim() ? cleanLetterhead(rawBg) : '';
@@ -438,6 +438,61 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
     completedTests.every(t => t.department === 'radiology') ? 'RADIOLOGY RESULT REPORT' :
       'LABORATORY / RADIOLOGY RESULT REPORT';
 
+  // The report content, placed either straight into the body, or (when a
+  // full-page background is used) inside a table whose repeating header/footer
+  // rows reserve the clear top/bottom area on every page so the report never
+  // sits on top of the letterhead's own header or footer.
+  const reportInner = `
+    <div class="header" style="${org?.letterhead_html ? 'border-bottom: none; text-align: left;' : ''}">
+      ${org?.letterhead_html ? `
+        <div class="custom-letterhead">${cleanLetterheadHtml}</div>
+      ` : `
+        <div class="org-name-1">${orgName}</div>
+        ${orgLine2 ? `<div class="org-name-2">${orgLine2}</div>` : ''}
+        ${orgAddress ? `<div class="org-addr">${orgAddress}</div>` : ''}
+        ${orgPhone ? `<div class="org-contact"><b>Phone;</b> ${orgPhone}</div>` : ''}
+        ${orgEmail ? `<div class="org-email"><b>Email;</b> <span style="color:#0563c1">${orgEmail}</span></div>` : ''}
+      `}
+    </div>
+    <div class="report-title">${reportTitle}</div>
+    <div class="patient-info">
+      <div><span class="pi-label">Patient Name;</span> ${patientDisplayName(patient)}</div>
+      <div><span class="pi-label">Patient ID;</span> ${patient.slipNumber}</div>
+      <div>
+        <span style="margin-right: 30px;"><span class="pi-label">Age;</span> ${patient.age}</span>
+        <span><span class="pi-label">Requested Date;</span> ${regDate}</span>
+      </div>
+      <div>
+        <span style="margin-right: 30px;"><span class="pi-label">Sex;</span> ${patient.sex}</span>
+        <span><span class="pi-label">Reporting Date;</span> ${reportingDate}</span>
+      </div>
+      <div><span class="pi-label">Investigation(s);</span> ${investigationList}</div>
+      <div><span class="pi-label">Specimen(s);</span> ${specimens}</div>
+    </div>
+    ${testSections}
+    <div style="text-align:center; margin-top:20px; margin-bottom:16px; font-weight:bold; text-transform:uppercase; font-size:10pt; color:#000;">
+      *** END OF REPORT ***
+    </div>
+    <div class="sig-section">
+      <div class="sig-box">
+        ${completedTests[0]?.completedBySignatureUrl
+          ? `<div style="margin-bottom:6px; text-align:center;">
+               <img src="${completedTests[0].completedBySignatureUrl}" style="max-height:55px; max-width:160px; object-fit:contain; display:block; margin:0 auto;" alt="Signature" />
+             </div>`
+          : '<div style="height:55px;"></div>'
+        }
+        <div class="sig-line">${completedTests[0]?.completedBy || 'Authorised Professional'}</div>
+      </div>
+    </div>`;
+
+  const reportBlock = cleanBgHtml
+    ? `<table class="report-frame">
+         <thead><tr><td><div style="height:${bgTop}px"></div></td></tr></thead>
+         <tfoot><tr><td><div style="height:${bgBottom}px"></div></td></tr></tfoot>
+         <tbody><tr><td>${reportInner}</td></tr></tbody>
+       </table>`
+    : `<div class="report-body">${reportInner}</div>`;
+
   return `
     <!DOCTYPE html><html><head><title>Result - ${patient.slipNumber}</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -480,8 +535,15 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
         .page-bg .custom-letterhead { margin: 0 auto; }
         /* Content wins the stacking, so the background can never cover it —
            the fix for Chrome painting fixed layers over print content. */
-        .report-body { position: relative; z-index: 1; }
+        .report-body, .report-frame { position: relative; z-index: 1; }
       }
+      /* Full-page mode wraps the report in a table; its repeating thead/tfoot
+         rows reserve the clear top/bottom area on every printed page. Reset the
+         spacer cells so they don't inherit the report's table styling. */
+      .report-frame { width: 100%; border-collapse: collapse; margin: 0; }
+      .report-frame > thead > tr > td,
+      .report-frame > tfoot > tr > td,
+      .report-frame > tbody > tr > td { padding: 0; border: none; background: none; }
       @media screen {
         body { max-width: 860px; margin: 0 auto; padding: 32px 40px; background: #f0f2f5; }
         html { background: #f0f2f5; }
@@ -537,49 +599,7 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
       }
     </style></head><body>
     ${cleanBgHtml ? `<div class="page-bg"><div class="custom-letterhead">${cleanBgHtml}</div></div>` : ''}
-    <div class="report-body">
-    <div class="header" style="${org?.letterhead_html ? 'border-bottom: none; text-align: left;' : ''}">
-      ${org?.letterhead_html ? `
-        <div class="custom-letterhead">${cleanLetterheadHtml}</div>
-      ` : `
-        <div class="org-name-1">${orgName}</div>
-        ${orgLine2 ? `<div class="org-name-2">${orgLine2}</div>` : ''}
-        ${orgAddress ? `<div class="org-addr">${orgAddress}</div>` : ''}
-        ${orgPhone ? `<div class="org-contact"><b>Phone;</b> ${orgPhone}</div>` : ''}
-        ${orgEmail ? `<div class="org-email"><b>Email;</b> <span style="color:#0563c1">${orgEmail}</span></div>` : ''}
-      `}
-    </div>
-    <div class="report-title">${reportTitle}</div>
-    <div class="patient-info">
-      <div><span class="pi-label">Patient Name;</span> ${patientDisplayName(patient)}</div>
-      <div><span class="pi-label">Patient ID;</span> ${patient.slipNumber}</div>
-      <div>
-        <span style="margin-right: 30px;"><span class="pi-label">Age;</span> ${patient.age}</span>
-        <span><span class="pi-label">Requested Date;</span> ${regDate}</span>
-      </div>
-      <div>
-        <span style="margin-right: 30px;"><span class="pi-label">Sex;</span> ${patient.sex}</span>
-        <span><span class="pi-label">Reporting Date;</span> ${reportingDate}</span>
-      </div>
-      <div><span class="pi-label">Investigation(s);</span> ${investigationList}</div>
-      <div><span class="pi-label">Specimen(s);</span> ${specimens}</div>
-    </div>
-    ${testSections}
-    <div style="text-align:center; margin-top:20px; margin-bottom:16px; font-weight:bold; text-transform:uppercase; font-size:10pt; color:#000;">
-      *** END OF REPORT ***
-    </div>
-    <div class="sig-section">
-      <div class="sig-box">
-        ${completedTests[0]?.completedBySignatureUrl
-          ? `<div style="margin-bottom:6px; text-align:center;">
-               <img src="${completedTests[0].completedBySignatureUrl}" style="max-height:55px; max-width:160px; object-fit:contain; display:block; margin:0 auto;" alt="Signature" />
-             </div>`
-          : '<div style="height:55px;"></div>'
-        }
-        <div class="sig-line">${completedTests[0]?.completedBy || 'Authorised Professional'}</div>
-      </div>
-    </div>
-    </div>
+    ${reportBlock}
     ${cleanFooterHtml ? `<div class="page-footer"><div class="custom-letterhead">${cleanFooterHtml}</div></div>` : ''}
     </body></html>`;
 };

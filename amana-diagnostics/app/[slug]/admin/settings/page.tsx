@@ -32,7 +32,9 @@ function OrganizationSettings() {
     address: '',
     letterheadHtml: '',
     letterheadFooterHtml: '',
-    letterheadBgHtml: ''
+    letterheadBgHtml: '',
+    letterheadBgTop: 170,
+    letterheadBgBottom: 90
   });
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState({ text: '', type: '' });
@@ -55,7 +57,7 @@ function OrganizationSettings() {
         </div>
       `;
 
-      const { header, footer, bg } = splitLetterhead(organization.letterhead_html);
+      const { header, footer, bg, bgTop, bgBottom } = splitLetterhead(organization.letterhead_html);
       setFormData({
         name: organization.name || '',
         letterheadLine2: organization.letterhead_line2 || '',
@@ -64,7 +66,9 @@ function OrganizationSettings() {
         address: organization.address || '',
         letterheadHtml: header || defaultHtml.trim(),
         letterheadFooterHtml: footer,
-        letterheadBgHtml: bg
+        letterheadBgHtml: bg,
+        letterheadBgTop: bgTop,
+        letterheadBgBottom: bgBottom
       });
       setIsInitialized(true);
     }
@@ -79,7 +83,7 @@ function OrganizationSettings() {
 
     // Header + optional footer + optional full-page background ride inside the
     // one letterhead_html field.
-    const combinedLetterhead = combineLetterhead(formData.letterheadHtml, formData.letterheadFooterHtml, formData.letterheadBgHtml);
+    const combinedLetterhead = combineLetterhead(formData.letterheadHtml, formData.letterheadFooterHtml, formData.letterheadBgHtml, formData.letterheadBgTop, formData.letterheadBgBottom);
 
     try {
       const orgUpdates = {
@@ -210,7 +214,7 @@ function OrganizationSettings() {
               <p style={{ fontSize: '0.65rem', fontWeight: 700, color: '#4472c4', textTransform: 'uppercase', margin: 0, letterSpacing: '0.08em', borderBottom: '1px solid var(--gray-200)', padding: '0.75rem 1.5rem' }}>
                 Live A4 Print Preview <span style={{ color: 'var(--gray-400)', fontWeight: 600, textTransform: 'none', letterSpacing: 0 }}>— header on page 1, footer on every page, exactly as printed</span>
               </p>
-              <LetterheadA4Preview html={formData.letterheadHtml} footerHtml={formData.letterheadFooterHtml} bgHtml={formData.letterheadBgHtml} />
+              <LetterheadA4Preview html={formData.letterheadHtml} footerHtml={formData.letterheadFooterHtml} bgHtml={formData.letterheadBgHtml} bgTop={formData.letterheadBgTop} bgBottom={formData.letterheadBgBottom} />
             </div>
 
             <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
@@ -283,8 +287,25 @@ function OrganizationSettings() {
                 </div>
                 <div hidden={lhTab !== 'fullpage'}>
                   <p style={{ ...hintStyle, marginBottom: '0.5rem' }}>
-                    A full-page background — a frame, border or watermark that sits <em>behind</em> the report on every page. Easiest is <strong>Import letterhead</strong> with a full-page design (PNG/JPG/PDF); it fills the whole sheet. Your report content prints on top, inside the margins. Leave empty for none.
+                    A full-page background — a frame, border or watermark that sits <em>behind</em> the report on every page. Easiest is <strong>Import letterhead</strong> with a full-page design (PNG/JPG/PDF). Then set the clear area below so the report prints in the empty middle, not on top of the letterhead's own header/footer (shown as the dashed box in the preview). Leave empty for none.
                   </p>
+                  {formData.letterheadBgHtml.trim() && (
+                    <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center', margin: '0 0 0.75rem', padding: '0.6rem 0.9rem', background: '#eff6ff', border: '1px solid #bfdbfe' }}>
+                      <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#1d4ed8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Report clear area</span>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', color: 'var(--gray-700)' }}>
+                        Space at top
+                        <input type="number" value={formData.letterheadBgTop}
+                          onChange={e => setFormData(fd => ({ ...fd, letterheadBgTop: Math.max(0, parseInt(e.target.value) || 0) }))}
+                          style={{ width: 70, padding: '4px 6px', border: '1px solid var(--gray-300)', fontSize: '0.8rem' }} /> px
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', color: 'var(--gray-700)' }}>
+                        Space at bottom
+                        <input type="number" value={formData.letterheadBgBottom}
+                          onChange={e => setFormData(fd => ({ ...fd, letterheadBgBottom: Math.max(0, parseInt(e.target.value) || 0) }))}
+                          style={{ width: 70, padding: '4px 6px', border: '1px solid var(--gray-300)', fontSize: '0.8rem' }} /> px
+                      </label>
+                    </div>
+                  )}
                   <LetterheadDesigner
                     value={formData.letterheadBgHtml}
                     defaultHeight={1040}

@@ -25,10 +25,13 @@ const vGuide = (left: number): React.CSSProperties => ({
   borderLeft: '1px dashed #cbd5e1', pointerEvents: 'none',
 });
 
-export default function LetterheadA4Preview({ html, footerHtml, bgHtml }: { html: string; footerHtml?: string; bgHtml?: string }) {
+export default function LetterheadA4Preview({ html, footerHtml, bgHtml, bgTop = 170, bgBottom = 90 }: {
+  html: string; footerHtml?: string; bgHtml?: string; bgTop?: number; bgBottom?: number;
+}) {
   const clean = cleanLetterhead(html);
   const footerClean = footerHtml && footerHtml.trim() ? cleanLetterhead(footerHtml) : '';
   const bgClean = bgHtml && bgHtml.trim() ? cleanLetterhead(bgHtml) : '';
+  const contentTop = bgClean ? bgTop : PAD_TOP;
   return (
     <div style={{ background: '#e9edf2', padding: 20, overflow: 'auto', display: 'flex', justifyContent: 'center' }}>
       {/* Reserve the scaled footprint so surrounding layout stays correct. */}
@@ -63,9 +66,18 @@ export default function LetterheadA4Preview({ html, footerHtml, bgHtml }: { html
           <div style={{ position: 'absolute', left: 0, right: 0, top: PAGE_H - MARGIN_BOTTOM, height: 0, borderTop: '1px dashed #cbd5e1', pointerEvents: 'none' }} />
           <div style={{ position: 'absolute', right: MARGIN_X + 4, top: PAGE_H - MARGIN_BOTTOM + 4, fontSize: 11, color: '#94a3b8', fontFamily: 'system-ui, sans-serif' }}>bottom margin · 15&nbsp;mm</div>
 
-          {/* Body content area: inset by the @page side margins, 10px top padding,
-              first-page top margin 0. This is exactly where the report renders. */}
-          <div className="a4-report" style={{ position: 'absolute', left: MARGIN_X, right: MARGIN_X, top: PAD_TOP, zIndex: 1 }}>
+          {/* When a full-page background is used, show the clear area the report
+              prints inside (dashed box), so the report never collides with the
+              letterhead's own header/footer. */}
+          {bgClean && (
+            <div style={{ position: 'absolute', left: MARGIN_X, right: MARGIN_X, top: bgTop, bottom: bgBottom, border: '1px dashed #2563eb', pointerEvents: 'none', zIndex: 2 }}>
+              <div style={{ position: 'absolute', top: -18, left: 0, fontSize: 11, color: '#2563eb', fontFamily: 'system-ui, sans-serif' }}>report prints here</div>
+            </div>
+          )}
+
+          {/* Body content area: inset by the @page side margins. Starts below the
+              letterhead header when a full-page background reserves space. */}
+          <div className="a4-report" style={{ position: 'absolute', left: MARGIN_X, right: MARGIN_X, top: contentTop, zIndex: 1 }}>
             <div className="header" style={{ textAlign: 'left' }}>
               <div className="custom-letterhead" dangerouslySetInnerHTML={{ __html: clean }} />
             </div>
