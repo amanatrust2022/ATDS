@@ -71,9 +71,6 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
   // Reserve bottom space on every page for the running footer.
   const footerH = cleanFooterHtml ? parseFloat((/width:740px;height:(\d+(?:\.\d+)?)px/.exec(rawFooter) || [])[1] || '120') : 0;
   const pageMarginBottom = cleanFooterHtml ? `${Math.round(footerH + 20)}px` : '15mm';
-  // The full-page background is authored on the 740px canvas; scale it up to the
-  // full A4 width (210mm) so it covers the whole sheet behind the content.
-  const bgScale = 210 / (740 / 96 * 25.4);
 
   const testSections = completedTests.map(t => {
     const isMcs = t.testId.toLowerCase().endsWith('_mcs') || t.testId.toLowerCase().includes('mcs') || t.testId.toLowerCase() === 'sfmcs' || t.testName.toLowerCase().includes('mcs') || t.testName.toLowerCase().includes('culture & sensitivity') || t.testName.toLowerCase().includes('culture and sensitivity');
@@ -468,20 +465,22 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
           position: fixed;
           left: 0; right: 0; bottom: 0;
           text-align: center;
+          z-index: 2;
         }
         .page-footer .custom-letterhead { margin: 0 auto; }
+        /* The background is authored in the same 740px content-width space as the
+           header and footer, so it lines up with them and the report. It is a
+           fixed layer at z-index 0; the report sits above it at z-index 1. */
         .page-bg {
           display: block;
           position: fixed;
-          top: 0; left: 0; right: 0; bottom: 0;
-          overflow: hidden;
-          z-index: -1;
+          top: 0; left: 0; right: 0;
+          z-index: 0;
         }
-        .page-bg .bg-scale {
-          width: 740px;
-          transform-origin: top left;
-          transform: scale(${bgScale});
-        }
+        .page-bg .custom-letterhead { margin: 0 auto; }
+        /* Content wins the stacking, so the background can never cover it —
+           the fix for Chrome painting fixed layers over print content. */
+        .report-body { position: relative; z-index: 1; }
       }
       @media screen {
         body { max-width: 860px; margin: 0 auto; padding: 32px 40px; background: #f0f2f5; }
@@ -537,7 +536,8 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
         th, td { font-size: 10pt !important; padding: 4px 6px !important; }
       }
     </style></head><body>
-    ${cleanBgHtml ? `<div class="page-bg"><div class="bg-scale">${cleanBgHtml}</div></div>` : ''}
+    ${cleanBgHtml ? `<div class="page-bg"><div class="custom-letterhead">${cleanBgHtml}</div></div>` : ''}
+    <div class="report-body">
     <div class="header" style="${org?.letterhead_html ? 'border-bottom: none; text-align: left;' : ''}">
       ${org?.letterhead_html ? `
         <div class="custom-letterhead">${cleanLetterheadHtml}</div>
@@ -578,6 +578,7 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
         }
         <div class="sig-line">${completedTests[0]?.completedBy || 'Authorised Professional'}</div>
       </div>
+    </div>
     </div>
     ${cleanFooterHtml ? `<div class="page-footer"><div class="custom-letterhead">${cleanFooterHtml}</div></div>` : ''}
     </body></html>`;

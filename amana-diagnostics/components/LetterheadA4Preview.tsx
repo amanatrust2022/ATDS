@@ -25,8 +25,6 @@ const vGuide = (left: number): React.CSSProperties => ({
   borderLeft: '1px dashed #cbd5e1', pointerEvents: 'none',
 });
 
-const CANVAS_W = 740; // must match LetterheadDesigner's CANVAS_W
-
 export default function LetterheadA4Preview({ html, footerHtml, bgHtml }: { html: string; footerHtml?: string; bgHtml?: string }) {
   const clean = cleanLetterhead(html);
   const footerClean = footerHtml && footerHtml.trim() ? cleanLetterhead(footerHtml) : '';
@@ -50,11 +48,12 @@ export default function LetterheadA4Preview({ html, footerHtml, bgHtml }: { html
             .a4-report .pi-label { font-weight: bold; margin-right: 8px; }
           `}</style>
 
-          {/* Full-page background/frame — scaled to cover the whole sheet, behind content. */}
+          {/* Full-page background/frame — in the same content-width space as the
+              header and footer (the canvas centres itself via margin:0 auto), so
+              it lines up with everything. Sits behind content at z-index 0. */}
           {bgClean && (
-            <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', zIndex: 0 }}>
-              <div style={{ width: CANVAS_W, transformOrigin: 'top left', transform: `scale(${PAGE_W / CANVAS_W})` }}
-                dangerouslySetInnerHTML={{ __html: bgClean }} />
+            <div className="a4-report" style={{ position: 'absolute', left: MARGIN_X, right: MARGIN_X, top: 0, zIndex: 0 }}>
+              <div className="custom-letterhead" dangerouslySetInnerHTML={{ __html: bgClean }} />
             </div>
           )}
 
