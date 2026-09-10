@@ -161,7 +161,7 @@ function OrganizationSettings() {
 
   const inpStyle: React.CSSProperties = {
     width: '100%', padding: '0.75rem 1rem', border: '1px solid var(--gray-300)',
-    borderRadius: 0, fontSize: '0.9rem', outline: 'none', transition: 'border-color 0.2s',
+    borderRadius: 0, fontSize: '0.9rem',  transition: 'border-color 0.2s',
     background: 'white'
   };
 
@@ -225,7 +225,7 @@ function OrganizationSettings() {
                   style={inpStyle} 
                   value={formData.name} 
                   onChange={e => setFormData({...formData, name: e.target.value})} 
-                  placeholder="e.g. Amana Trust Diagnostics"
+                  placeholder="e.g. Northgate Diagnostic Centre"
                   required
                 />
                 <p style={hintStyle}>This is the main title of your organization used in dashboard headers and invoice generation.</p>
@@ -316,7 +316,7 @@ function OrganizationSettings() {
 
               {/* Collapsible Accordion for standard fallback fields */}
               <details style={{ border: '1px solid var(--gray-200)', padding: '1.25rem', background: 'var(--gray-50)' }}>
-                <summary style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--gray-600)', cursor: 'pointer', outline: 'none', userSelect: 'none' }}>
+                <summary style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--gray-600)', cursor: 'pointer',  userSelect: 'none' }}>
                   Standard Database Fields & Contact Fallbacks
                 </summary>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', marginTop: '1.25rem' }}>

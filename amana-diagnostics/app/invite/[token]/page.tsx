@@ -170,7 +170,7 @@ export default function InviteAcceptPage() {
   const inp: React.CSSProperties = {
     width: '100%', padding: '0.7rem 0.9rem',
     background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)',
-    borderRadius: 8, color: 'white', fontSize: '0.9rem', outline: 'none', transition: 'border-color 0.2s'
+    borderRadius: 8, color: 'white', fontSize: '0.9rem',  transition: 'border-color 0.2s'
   };
   const lbl: React.CSSProperties = {
     display: 'block', fontSize: '0.75rem', fontWeight: 600,

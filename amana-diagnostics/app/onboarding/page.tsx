@@ -144,8 +144,7 @@ export default function OnboardingPage() {
   const inp: React.CSSProperties = {
     width: '100%', padding: '0.7rem 0.9rem',
     background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)',
-    borderRadius: 8, color: 'white', fontSize: '0.88rem', outline: 'none',
-  };
+    borderRadius: 8, color: 'white', fontSize: '0.88rem',  };
   const lbl: React.CSSProperties = {
     display: 'block', fontSize: '0.72rem', fontWeight: 600,
     color: 'rgba(255,255,255,0.45)', marginBottom: '0.35rem',
@@ -158,7 +157,6 @@ export default function OnboardingPage() {
   if (status === 'loading' || status === 'creating') {
     return (
       <div style={{ ...base, flexDirection: 'column', gap: '1rem' }}>
-        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
         <div style={{ animation: 'spin 1s linear infinite', color: '#4472c4' }}>
           <RiLoader4Line size={40} />
         </div>
@@ -191,7 +189,7 @@ export default function OnboardingPage() {
           <form onSubmit={handleManualSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <div>
               <label style={lbl}>Facility / Organisation Name *</label>
-              <input style={inp} value={org.name} onChange={e => setOrg({ ...org, name: e.target.value, slug: slugify(e.target.value) })} placeholder="e.g. Amana Trust Diagnostics" required />
+              <input style={inp} value={org.name} onChange={e => setOrg({ ...org, name: e.target.value, slug: slugify(e.target.value) })} placeholder="e.g. Northgate Diagnostic Centre" required />
             </div>
             <div>
               <label style={lbl}>Letterhead Second Line (Optional)</label>

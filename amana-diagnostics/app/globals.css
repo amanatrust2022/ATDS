@@ -1,4 +1,22 @@
-@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
+/*
+ * DiagnosticOS global stylesheet.
+ *
+ * Phase 0 of the interface overhaul. Two rules used to live here that were
+ * quietly fighting the rest of the app:
+ *
+ *   1. `border-radius: 0 !important` on every element. It beat inline styles,
+ *      so 363 borderRadius declarations written across the app did nothing.
+ *      Radius is now a token; set --radius to 0 to get the old square look
+ *      back in one edit instead of an !important sledgehammer.
+ *
+ *   2. Eleven gray, teal and red variables were referenced by name in
+ *      components but never defined here. --gray-200 alone appeared 141 times,
+ *      so those borders resolved to nothing and simply did not render.
+ *
+ * Fonts load through next/font in app/layout.tsx, not an @import here — an
+ * @import blocks the first paint. --font-display used to read 'Times  New
+ * Roman' with two spaces, which matched no installed face.
+ */
 
 *,
 *::before,
@@ -8,48 +26,78 @@
   padding: 0;
 }
 
-/* Force border-radius to 0 for all elements except circular ones (e.g. spinners, status dots, circular checkboxes) */
-*:not([style*="border-radius: 50%"]):not([style*="border-radius:50%"]):not(input[type="radio"]) {
-  border-radius: 0px !important;
-}
-
 :root {
+  /* ---- Brand / accent ramp ------------------------------------------ */
   --teal-900: #111d3b;
+  --teal-850: #16264d;
   --teal-800: #1c3062;
   --teal-700: #28448a;
   --teal-600: #4472c4;
   --teal-500: #618dde;
   --teal-400: #85a9eb;
+  --teal-300: #a4c0f0;
   --teal-200: #bed1f6;
   --teal-100: #dce5fa;
   --teal-50: #edf1fd;
-  --gold: #c9973a;
-  --gold-light: #f0c97a;
-  --red: #c0392b;
-  --red-light: #fadbd8;
-  --green: #1e7e5a;
-  --green-light: #d5f0e8;
-  --amber: #d4850a;
-  --amber-light: #fef3cd;
+
+  /* ---- Neutrals ------------------------------------------------------
+   * --gray-500 was #7f8599: 3.67:1 on white, below the 4.5:1 AA needs, and
+   * it is the app's secondary text colour in 111 places. #5f6779 is the same
+   * hue at 5.67:1. The 200/400/600/800 steps were used but never defined. */
   --gray-900: #20232b;
+  --gray-800: #2f3441;
   --gray-700: #4c5266;
-  --gray-500: #7f8599;
+  --gray-600: #5a6175;
+  --gray-500: #5f6779;
+  --gray-400: #878da0;
   --gray-300: #c5c8d1;
+  --gray-200: #dfe2ea;
   --gray-100: #eff0f5;
   --gray-50: #f7f8fa;
   --white: #ffffff;
-  --font-display: 'Times  New Roman', serif;
-  --font-body: 'IBM Plex Sans', sans-serif;
-  --font-mono: 'IBM Plex Mono', monospace;
+
+  /* ---- Semantic ------------------------------------------------------ */
+  --gold: #c9973a;
+  --gold-light: #f0c97a;
+  --red: #b4231a;
+  --red-200: #f3c9c5;
+  --red-light: #fadbd8;
+  --red-50: #fcf0ef;
+  --green: #0f6b4f;
+  --green-light: #d5f0e8;
+  --amber: #8a5a00;
+  --amber-700: #7a4f00;
+  --amber-light: #fef3cd;
+  --blue-600: #2c5ea8;
+
+  /* ---- Type ----------------------------------------------------------
+   * --font-display and --font-sans were both dangling: the first through a
+   * typo, the second because it was never declared. next/font fills the
+   * --font-* -face variables in app/layout.tsx. */
+  --font-display: var(--font-face-serif), Georgia, 'Times New Roman', serif;
+  --font-body: var(--font-face-sans), -apple-system, 'Segoe UI', system-ui, sans-serif;
+  --font-sans: var(--font-body);
+  --font-mono: var(--font-face-mono), ui-monospace, Consolas, monospace;
+
+  /* ---- Elevation ----------------------------------------------------- */
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.1);
   --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
+
+  /* ---- Radius --------------------------------------------------------
+   * The product's look is square. That is now a value, not an !important. */
   --radius: 0px;
   --radius-lg: 0px;
+
+  /* ---- Focus ---------------------------------------------------------
+   * 48 rules removed the focus outline; 8 put one back. Keyboard users had
+   * no way to see where they were. This is the one ring, used everywhere. */
+  --focus-ring: 0 0 0 2px var(--white), 0 0 0 4px var(--teal-600);
 }
 
 html {
-  font-size: 18px;
+  font-size: 16px;
+  -webkit-text-size-adjust: 100%;
 }
 
 html,
@@ -63,12 +111,77 @@ body {
   color: var(--gray-900);
   font-size: 16px;
   line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Keyboard focus is visible everywhere, including on elements whose inline
+ * styles set `outline: none`, because a box-shadow ring cannot be cleared by
+ * an outline declaration. Pointer clicks do not trigger :focus-visible, so
+ * this costs the mouse user nothing. */
+:focus-visible {
+  outline: 2px solid var(--teal-600);
+  outline-offset: 2px;
+  border-radius: 1px;
+}
+
+button:focus-visible,
+a:focus-visible,
+[role='button']:focus-visible,
+[role='tab']:focus-visible {
+  outline: 2px solid var(--teal-600);
+  outline-offset: 2px;
+}
+
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--teal-600);
+  outline-offset: -1px;
+  border-color: var(--teal-600) !important;
+}
+
+/* Reach for this on a wrapper when the focused control sits flush against an
+ * edge and an outline would be clipped. */
+.focus-ring:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* Skip link — first thing in the tab order, invisible until focused. */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 10002;
+  background: var(--teal-800);
+  color: var(--white);
+  padding: 0.75rem 1.25rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+.skip-link:focus {
+  left: 0.5rem;
+  top: 0.5rem;
+}
+
+/* Screen-reader-only text that stays in the accessibility tree. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
 }
 
 /* Scrollbar */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
 
 ::-webkit-scrollbar-track {
@@ -77,7 +190,11 @@ body {
 
 ::-webkit-scrollbar-thumb {
   background: var(--gray-300);
-  border-radius: 0px;
+  border-radius: var(--radius);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--gray-400);
 }
 
 /* Print styles */
@@ -104,7 +221,8 @@ body {
   display: none;
 }
 
-/* Animations */
+/* Animations. `spin` lives here rather than being re-declared in six
+ * component files through inline <style> islands. */
 @keyframes fadeIn {
   from {
     opacity: 0;
@@ -141,12 +259,36 @@ body {
   }
 }
 
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .animate-fadeIn {
   animation: fadeIn 0.3s ease forwards;
 }
 
 .animate-pulse {
   animation: pulse 2s infinite;
+}
+
+.animate-spin {
+  animation: spin 0.8s linear infinite;
+}
+
+/* Vestibular disorders, and anyone who has asked their OS to calm things
+ * down. Motion is removed; nothing is hidden. */
+@media (prefers-reduced-motion: reduce) {
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 .custom-letterhead {

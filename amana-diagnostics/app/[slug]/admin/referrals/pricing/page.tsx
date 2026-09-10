@@ -187,7 +187,7 @@ function TestPricingPage() {
           <input
             value={search} onChange={e => setSearch(e.target.value)}
             placeholder="Search tests…"
-            style={{ flex: '1 1 180px', padding: '0.45rem 0.75rem', border: '1px solid var(--gray-300)', borderRadius: 0, fontSize: '0.8rem', fontFamily: 'var(--font-body)', outline: 'none' }}
+            style={{ flex: '1 1 180px', padding: '0.45rem 0.75rem', border: '1px solid var(--gray-300)', borderRadius: 0, fontSize: '0.8rem', fontFamily: 'var(--font-body)'  }}
           />
           <select value={filterDept} onChange={e => setFilterDept(e.target.value as any)} style={selectStyle}>
             <option value="all">All Departments</option>
@@ -254,7 +254,7 @@ function TestPricingPage() {
                                 style={{
                                   flex: 1, padding: '0.4rem 0.6rem', border: '1px solid var(--gray-300)',
                                   borderRadius: 0, fontSize: '0.85rem', fontFamily: 'var(--font-body)',
-                                  outline: 'none', textAlign: 'right', fontWeight: 700,
+                                   textAlign: 'right', fontWeight: 700,
                                   background: (prices[t.id] || 0) !== (saved.prices?.[t.id] || 0) ? 'rgba(68,114,196,0.06)' : 'white',
                                   borderColor: (prices[t.id] || 0) !== (saved.prices?.[t.id] || 0) ? 'var(--teal-400)' : 'var(--gray-300)',
                                   color: 'var(--gray-900)',
@@ -269,7 +269,7 @@ function TestPricingPage() {
                               style={{
                                 width: '100%', padding: '0.4rem 0.6rem', border: '1px solid var(--gray-300)',
                                 borderRadius: 0, fontSize: '0.82rem', fontFamily: 'var(--font-body)',
-                                outline: 'none', background: 'white', color: 'var(--gray-900)',
+                                 background: 'white', color: 'var(--gray-900)',
                                 borderColor: (commTypes[t.id] || 'percentage') !== (saved.commTypes?.[t.id] || 'percentage') ? 'var(--teal-400)' : 'var(--gray-300)',
                               }}
                             >
@@ -294,7 +294,7 @@ function TestPricingPage() {
                                 style={{
                                   flex: 1, padding: '0.4rem 0.6rem', border: '1px solid var(--gray-300)',
                                   borderRadius: 0, fontSize: '0.85rem', fontFamily: 'var(--font-body)',
-                                  outline: 'none', textAlign: 'right', fontWeight: 700,
+                                   textAlign: 'right', fontWeight: 700,
                                   background: commTypes[t.id] === 'none' ? 'var(--gray-100)' : (commValues[t.id] || 0) !== (saved.commValues?.[t.id] || 0) ? 'rgba(68,114,196,0.06)' : 'white',
                                   borderColor: commTypes[t.id] === 'none' ? 'var(--gray-300)' : (commValues[t.id] || 0) !== (saved.commValues?.[t.id] || 0) ? 'var(--teal-400)' : 'var(--gray-300)',
                                   color: commTypes[t.id] === 'none' ? 'var(--gray-400)' : 'var(--gray-900)',
@@ -327,7 +327,7 @@ function TestPricingPage() {
 }
 
 const thStyle: React.CSSProperties = { padding: '0.6rem 1rem', textAlign: 'left', fontWeight: 700, fontSize: '0.7rem', color: 'var(--gray-500)', textTransform: 'uppercase' };
-const selectStyle: React.CSSProperties = { padding: '0.45rem 0.75rem', border: '1px solid var(--gray-300)', borderRadius: 0, fontSize: '0.8rem', fontFamily: 'var(--font-body)', outline: 'none', background: 'white', color: 'var(--gray-700)' };
+const selectStyle: React.CSSProperties = { padding: '0.45rem 0.75rem', border: '1px solid var(--gray-300)', borderRadius: 0, fontSize: '0.8rem', fontFamily: 'var(--font-body)',  background: 'white', color: 'var(--gray-700)' };
 
 /** Only these roles may open this screen — see components/RequireRole.tsx. */
 export default function GuardedTestPricingPage(props: any) {

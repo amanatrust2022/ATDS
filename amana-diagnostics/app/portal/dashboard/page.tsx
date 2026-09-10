@@ -2,6 +2,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import AmanaLogo from '@/components/AmanaLogo';
+import { FALLBACK_ORG_NAME } from '@/lib/branding';
 
 interface PatientRecord {
   id: string;
@@ -66,6 +67,11 @@ export default function PortalDashboard() {
   const [error, setError] = useState('');
   const [email, setEmail] = useState('');
   const [expandedVisit, setExpandedVisit] = useState<string | null>(null);
+  // Whose portal this is. Was hard-coded to one clinic; now it comes back with
+  // the history, so every tenant's patients see their own clinic.
+  const [org, setOrg] = useState<{ name: string; email: string | null; phone: string | null }>(
+    { name: FALLBACK_ORG_NAME, email: null, phone: null },
+  );
 
   const fetchHistory = useCallback(async () => {
     const token = localStorage.getItem('portal_token');
@@ -95,6 +101,7 @@ export default function PortalDashboard() {
 
       setPatients(data.patients || []);
       setTests(data.tests || {});
+      if (data.organization?.name) setOrg(data.organization);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -152,7 +159,7 @@ export default function PortalDashboard() {
           <div style={styles.headerBrand}>
             <AmanaLogo size={32} inverted={true} />
             <div>
-              <span style={styles.headerOrgName}>Amana Trust Diagnostics</span>
+              <span style={styles.headerOrgName}>{org.name}</span>
               <span style={styles.headerPortalLabel}>Patient Portal</span>
             </div>
           </div>
@@ -278,8 +285,10 @@ export default function PortalDashboard() {
       </main>
 
       <footer style={styles.footer}>
-        <p>&copy; {new Date().getFullYear()} Amana Trust Diagnostics. All rights reserved.</p>
-        <p>For queries, contact: <a href="mailto:amanatrust2022@gmail.com" style={styles.footerLink}>amanatrust2022@gmail.com</a></p>
+        <p>&copy; {new Date().getFullYear()} {org.name}. All rights reserved.</p>
+        {org.email && (
+          <p>For queries, contact: <a href={`mailto:${org.email}`} style={styles.footerLink}>{org.email}</a></p>
+        )}
       </footer>
     </div>
   );

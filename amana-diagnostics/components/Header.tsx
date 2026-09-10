@@ -342,7 +342,6 @@ export default function Header({ title, subtitle, icon = <RiMicroscopeLine size=
                 <span>Synced</span>
               </>
             )}
-            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
           </div>
         )}
 
@@ -363,8 +362,7 @@ export default function Header({ title, subtitle, icon = <RiMicroscopeLine size=
               background: 'var(--teal-100)', color: 'var(--teal-700)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontSize: '0.8rem', fontWeight: 700, border: 'none', cursor: 'pointer',
-              outline: 'none',
-              boxShadow: dropdownOpen ? '0 0 0 2px var(--teal-300)' : 'none',
+               boxShadow: dropdownOpen ? '0 0 0 2px var(--teal-300)' : 'none',
               transition: 'box-shadow 0.2s',
             }}
           >

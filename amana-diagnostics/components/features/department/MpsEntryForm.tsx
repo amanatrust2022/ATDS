@@ -17,8 +17,7 @@ const labelStyle: React.CSSProperties = {
 
 const fieldStyle: React.CSSProperties = {
   width: '100%', padding: '0.45rem 0.65rem', border: '1px solid var(--gray-300)',
-  borderRadius: 'var(--radius)', fontSize: '0.8rem', outline: 'none',
-};
+  borderRadius: 'var(--radius)', fontSize: '0.8rem',  };
 
 const rowStyle: React.CSSProperties = {
   display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem',

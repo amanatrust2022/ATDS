@@ -463,7 +463,7 @@ function StaffManagement() {
     radiology: { bg: 'rgba(139, 92, 246, 0.08)', color: '#8b5cf6', label: 'Radiologist', desc: 'Manage radiological imaging, document findings, impressions, and sign off scan results.' },
   };
 
-  const inp: React.CSSProperties = { width: '100%', padding: '0.65rem 0.85rem', border: '1px solid var(--gray-300)', borderRadius: 'var(--radius)', fontSize: '0.85rem', outline: 'none', background: 'white', transition: 'border-color 0.2s' };
+  const inp: React.CSSProperties = { width: '100%', padding: '0.65rem 0.85rem', border: '1px solid var(--gray-300)', borderRadius: 'var(--radius)', fontSize: '0.85rem',  background: 'white', transition: 'border-color 0.2s' };
   const lbl: React.CSSProperties = { display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--gray-700)', marginBottom: '0.35rem', textTransform: 'uppercase' as const, letterSpacing: '0.05em' };
 
   return (
@@ -572,8 +572,7 @@ function StaffManagement() {
               display: 'flex',
               alignItems: 'center',
               gap: '0.45rem',
-              transition: 'all 0.15s',
-              outline: 'none'
+              transition: 'all 0.15s' 
             }}
           >
             <RiTeamLine size={18} /> Team Directory
@@ -592,8 +591,7 @@ function StaffManagement() {
               display: 'flex',
               alignItems: 'center',
               gap: '0.45rem',
-              transition: 'all 0.15s',
-              outline: 'none'
+              transition: 'all 0.15s' 
             }}
           >
             <RiLineChartLine size={18} /> Performance Dashboard
@@ -749,8 +747,7 @@ function StaffManagement() {
                                 padding: '0.3rem 0.75rem', border: '1px solid transparent', borderRadius: 100, fontSize: '0.75rem', fontWeight: 700, 
                                 cursor: s.id === profile?.id ? 'default' : 'pointer',
                                 background: roleColors[s.role]?.bg || 'var(--gray-100)',
-                                color: roleColors[s.role]?.color || 'var(--gray-700)',
-                                outline: 'none'
+                                color: roleColors[s.role]?.color || 'var(--gray-700)' 
                               }}
                             >
                               <option value="reception">Receptionist</option>
@@ -1312,8 +1309,7 @@ function StaffManagement() {
                               border: '1px solid var(--gray-200)',
                               borderRadius: '8px',
                               fontSize: '0.78rem',
-                              outline: 'none',
-                              width: 140,
+                               width: 140,
                               fontWeight: 600
                             }}
                           />
@@ -1327,8 +1323,7 @@ function StaffManagement() {
                               border: '1px solid var(--gray-200)',
                               borderRadius: '8px',
                               fontSize: '0.78rem',
-                              outline: 'none',
-                              background: 'white',
+                               background: 'white',
                               fontWeight: 700,
                               color: 'var(--gray-700)',
                               cursor: 'pointer'

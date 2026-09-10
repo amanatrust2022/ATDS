@@ -32,8 +32,7 @@ function TiterCell({ titer, onSelect }: { titer: string; onSelect: (val: string)
           border: '1px solid var(--gray-300)',
           borderRadius: 'var(--radius)',
           fontSize: '0.8rem',
-          outline: 'none',
-          background: significant ? 'var(--red-light)' : 'white',
+           background: significant ? 'var(--red-light)' : 'white',
           color: significant ? 'var(--red)' : 'var(--gray-900)',
           fontWeight: significant ? 'bold' : 'normal'
         }}

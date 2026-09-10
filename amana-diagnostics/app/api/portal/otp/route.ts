@@ -6,6 +6,8 @@ import {
   generateOtp, createChallenge, consumeChallenge, recentChallengeCount,
   pruneChallenges, MAX_CHALLENGES_PER_WINDOW,
 } from '@/lib/portalOtp';
+import { getOrganizationById } from '@/lib/portalDb';
+import { orgName as resolveOrgName } from '@/lib/branding';
 
 // Request OTP code
 export async function POST(request: Request) {
@@ -50,27 +52,35 @@ export async function POST(request: Request) {
 
     const patientName = `${patient.first_name || ''} ${patient.surname || ''}`.trim() || 'Patient';
 
+    // The verification email used to carry one particular clinic's name to
+    // every tenant's patients. The patient row already knows which clinic they
+    // belong to, so ask.
+    const org = patient.organization_id
+      ? await getOrganizationById(patient.organization_id)
+      : null;
+    const clinicName = resolveOrgName(org);
+
     await sendEmail({
       to: normalizedEmail,
-      subject: 'Your Amana Diagnostics Portal Verification Code',
+      subject: `Your ${clinicName} portal verification code`,
       htmlContent: `
         <div style="font-family: 'Times New Roman', Times, serif; max-width: 520px; margin: 0 auto; color: #000000; line-height: 1.6;">
           <div style="background: #0563c1; padding: 28px 24px; text-align: center; border: 1px solid #0563c1;">
             <h1 style="font-family: 'Times New Roman', Times, serif; color: #ffffff; margin: 0; font-size: 22px; font-weight: bold; letter-spacing: 0.5px;">PATIENT PORTAL</h1>
-            <p style="font-family: 'Times New Roman', Times, serif; color: #ffffff; margin: 6px 0 0; font-size: 14px; text-transform: uppercase; letter-spacing: 1px;">Amana Trust Diagnostics</p>
+            <p style="font-family: 'Times New Roman', Times, serif; color: #ffffff; margin: 6px 0 0; font-size: 14px; text-transform: uppercase; letter-spacing: 1px;">${clinicName}</p>
           </div>
           <div style="padding: 32px 24px; border: 1px solid #0563c1; border-top: none; background: #ffffff;">
             <p style="margin: 0 0 16px; font-size: 16px; color: #000000;">Dear <strong>${patientName}</strong>,</p>
-            <p style="margin: 0 0 24px; font-size: 15px; color: #000000;">Your one-time verification code for the Amana Diagnostics Patient Portal is:</p>
+            <p style="margin: 0 0 24px; font-size: 15px; color: #000000;">Your one-time verification code for the ${clinicName} patient portal is:</p>
             <div style="background: #f0f5ff; border: 2px solid #0563c1; padding: 24px; text-align: center; margin-bottom: 24px;">
               <span style="font-family: 'Courier New', monospace; font-size: 42px; font-weight: bold; color: #0563c1; letter-spacing: 12px;">${otp}</span>
             </div>
             <p style="margin: 0 0 8px; font-size: 14px; color: #555;">This code expires in <strong>10 minutes</strong>.</p>
             <p style="margin: 0 0 20px; font-size: 14px; color: #555;">If you did not request this code, please ignore this email.</p>
-            <p style="margin: 0; font-size: 15px; color: #000000;">Thank you for choosing <strong>Amana Trust Diagnostics</strong>.</p>
+            <p style="margin: 0; font-size: 15px; color: #000000;">Thank you for choosing <strong>${clinicName}</strong>.</p>
           </div>
           <div style="padding: 16px; text-align: center; font-size: 12px; color: #666; border: 1px solid #ddd; border-top: none;">
-            &copy; ${new Date().getFullYear()} Amana Trust Diagnostics. All rights reserved.
+            &copy; ${new Date().getFullYear()} ${clinicName}. All rights reserved.
           </div>
         </div>
       `,

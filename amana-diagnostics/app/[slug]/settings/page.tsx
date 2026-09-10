@@ -110,7 +110,7 @@ function UserSettings() {
 
   const inpStyle: React.CSSProperties = {
     width: '100%', padding: '0.75rem 1rem', border: '1px solid var(--gray-300)',
-    borderRadius: '0.5rem', fontSize: '0.9rem', outline: 'none', transition: 'border-color 0.2s',
+    borderRadius: '0.5rem', fontSize: '0.9rem',  transition: 'border-color 0.2s',
     background: 'white'
   };
 

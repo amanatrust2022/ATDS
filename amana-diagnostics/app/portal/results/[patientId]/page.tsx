@@ -2,6 +2,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import AmanaLogo from '@/components/AmanaLogo';
+import { FALLBACK_ORG_NAME } from '@/lib/branding';
 
 export default function PortalResultsPage() {
   const router = useRouter();
@@ -238,7 +239,7 @@ export default function PortalResultsPage() {
       </div>
 
       <footer style={styles.footer}>
-        <p>&copy; {new Date().getFullYear()} Amana Trust Diagnostics. All rights reserved.</p>
+        <p>&copy; {new Date().getFullYear()} {data?.org?.name || FALLBACK_ORG_NAME}. All rights reserved.</p>
         <p>This report is intended for the patient named above. Please consult a qualified physician for medical advice.</p>
       </footer>
     </div>

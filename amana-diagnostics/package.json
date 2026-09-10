@@ -36,7 +36,6 @@
     "bonjour-service": "^1.2.1",
     "esbuild": "^0.25.4",
     "html2pdf.js": "^0.14.0",
-    "lucide-react": "^1.14.0",
     "mammoth": "^1.12.0",
     "next": "^15.4.5",
     "nodemailer": "^8.0.7",

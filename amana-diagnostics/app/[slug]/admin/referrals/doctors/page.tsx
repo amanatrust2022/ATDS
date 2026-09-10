@@ -114,8 +114,8 @@ function ReferringDoctorsPage() {
 
       <div style={{ padding: '1.5rem 2rem', maxWidth: 1100, margin: '0 auto' }}>
         <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search doctors…" style={{ padding: '0.5rem 0.9rem', border: '1px solid var(--gray-300)', borderRadius: 0, fontSize: '0.82rem', flex: '1 1 200px', fontFamily: 'var(--font-body)', outline: 'none' }} />
-          <select value={facilityFilter} onChange={e => setFacilityFilter(e.target.value)} style={{ padding: '0.5rem 0.9rem', border: '1px solid var(--gray-300)', borderRadius: 0, fontSize: '0.82rem', fontFamily: 'var(--font-body)', outline: 'none', background: 'white', color: 'var(--gray-700)' }}>
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search doctors…" style={{ padding: '0.5rem 0.9rem', border: '1px solid var(--gray-300)', borderRadius: 0, fontSize: '0.82rem', flex: '1 1 200px', fontFamily: 'var(--font-body)'  }} />
+          <select value={facilityFilter} onChange={e => setFacilityFilter(e.target.value)} style={{ padding: '0.5rem 0.9rem', border: '1px solid var(--gray-300)', borderRadius: 0, fontSize: '0.82rem', fontFamily: 'var(--font-body)',  background: 'white', color: 'var(--gray-700)' }}>
             <option value="">All Facilities</option>
             {facilities.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
           </select>
@@ -238,7 +238,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-const inputStyle: React.CSSProperties = { width: '100%', padding: '0.55rem 0.75rem', border: '1px solid var(--gray-300)', borderRadius: 0, fontSize: '0.82rem', fontFamily: 'var(--font-body)', color: 'var(--gray-900)', outline: 'none', background: 'white' };
+const inputStyle: React.CSSProperties = { width: '100%', padding: '0.55rem 0.75rem', border: '1px solid var(--gray-300)', borderRadius: 0, fontSize: '0.82rem', fontFamily: 'var(--font-body)', color: 'var(--gray-900)',  background: 'white' };
 const iconBtnStyle: React.CSSProperties = { background: 'var(--gray-100)', border: '1px solid var(--gray-200)', color: 'var(--gray-600)', cursor: 'pointer', width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 0 };
 const overlayStyle: React.CSSProperties = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem' };
 const modalStyle: React.CSSProperties = { background: 'white', width: '100%', maxWidth: 540, overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.2)', animation: 'fadeIn 0.2s ease' };

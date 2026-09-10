@@ -9,6 +9,7 @@ import { exec } from 'child_process';
 import util from 'util';
 import fs from 'fs';
 import os from 'os';
+import { FALLBACK_ORG_NAME } from '@/lib/branding';
 
 const execPromise = util.promisify(exec);
 
@@ -202,7 +203,7 @@ export async function POST(request: Request) {
         <div style="font-family: 'Times New Roman', Times, serif; max-width: 600px; margin: 0 auto; color: #000000; line-height: 1.6;">
           <div style="background: #0563c1; padding: 28px 24px; border-radius: 0px !important; text-align: center; border: 1px solid #0563c1;">
             <h1 style="font-family: 'Times New Roman', Times, serif; color: #ffffff; margin: 0; font-size: 24px; font-weight: bold; letter-spacing: 0.5px;">DIAGNOSTIC REPORT</h1>
-            <p style="font-family: 'Times New Roman', Times, serif; color: #ffffff; margin: 8px 0 0; font-size: 15px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">${org?.name || 'Amana Trust Diagnostics'}</p>
+            <p style="font-family: 'Times New Roman', Times, serif; color: #ffffff; margin: 8px 0 0; font-size: 15px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">${org?.name || FALLBACK_ORG_NAME}</p>
           </div>
           <div style="padding: 32px 24px; border: 1px solid #0563c1; border-top: none; border-radius: 0px !important; background: #ffffff;">
             <p style="font-family: 'Times New Roman', Times, serif; margin: 0 0 16px; font-size: 16px; color: #000000;">Dear <strong>${patient.name}</strong>,</p>
@@ -217,10 +218,10 @@ export async function POST(request: Request) {
             </div>
             
             <p style="font-family: 'Times New Roman', Times, serif; margin: 0 0 12px; font-size: 15px; color: #000000;">If you have any questions regarding your results, please do not hesitate to contact us.</p>
-            <p style="font-family: 'Times New Roman', Times, serif; margin: 0; font-size: 15px; color: #000000;">Thank you for choosing <strong>${org?.name || 'Amana Trust Diagnostics'}</strong>.</p>
+            <p style="font-family: 'Times New Roman', Times, serif; margin: 0; font-size: 15px; color: #000000;">Thank you for choosing <strong>${org?.name || FALLBACK_ORG_NAME}</strong>.</p>
           </div>
           <div style="padding: 20px; text-align: center; font-size: 12px; color: #333333; font-family: 'Times New Roman', Times, serif;">
-            &copy; ${new Date().getFullYear()} ${org?.name || 'Amana Trust Diagnostics'}. All rights reserved.
+            &copy; ${new Date().getFullYear()} ${org?.name || FALLBACK_ORG_NAME}. All rights reserved.
           </div>
         </div>
       `,

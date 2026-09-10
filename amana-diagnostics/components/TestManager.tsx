@@ -1063,7 +1063,7 @@ export default function TestManager({ organizationId, restrictDepartment, onClos
                               }}
                               style={{
                                 background: 'white', border: 'none', padding: '0.25rem 0.5rem', fontSize: '0.7rem',
-                                color: 'var(--teal-800)', fontWeight: 600, cursor: 'pointer', outline: 'none'
+                                color: 'var(--teal-800)', fontWeight: 600, cursor: 'pointer' 
                               }}
                               title="Replace all current parameters with this preset"
                             >
@@ -1084,7 +1084,7 @@ export default function TestManager({ organizationId, restrictDepartment, onClos
                               style={{
                                 background: 'var(--teal-100)', border: 'none', borderLeft: '1px solid var(--teal-200)',
                                 padding: '0.25rem 0.4rem', fontSize: '0.7rem', color: 'var(--teal-900)',
-                                fontWeight: 700, cursor: 'pointer', outline: 'none'
+                                fontWeight: 700, cursor: 'pointer' 
                               }}
                               title="Append this preset's parameters to your list"
                             >
@@ -1270,8 +1270,7 @@ const searchStyle: React.CSSProperties = {
   border: '1px solid var(--gray-300)',
   borderRadius: 'var(--radius)',
   fontSize: '0.8rem',
-  outline: 'none',
-  fontFamily: 'var(--font-body)',
+   fontFamily: 'var(--font-body)',
   background: 'white'
 };
 
@@ -1390,8 +1389,7 @@ const inputStyle: React.CSSProperties = {
   fontSize: '0.8rem',
   color: 'var(--gray-900)',
   background: 'white',
-  outline: 'none',
-  fontFamily: 'var(--font-body)',
+   fontFamily: 'var(--font-body)',
 };
 
 const iconBtnStyle: React.CSSProperties = {

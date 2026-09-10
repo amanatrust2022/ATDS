@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import AmanaLogo from '@/components/AmanaLogo';
+import { SUPPORT_EMAIL } from '@/lib/branding';
 
 export default function PortalLoginPage() {
   const router = useRouter();
@@ -79,7 +80,7 @@ export default function PortalLoginPage() {
             <AmanaLogo size={36} inverted={true} />
           </div>
           <div>
-            <h1 style={styles.orgName}>Amana Trust Diagnostics</h1>
+            <h1 style={styles.orgName}>Patient Portal</h1>
             <p style={styles.portalLabel}>Patient Portal</p>
           </div>
         </div>
@@ -178,9 +179,7 @@ export default function PortalLoginPage() {
 
       <p style={styles.bottomNote}>
         Need help? Contact us at{' '}
-        <a href="mailto:amanatrust2022@gmail.com" style={styles.link}>
-          amanatrust2022@gmail.com
-        </a>
+        <a href="mailto:{SUPPORT_EMAIL}" style={styles.link}>{SUPPORT_EMAIL}</a>
       </p>
     </div>
   );
@@ -299,8 +298,7 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#ffffff',
     fontSize: '15px',
     fontFamily: '"IBM Plex Sans", sans-serif',
-    outline: 'none',
-    transition: 'border-color 0.2s',
+     transition: 'border-color 0.2s',
     width: '100%',
   },
   otpInput: {

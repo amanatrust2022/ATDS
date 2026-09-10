@@ -15,7 +15,7 @@ import { Patient, BillingAccount } from '@/lib/store';
 const inputStyle = (error?: boolean) => ({
   width: '100%', padding: '0.65rem 1rem', borderRadius: 'var(--radius)',
   border: error ? '1px solid var(--red)' : '1px solid var(--gray-300)',
-  fontSize: '0.82rem', fontFamily: 'var(--font-sans)', outline: 'none'
+  fontSize: '0.82rem', fontFamily: 'var(--font-sans)' 
 });
 
 const closeBtn = { background: 'rgba(255,255,255,0.1)', color: 'white', border: 'none', padding: '0.4rem', borderRadius: 'var(--radius)', cursor: 'pointer', display: 'flex' };

@@ -580,8 +580,7 @@ const searchInput: React.CSSProperties = {
   borderRadius: 0,
   fontSize: '0.85rem',
   color: '#0f172a',
-  outline: 'none',
-  transition: 'border-color 0.15s',
+   transition: 'border-color 0.15s',
 };
 
 const addButton: React.CSSProperties = {
@@ -796,8 +795,7 @@ const inputStyle: React.CSSProperties = {
   borderRadius: 0,
   fontSize: '0.85rem',
   color: '#0f172a',
-  outline: 'none',
-};
+   };
 
 const textareaStyle: React.CSSProperties = {
   padding: '0.65rem 0.85rem',
@@ -805,8 +803,7 @@ const textareaStyle: React.CSSProperties = {
   borderRadius: 0,
   fontSize: '0.85rem',
   color: '#0f172a',
-  outline: 'none',
-  resize: 'vertical',
+   resize: 'vertical',
   lineHeight: '1.5',
 };
 

@@ -1,22 +1,14 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Patient Portal — Amana Trust Diagnostics',
-  description: 'Securely access your diagnostic results and medical history at Amana Trust Diagnostics.',
+  title: 'Patient Portal',
+  description: 'Securely access your diagnostic results and medical history.',
 };
 
 export default function PortalLayout({ children }: { children: React.ReactNode }) {
   return (
     <>
       <style>{`
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(8px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
         * {
           box-sizing: border-box;
           margin: 0;

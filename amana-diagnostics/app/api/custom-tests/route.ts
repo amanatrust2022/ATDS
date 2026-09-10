@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getDb, queueSync } from '@/lib/localDb';
 import { sendEmail } from '@/lib/brevo';
+import { FALLBACK_ORG_NAME } from '@/lib/branding';
 
 export async function GET(request: Request) {
   try {
@@ -166,7 +167,7 @@ export async function POST(request: Request) {
 
       // 1. Get organization name and email
       const org = db.prepare('SELECT * FROM organizations WHERE id = ?').get(organizationId) as any;
-      const orgName = org?.name || 'Amana Trust Diagnostics';
+      const orgName = org?.name || FALLBACK_ORG_NAME;
       
       // 2. Fetch admin emails from local_auth/profiles
       let recipients: string[] = [];
@@ -189,9 +190,13 @@ export async function POST(request: Request) {
       // Deduplicate
       recipients = Array.from(new Set(recipients));
 
-      // If no admin emails found, use fallback
+      // If this clinic has no admin address on file, send nothing. The old
+      // fallback here was a specific gmail account, so a tenant with no admin
+      // email configured had its catalogue changes, staff names and workspace
+      // link mailed to an unrelated third party.
       if (recipients.length === 0) {
-        recipients.push('amanatrust2022@gmail.com');
+        console.warn('[custom-tests] No admin recipient for organization', org?.id, '— notification not sent.');
+        return NextResponse.json({ success: true, notified: false });
       }
 
       const staffName = addedBy?.name || 'Staff member';

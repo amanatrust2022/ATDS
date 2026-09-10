@@ -6,8 +6,7 @@ const inputStyle = (hasError: boolean): React.CSSProperties => ({
   width: '100%', padding: '0.55rem 0.75rem',
   border: `1px solid ${hasError ? 'var(--red)' : 'var(--gray-300)'}`,
   borderRadius: 'var(--radius)', fontSize: '0.82rem',
-  color: 'var(--gray-900)', background: 'white', outline: 'none',
-  fontFamily: 'var(--font-body)',
+  color: 'var(--gray-900)', background: 'white',  fontFamily: 'var(--font-body)',
 });
 
 export const QueueHeader: React.FC<{ isResultsTab?: boolean }> = ({ isResultsTab }) => {

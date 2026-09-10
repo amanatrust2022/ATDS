@@ -26,6 +26,7 @@ import {
 import { getResultTemplate, getSlipTemplate, getInvoiceTemplate, getLedgerStatementTemplate, printHtml } from '@/lib/templates';
 import { useAuth } from '@/components/AuthProvider';
 import { RiLogoutCircleLine } from '@remixicon/react';
+import { FALLBACK_ORG_NAME } from '@/lib/branding';
 
 type Tab = 'register' | 'queue' | 'results' | 'wallet';
 
@@ -577,7 +578,7 @@ export default function ReceptionPage() {
     <div style={{ minHeight: '100vh', background: 'linear-gradient(180deg, #f5fbfa 0%, #f7f8fb 38%, #eef4f4 100%)', display: 'flex', flexDirection: 'column' }}>
       <Header
         title="Reception"
-        subtitle={organization?.name || 'Amana Trust Diagnostics'}
+        subtitle={organization?.name || FALLBACK_ORG_NAME}
         icon={<RiHospitalLine size={24} color="white" />}
         accentColor="var(--teal-600)"
         notifications={newResultsCount}
@@ -2240,8 +2241,7 @@ const inputStyle = (hasError: boolean): React.CSSProperties => ({
   width: '100%', padding: '0.55rem 0.75rem',
   border: `1px solid ${hasError ? 'var(--red)' : 'var(--gray-300)'}`,
   borderRadius: 'var(--radius)', fontSize: '0.82rem',
-  color: 'var(--gray-900)', background: 'white', outline: 'none',
-  fontFamily: 'var(--font-body)',
+  color: 'var(--gray-900)', background: 'white',  fontFamily: 'var(--font-body)',
 });
 
 const btnStyle = (variant: 'primary' | 'outline'): React.CSSProperties => ({

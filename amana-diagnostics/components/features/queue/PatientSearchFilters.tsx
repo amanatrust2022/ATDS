@@ -5,7 +5,7 @@ import { useQueueStore } from '@/lib/store/useQueueStore';
 const inputStyle = {
   padding: '0.65rem 1rem', borderRadius: 'var(--radius)',
   border: '1px solid var(--gray-300)',
-  fontSize: '0.82rem', fontFamily: 'var(--font-sans)', outline: 'none'
+  fontSize: '0.82rem', fontFamily: 'var(--font-sans)' 
 };
 
 const filterBtnStyle = (active: boolean) => ({

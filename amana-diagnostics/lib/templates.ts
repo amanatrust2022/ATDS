@@ -12,6 +12,7 @@ import { Patient, PatientTest, getTestById } from './store';
 import { patientDisplayName } from './store/patientName';
 import { deserializeRadiologyResults, convertTextToFormattedHtml } from './radiology-templates';
 import { buildDocCss, splitLetterhead } from './letterheadStyles';
+import { SUPPORT_EMAIL, FALLBACK_ORG_NAME } from '@/lib/branding';
 
 /** Minimal org shape needed for rendering letterheads */
 export type OrgForTemplate = {
@@ -52,11 +53,11 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
   const investigationList = completedTests.map(t => t.testName).join(', ');
 
   // Letterhead values — fall back gracefully if org not provided
-  const orgName = org?.name?.toUpperCase() || 'AMANA TRUST DIAGNOSTICS';
+  const orgName = org?.name?.toUpperCase() || FALLBACK_ORG_NAME.toUpperCase();
   const orgLine2 = org?.letterhead_line2?.toUpperCase() || 'AND CLINICAL SERVICES LIMITED';
   const orgAddress = org?.address || 'No 15, C Tudun Wada Bus Stop, Nasarawa LGA, Kano State.';
   const orgPhone = org?.phone || '+2348033390574, +2347032663898';
-  const orgEmail = org?.email || 'amanatrust2022@gmail.com';
+  const orgEmail = org?.email || SUPPORT_EMAIL;
 
   // Sanitised, not merely tidied: this HTML is authored in the app and then
   // injected into reports, into the page the patient is shown, and into a
@@ -622,7 +623,7 @@ export const getSlipTemplate = (patient: Patient, org?: OrgForTemplate) => {
     </tr>`).join('');
 
   // Letterhead values
-  const orgName = org?.name || 'AMANA TRUST DIAGNOSTICS';
+  const orgName = org?.name || FALLBACK_ORG_NAME.toUpperCase();
   const orgLine2 = org?.letterhead_line2 || 'AND CLINICAL SERVICES LTD';
   const orgAddress = org?.address || 'No 15, C Tudun Wada Bus Stop,\nNasarawa LGA, Kano State.';
   const orgPhone = org?.phone || 'Tel: 08033390574, 07032663898';
@@ -679,7 +680,7 @@ export const getSlipTemplate = (patient: Patient, org?: OrgForTemplate) => {
  */
 export const getInvoiceTemplate = (patient: Patient, org?: OrgForTemplate) => {
   const regDate = new Date(patient.registeredAt).toLocaleDateString('en-NG');
-  const orgName = org?.name || 'AMANA TRUST DIAGNOSTICS';
+  const orgName = org?.name || FALLBACK_ORG_NAME.toUpperCase();
   const orgLine2 = org?.letterhead_line2 || 'AND CLINICAL SERVICES LTD';
   const orgAddress = org?.address || 'No 15, C Tudun Wada Bus Stop,\nNasarawa LGA, Kano State.';
   const orgPhone = org?.phone || 'Tel: 08033390574, 07032663898';
@@ -777,11 +778,11 @@ export const getLedgerStatementTemplate = (
   members: any[],
   org?: OrgForTemplate
 ) => {
-  const orgName = org?.name || 'AMANA TRUST DIAGNOSTICS';
+  const orgName = org?.name || FALLBACK_ORG_NAME.toUpperCase();
   const orgLine2 = org?.letterhead_line2 || 'AND CLINICAL SERVICES LTD';
   const orgAddress = org?.address || 'No 15, C Tudun Wada Bus Stop,\nNasarawa LGA, Kano State.';
   const orgPhone = org?.phone || 'Tel: 08033390574, 07032663898';
-  const orgEmail = org?.email || 'amanatrust2022@gmail.com';
+  const orgEmail = org?.email || SUPPORT_EMAIL;
 
   const memberNames = members.map(m => `${m.firstName || m.first_name || ''} ${m.surname || ''}`).join(', ');
   
@@ -871,7 +872,7 @@ export const getLedgerStatementTemplate = (
     
     <div class="footer">
       This is a system-generated statement of account.<br>
-      Thank you for choosing Amana Trust Diagnostics.<br>
+      Thank you for choosing ${orgName}.<br>
       &copy; ${new Date().getFullYear()} ${orgName}. All rights reserved.
     </div>
     </body></html>

@@ -3,6 +3,7 @@ import { getDb, queueSync } from '@/lib/localDb';
 import { sendEmail } from '@/lib/brevo';
 import { getNextNumericID } from '@/lib/idGenerator';
 import { partialTestUpdate } from '@/lib/repositories/testUpdate';
+import { FALLBACK_ORG_NAME } from '@/lib/branding';
 
 /**
  * Decodes a stored result blob, returning an empty result rather than throwing.
@@ -521,7 +522,7 @@ export async function POST(request: Request) {
       if (patient.email && patient.email.trim()) {
         try {
           const org = db.prepare('SELECT * FROM organizations WHERE id = ?').get(organizationId) as any;
-          const orgName = org?.name || 'Amana Trust Diagnostics';
+          const orgName = org?.name || FALLBACK_ORG_NAME;
           const patientName = `${patient.firstName} ${patient.surname}`;
           const host = request.headers.get('host') || 'localhost:3000';
           const protocol = host.startsWith('localhost') || host.startsWith('127.0.0.1') ? 'http' : 'https';
@@ -597,7 +598,7 @@ export async function POST(request: Request) {
 
               if (counts && counts.total === counts.completed) {
                 const org = db.prepare('SELECT * FROM organizations WHERE id = ?').get(patient.organization_id) as any;
-                const orgName = org?.name || 'Amana Trust Diagnostics';
+                const orgName = org?.name || FALLBACK_ORG_NAME;
                 const patientName = `${patient.first_name || ''} ${patient.surname || ''}`.trim();
                 const host = request.headers.get('host') || 'localhost:3000';
                 const protocol = host.startsWith('localhost') || host.startsWith('127.0.0.1') ? 'http' : 'https';

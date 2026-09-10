@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { verifyToken } from '@/lib/portalAuth';
-import { getPatientHistoryByEmail } from '@/lib/portalDb';
+import { getPatientHistoryByEmail, getOrganizationById } from '@/lib/portalDb';
+import { orgName as resolveOrgName } from '@/lib/branding';
 
 export async function GET(request: Request) {
   try {
@@ -21,10 +22,21 @@ export async function GET(request: Request) {
     // Fetch patients and tests using the unified local/cloud database helper
     const { patients, tests } = await getPatientHistoryByEmail(email);
 
-    return NextResponse.json({ 
+    // The portal pages had one clinic's name written into them. They can only
+    // stop doing that if the response says whose portal this is.
+    const orgId = patients[0]?.organization_id;
+    const org = orgId ? await getOrganizationById(orgId) : null;
+
+    return NextResponse.json({
       patients,
       tests,
-      email
+      email,
+      organization: {
+        name: resolveOrgName(org),
+        email: org?.email ?? null,
+        phone: org?.phone ?? null,
+        address: org?.address ?? null,
+      },
     });
   } catch (error: any) {
     console.error('Portal history error:', error);

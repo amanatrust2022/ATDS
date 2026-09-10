@@ -210,8 +210,7 @@ export default function SignupPage() {
   const inp: React.CSSProperties = {
     width: '100%', padding: '0.7rem 0.9rem',
     background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)',
-    borderRadius: 8, color: 'white', fontSize: '0.9rem', outline: 'none',
-  };
+    borderRadius: 8, color: 'white', fontSize: '0.9rem',  };
   const lbl: React.CSSProperties = {
     display: 'block', fontSize: '0.75rem', fontWeight: 600,
     color: 'rgba(255,255,255,0.5)', marginBottom: '0.4rem',
@@ -271,7 +270,7 @@ export default function SignupPage() {
           <form onSubmit={handleOrgNext} style={{ display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
             <div>
               <label style={lbl}>Facility / Organisation Name *</label>
-              <input style={inp} value={org.name} onChange={e => setOrg({ ...org, name: e.target.value, slug: slugify(e.target.value) })} placeholder="e.g. Amana Trust Diagnostics" required />
+              <input style={inp} value={org.name} onChange={e => setOrg({ ...org, name: e.target.value, slug: slugify(e.target.value) })} placeholder="e.g. Northgate Diagnostic Centre" required />
             </div>
             <div>
               <label style={lbl}>Letterhead Second Line (Optional)</label>

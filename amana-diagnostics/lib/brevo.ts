@@ -1,3 +1,14 @@
+/**
+ * The transactional sender identity. This is the SaaS operator's verified
+ * Brevo address, not any one clinic's — a clinic's own name goes in the body
+ * of each message. It used to be a literal, which meant every tenant's mail
+ * left under one particular clinic's name.
+ */
+const MAIL_SENDER = {
+  name: process.env['MAIL_FROM_NAME'] || 'DiagnosticOS',
+  email: process.env['MAIL_FROM_ADDRESS'] || 'no-reply@diagnosticos.app',
+};
+
 interface EmailOptions {
   to: string;
   subject: string;
@@ -18,7 +29,7 @@ export async function sendEmailWithAttachment({ to, subject, htmlContent, attach
   if (!apiKey) throw new Error('BREVO_API_KEY is not set');
 
   const body: Record<string, any> = {
-    sender: { name: 'Amana Trust Diagnostics', email: 'amanatrust2022@gmail.com' },
+    sender: MAIL_SENDER,
     to: [{ email: to }],
     subject,
     htmlContent,

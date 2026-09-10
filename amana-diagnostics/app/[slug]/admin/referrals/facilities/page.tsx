@@ -109,7 +109,7 @@ function ReferringFacilitiesPage() {
           <input
             value={search} onChange={e => setSearch(e.target.value)}
             placeholder="Search facilities…"
-            style={{ padding: '0.55rem 0.9rem', border: '1px solid var(--gray-300)', borderRadius: 0, fontSize: '0.82rem', width: '100%', maxWidth: 320, fontFamily: 'var(--font-body)', outline: 'none' }}
+            style={{ padding: '0.55rem 0.9rem', border: '1px solid var(--gray-300)', borderRadius: 0, fontSize: '0.82rem', width: '100%', maxWidth: 320, fontFamily: 'var(--font-body)'  }}
           />
         </div>
 
@@ -232,7 +232,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-const inputStyle: React.CSSProperties = { width: '100%', padding: '0.55rem 0.75rem', border: '1px solid var(--gray-300)', borderRadius: 0, fontSize: '0.82rem', fontFamily: 'var(--font-body)', color: 'var(--gray-900)', outline: 'none', background: 'white' };
+const inputStyle: React.CSSProperties = { width: '100%', padding: '0.55rem 0.75rem', border: '1px solid var(--gray-300)', borderRadius: 0, fontSize: '0.82rem', fontFamily: 'var(--font-body)', color: 'var(--gray-900)',  background: 'white' };
 const iconBtnStyle: React.CSSProperties = { background: 'var(--gray-100)', border: '1px solid var(--gray-200)', color: 'var(--gray-600)', cursor: 'pointer', width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 0 };
 const overlayStyle: React.CSSProperties = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem' };
 const modalStyle: React.CSSProperties = { background: 'white', width: '100%', maxWidth: 540, overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.2)', animation: 'fadeIn 0.2s ease' };

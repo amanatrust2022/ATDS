@@ -604,7 +604,7 @@ function CommissionsPage() {
                   value={payNotes}
                   onChange={e => setPayNotes(e.target.value)}
                   placeholder="e.g. Bank transfer ref, cash voucher#"
-                  style={{ width: '100%', padding: '0.5rem', border: '1px solid var(--gray-300)', fontSize: '0.82rem', outline: 'none' }}
+                  style={{ width: '100%', padding: '0.5rem', border: '1px solid var(--gray-300)', fontSize: '0.82rem'  }}
                 />
               </div>
               <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
@@ -621,8 +621,8 @@ function CommissionsPage() {
   );
 }
 
-const inputStyle: React.CSSProperties = { flex: '1 1 200px', padding: '0.45rem 0.75rem', border: '1px solid var(--gray-300)', borderRadius: 0, fontSize: '0.8rem', fontFamily: 'var(--font-body)', outline: 'none' };
-const dateInputStyle: React.CSSProperties = { padding: '0.4rem 0.6rem', border: '1px solid var(--gray-300)', borderRadius: 0, fontSize: '0.78rem', fontFamily: 'var(--font-body)', outline: 'none', background: 'white', color: 'var(--gray-700)' };
+const inputStyle: React.CSSProperties = { flex: '1 1 200px', padding: '0.45rem 0.75rem', border: '1px solid var(--gray-300)', borderRadius: 0, fontSize: '0.8rem', fontFamily: 'var(--font-body)'  };
+const dateInputStyle: React.CSSProperties = { padding: '0.4rem 0.6rem', border: '1px solid var(--gray-300)', borderRadius: 0, fontSize: '0.78rem', fontFamily: 'var(--font-body)',  background: 'white', color: 'var(--gray-700)' };
 
 // Modals styling
 const modalOverlayStyle: React.CSSProperties = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem' };

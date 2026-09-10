@@ -115,7 +115,7 @@ function PatientDatabasePage() {
             <input
               value={search} onChange={e => setSearch(e.target.value)}
               placeholder="Search name, slip number, phone…"
-              style={{ width: '100%', paddingLeft: 30, paddingRight: '0.75rem', paddingTop: '0.5rem', paddingBottom: '0.5rem', border: '1px solid var(--gray-300)', borderRadius: 0, fontSize: '0.82rem', fontFamily: 'var(--font-body)', color: 'var(--gray-900)', outline: 'none' }}
+              style={{ width: '100%', paddingLeft: 30, paddingRight: '0.75rem', paddingTop: '0.5rem', paddingBottom: '0.5rem', border: '1px solid var(--gray-300)', borderRadius: 0, fontSize: '0.82rem', fontFamily: 'var(--font-body)', color: 'var(--gray-900)'  }}
             />
           </div>
           <div style={{ display: 'flex', gap: '0.4rem' }}>
@@ -409,7 +409,7 @@ const labelStyle: React.CSSProperties = {
   display: 'block', fontSize: '0.72rem', fontWeight: 600, color: 'var(--gray-700)', marginBottom: '0.2rem'
 };
 const inputStyle: React.CSSProperties = {
-  width: '100%', padding: '0.45rem 0.6rem', border: '1px solid var(--gray-300)', fontSize: '0.8rem', outline: 'none', color: 'var(--gray-900)'
+  width: '100%', padding: '0.45rem 0.6rem', border: '1px solid var(--gray-300)', fontSize: '0.8rem',  color: 'var(--gray-900)'
 };
 const btnPrimary: React.CSSProperties = {
   flex: 1, padding: '0.55rem', background: 'var(--teal-700)', color: 'white', border: 'none', fontWeight: 600, cursor: 'pointer', textAlign: 'center', fontSize: '0.8rem'
@@ -430,7 +430,7 @@ const closeBtn: React.CSSProperties = {
 const dateStyle: React.CSSProperties = {
   padding: '0.45rem 0.6rem', border: '1px solid var(--gray-300)', borderRadius: 0,
   fontSize: '0.78rem', fontFamily: 'var(--font-body)', color: 'var(--gray-700)',
-  outline: 'none', background: 'white',
+   background: 'white',
 };
 
 /** Only these roles may open this screen — see components/RequireRole.tsx. */

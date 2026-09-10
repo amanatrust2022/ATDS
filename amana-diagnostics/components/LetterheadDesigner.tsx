@@ -792,7 +792,7 @@ function ElementView({ e, selected, editing, onMouseDown, onDoubleClick, onResiz
       <div
         ref={editRef} contentEditable={editing} suppressContentEditableWarning
         onInput={(ev) => { const el = ev.target as HTMLElement; onTextInput(el.innerHTML, el.scrollHeight); }}
-        style={{ width: '100%', height: '100%', outline: 'none', cursor: editing ? 'text' : 'move' }}
+        style={{ width: '100%', height: '100%',  cursor: editing ? 'text' : 'move' }}
       />
     );
   } else if (e.type === 'image') {

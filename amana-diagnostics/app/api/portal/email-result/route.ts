@@ -8,6 +8,7 @@ import util from 'util';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { FALLBACK_ORG_NAME } from '@/lib/branding';
 
 const execPromise = util.promisify(exec);
 
@@ -131,7 +132,7 @@ export async function POST(request: Request) {
     const pdfBase64 = await htmlToPdfBase64(htmlContent);
 
     const fileName = `DiagnosticReport-${patient.slip_number}-${storePatient.name.replace(/\s+/g, '_')}.pdf`;
-    const orgName = org?.name || 'Amana Trust Diagnostics';
+    const orgName = org?.name || FALLBACK_ORG_NAME;
 
     await sendEmailWithAttachment({
       to: session.email,

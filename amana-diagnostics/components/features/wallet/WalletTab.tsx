@@ -14,7 +14,7 @@ import LedgerModal from './LedgerModal';
 const inputStyle = (error?: boolean) => ({
   width: '100%', padding: '0.65rem 1rem', borderRadius: 'var(--radius)',
   border: error ? '1px solid var(--red)' : '1px solid var(--gray-300)',
-  fontSize: '0.82rem', fontFamily: 'var(--font-sans)', outline: 'none'
+  fontSize: '0.82rem', fontFamily: 'var(--font-sans)' 
 });
 
 interface WalletTabProps {

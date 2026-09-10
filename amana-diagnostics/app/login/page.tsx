@@ -205,7 +205,7 @@ export default function LoginPage() {
     setLoading(false);
   };
 
-  const inp: React.CSSProperties = { width: '100%', padding: '0.75rem 0.9rem 0.75rem 2.8rem', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 8, color: 'white', fontSize: '0.9rem', outline: 'none' };
+  const inp: React.CSSProperties = { width: '100%', padding: '0.75rem 0.9rem 0.75rem 2.8rem', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 8, color: 'white', fontSize: '0.9rem'  };
 
   return (
     <div style={{ minHeight: '100vh', background: '#0a0f1e', display: 'flex', fontFamily: 'var(--font-body)' }}>
