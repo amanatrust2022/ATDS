@@ -1,0 +1,148 @@
+/* The app had four hand-built tab strips: a <button> with a borderBottom.
+ * No role="tablist", no aria-selected, no arrow-key movement between tabs,
+ * and no relationship between a tab and the panel it controls. */
+
+.list {
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-1);
+  border-bottom: 1px solid var(--border-default);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.list::-webkit-scrollbar {
+  display: none;
+}
+
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+
+  padding: var(--space-3) var(--space-4);
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+
+  font-family: var(--font-body);
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium);
+  color: var(--text-secondary);
+  white-space: nowrap;
+
+  /* The indicator is a border on the element itself, so the tab does not
+   * shift by 2px when it becomes selected. */
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+
+  transition:
+    color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
+}
+
+.trigger:hover:not([data-disabled]) {
+  color: var(--text-primary);
+  border-bottom-color: var(--border-strong);
+}
+
+.trigger:focus-visible {
+  outline: var(--focus-width) solid var(--focus-color);
+  outline-offset: -2px;
+}
+
+/* Selected is weight and an underline as well as colour — the previous
+ * version relied on colour alone. */
+.trigger[data-state='active'] {
+  color: var(--accent-text);
+  font-weight: var(--weight-semibold);
+  border-bottom-color: var(--accent-solid);
+}
+
+.trigger[data-disabled] {
+  color: var(--text-disabled);
+  cursor: not-allowed;
+}
+
+/* A count beside the label — how many are waiting in this queue. */
+.count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 var(--space-1);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  background: var(--surface-sunken);
+  border-radius: var(--radius-full);
+}
+
+.trigger[data-state='active'] .count {
+  color: var(--accent-subtle-text);
+  background: var(--accent-subtle);
+}
+
+/* Something needs attention in this tab. Colour plus a dot, never colour
+ * on its own. */
+.countAlert {
+  color: var(--critical-solid-text);
+  background: var(--critical-solid);
+}
+.trigger[data-state='active'] .countAlert {
+  color: var(--critical-solid-text);
+  background: var(--critical-solid);
+}
+
+.panel {
+  padding-top: var(--space-5);
+  outline: none;
+}
+.panel:focus-visible {
+  outline: var(--focus-width) solid var(--focus-color);
+  outline-offset: var(--focus-offset);
+}
+
+/* --- Segmented: the same choice, rendered as a compact control. --------- */
+
+.segmented {
+  display: inline-flex;
+  padding: 2px;
+  gap: 2px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.segment {
+  padding: 0 var(--space-3);
+  height: calc(var(--control-height-md) - 6px);
+  border: 0;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  transition: background-color var(--duration-fast) var(--ease-out);
+}
+
+.segment:hover:not([data-state='active']) {
+  color: var(--text-primary);
+}
+
+.segment[data-state='active'] {
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  font-weight: var(--weight-semibold);
+  box-shadow: var(--shadow-sm);
+}
+
+.segment:focus-visible {
+  outline: var(--focus-width) solid var(--focus-color);
+  outline-offset: 1px;
+}

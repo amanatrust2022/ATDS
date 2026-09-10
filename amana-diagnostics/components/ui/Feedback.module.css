@@ -1,0 +1,228 @@
+/* Loading, empty and error states. The app had none of the first, 59 loose
+ * variants of the second, and no boundary at all for the third. */
+
+/* --- Alert ------------------------------------------------------------- */
+
+.alert {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid;
+  border-left-width: 3px;
+  border-radius: var(--radius-md);
+  font-size: var(--text-md);
+  line-height: var(--leading-snug);
+}
+
+.alertInfo {
+  background: var(--info-subtle);
+  border-color: var(--info-border);
+  border-left-color: var(--info-solid);
+  color: var(--info-text);
+}
+.alertSuccess {
+  background: var(--success-subtle);
+  border-color: var(--success-border);
+  border-left-color: var(--success-solid);
+  color: var(--success-text);
+}
+.alertWarning {
+  background: var(--warning-subtle);
+  border-color: var(--warning-border);
+  border-left-color: var(--warning-solid);
+  color: var(--warning-text);
+}
+.alertCritical {
+  background: var(--critical-subtle);
+  border-color: var(--critical-border);
+  border-left-color: var(--critical-solid);
+  color: var(--critical-text);
+}
+
+/* The icon is a second channel beside the colour, not decoration. */
+.alertMark {
+  flex-shrink: 0;
+  font-weight: var(--weight-bold);
+  font-size: var(--text-base);
+  line-height: 1.35;
+}
+
+.alertBody {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.alertTitle {
+  font-weight: var(--weight-semibold);
+}
+
+.alertText {
+  color: inherit;
+  opacity: 0.92;
+}
+
+.alertActions {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+/* --- Skeleton -----------------------------------------------------------
+ * Shaped like the content that is coming, so the page does not jump when it
+ * arrives. A centred spinner tells the user nothing about what to expect. */
+
+.skeleton {
+  display: block;
+  background: linear-gradient(
+    90deg,
+    var(--surface-sunken) 25%,
+    var(--surface-hover) 37%,
+    var(--surface-sunken) 63%
+  );
+  background-size: 400% 100%;
+  border-radius: var(--radius-sm);
+  animation: shimmer 1.4s ease infinite;
+}
+
+@keyframes shimmer {
+  0%   { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+    background: var(--surface-sunken);
+  }
+}
+
+.skeletonText {
+  height: 0.75em;
+  margin: 0.25em 0;
+}
+
+.skeletonStack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.skeletonRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--row-padding-y) var(--row-padding-x);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+/* --- Empty state ------------------------------------------------------- */
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-12) var(--space-6);
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.emptyCompact {
+  padding: var(--space-6) var(--space-4);
+}
+
+.emptyIcon {
+  color: var(--text-disabled);
+  margin-bottom: var(--space-1);
+}
+
+.emptyTitle {
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+}
+
+.emptyText {
+  font-size: var(--text-md);
+  color: var(--text-muted);
+  max-width: 46ch;
+  line-height: var(--leading-normal);
+}
+
+.emptyAction {
+  margin-top: var(--space-3);
+}
+
+/* --- Spinner ------------------------------------------------------------ */
+
+.spinner {
+  display: inline-block;
+  border: 2px solid var(--border-default);
+  border-top-color: var(--accent-solid);
+  border-radius: var(--radius-full);
+  animation: spinnerTurn 0.7s linear infinite;
+}
+
+@keyframes spinnerTurn {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner { animation-duration: 1.8s; }
+}
+
+.centred {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  padding: var(--space-12);
+  color: var(--text-muted);
+  font-size: var(--text-md);
+}
+
+/* --- Error boundary fallback ------------------------------------------- */
+
+.crash {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-6);
+  background: var(--surface-raised);
+  border: 1px solid var(--critical-border);
+  border-left: 3px solid var(--critical-solid);
+  border-radius: var(--radius-md);
+}
+
+.crashTitle {
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+}
+
+.crashText {
+  font-size: var(--text-md);
+  color: var(--text-secondary);
+  max-width: 60ch;
+  line-height: var(--leading-normal);
+}
+
+.crashDetail {
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-subtle);
+  padding: var(--space-2) var(--space-3);
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

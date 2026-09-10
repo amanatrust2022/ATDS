@@ -57,6 +57,7 @@ export const viewport: Viewport = {
 import { AuthProvider } from '@/components/AuthProvider'
 import RootWrapper from '@/components/RootWrapper'
 import { NoticeProvider } from '@/components/Notices'
+import { AppearanceProvider, appearanceBootScript } from '@/components/ui'
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   const supabaseUrl = process.env['NEXT_PUBLIC_SUPABASE_URL'] || '';
@@ -69,6 +70,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       className={`${plexSans.variable} ${plexMono.variable} ${plexSerif.variable}`}
     >
       <body suppressHydrationWarning>
+        {/* Sets the theme on <html> before the first paint. In an effect it
+            would be too late and the page would flash the wrong theme. */}
+        <script dangerouslySetInnerHTML={{ __html: appearanceBootScript }} />
         <script
           dangerouslySetInnerHTML={{
             __html: `
@@ -77,13 +81,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             `,
           }}
         />
-        <AuthProvider>
-          <NoticeProvider>
-            <RootWrapper>
-              {children}
-            </RootWrapper>
-          </NoticeProvider>
-        </AuthProvider>
+        <AppearanceProvider>
+          <AuthProvider>
+            <NoticeProvider>
+              <RootWrapper>
+                {children}
+              </RootWrapper>
+            </NoticeProvider>
+          </AuthProvider>
+        </AppearanceProvider>
       </body>
     </html>
   )

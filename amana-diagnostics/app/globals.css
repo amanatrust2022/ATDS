@@ -1,3 +1,5 @@
+@import url('../styles/tokens.css');
+
 /*
  * DiagnosticOS global stylesheet.
  *
@@ -26,74 +28,7 @@
   padding: 0;
 }
 
-:root {
-  /* ---- Brand / accent ramp ------------------------------------------ */
-  --teal-900: #111d3b;
-  --teal-850: #16264d;
-  --teal-800: #1c3062;
-  --teal-700: #28448a;
-  --teal-600: #4472c4;
-  --teal-500: #618dde;
-  --teal-400: #85a9eb;
-  --teal-300: #a4c0f0;
-  --teal-200: #bed1f6;
-  --teal-100: #dce5fa;
-  --teal-50: #edf1fd;
 
-  /* ---- Neutrals ------------------------------------------------------
-   * --gray-500 was #7f8599: 3.67:1 on white, below the 4.5:1 AA needs, and
-   * it is the app's secondary text colour in 111 places. #5f6779 is the same
-   * hue at 5.67:1. The 200/400/600/800 steps were used but never defined. */
-  --gray-900: #20232b;
-  --gray-800: #2f3441;
-  --gray-700: #4c5266;
-  --gray-600: #5a6175;
-  --gray-500: #5f6779;
-  --gray-400: #878da0;
-  --gray-300: #c5c8d1;
-  --gray-200: #dfe2ea;
-  --gray-100: #eff0f5;
-  --gray-50: #f7f8fa;
-  --white: #ffffff;
-
-  /* ---- Semantic ------------------------------------------------------ */
-  --gold: #c9973a;
-  --gold-light: #f0c97a;
-  --red: #b4231a;
-  --red-200: #f3c9c5;
-  --red-light: #fadbd8;
-  --red-50: #fcf0ef;
-  --green: #0f6b4f;
-  --green-light: #d5f0e8;
-  --amber: #8a5a00;
-  --amber-700: #7a4f00;
-  --amber-light: #fef3cd;
-  --blue-600: #2c5ea8;
-
-  /* ---- Type ----------------------------------------------------------
-   * --font-display and --font-sans were both dangling: the first through a
-   * typo, the second because it was never declared. next/font fills the
-   * --font-* -face variables in app/layout.tsx. */
-  --font-display: var(--font-face-serif), Georgia, 'Times New Roman', serif;
-  --font-body: var(--font-face-sans), -apple-system, 'Segoe UI', system-ui, sans-serif;
-  --font-sans: var(--font-body);
-  --font-mono: var(--font-face-mono), ui-monospace, Consolas, monospace;
-
-  /* ---- Elevation ----------------------------------------------------- */
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.1);
-  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
-
-  /* ---- Radius --------------------------------------------------------
-   * The product's look is square. That is now a value, not an !important. */
-  --radius: 0px;
-  --radius-lg: 0px;
-
-  /* ---- Focus ---------------------------------------------------------
-   * 48 rules removed the focus outline; 8 put one back. Keyboard users had
-   * no way to see where they were. This is the one ring, used everywhere. */
-  --focus-ring: 0 0 0 2px var(--white), 0 0 0 4px var(--teal-600);
-}
 
 html {
   font-size: 16px;
@@ -107,8 +42,8 @@ body {
 
 body {
   font-family: var(--font-body);
-  background: var(--gray-50);
-  color: var(--gray-900);
+  background: var(--surface-page);
+  color: var(--text-primary);
   font-size: 16px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
@@ -119,8 +54,8 @@ body {
  * an outline declaration. Pointer clicks do not trigger :focus-visible, so
  * this costs the mouse user nothing. */
 :focus-visible {
-  outline: 2px solid var(--teal-600);
-  outline-offset: 2px;
+  outline: var(--focus-width) solid var(--focus-color);
+  outline-offset: var(--focus-offset);
   border-radius: 1px;
 }
 
@@ -128,16 +63,16 @@ button:focus-visible,
 a:focus-visible,
 [role='button']:focus-visible,
 [role='tab']:focus-visible {
-  outline: 2px solid var(--teal-600);
-  outline-offset: 2px;
+  outline: var(--focus-width) solid var(--focus-color);
+  outline-offset: var(--focus-offset);
 }
 
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
-  outline: 2px solid var(--teal-600);
+  outline: var(--focus-width) solid var(--focus-color);
   outline-offset: -1px;
-  border-color: var(--teal-600) !important;
+  border-color: var(--focus-color) !important;
 }
 
 /* Reach for this on a wrapper when the focused control sits flush against an
@@ -152,9 +87,9 @@ textarea:focus-visible {
   position: absolute;
   left: -9999px;
   top: 0;
-  z-index: 10002;
-  background: var(--teal-800);
-  color: var(--white);
+  z-index: calc(var(--z-tooltip) + 1);
+  background: var(--accent-solid);
+  color: var(--accent-solid-text);
   padding: 0.75rem 1.25rem;
   font-size: 0.875rem;
   font-weight: 600;
@@ -189,12 +124,12 @@ textarea:focus-visible {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--gray-300);
+  background: var(--border-default);
   border-radius: var(--radius);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--gray-400);
+  background: var(--border-strong);
 }
 
 /* Print styles */
