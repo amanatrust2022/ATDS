@@ -1,0 +1,181 @@
+/* Previews of things that get printed.
+ *
+ * These deliberately do NOT follow the viewer's theme. A request slip and a
+ * receipt are facsimiles of paper: what is on screen has to match what comes
+ * out of the printer, and a clinic hands the paper to the patient. Dark mode
+ * would make the preview a lie.
+ *
+ * The tray around them does follow the theme — it is app chrome, not paper. */
+
+.switcher {
+  display: flex;
+  justify-content: center;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-raised);
+}
+
+.tray {
+  padding: var(--space-5) var(--space-4);
+  background: var(--surface-sunken);
+  overflow-y: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* The sheet itself. Fixed colours, fixed type — this is the paper. */
+.paper {
+  max-width: 320px;
+  margin: 0 auto;
+  padding: 12px 14px;
+
+  background: #ffffff;
+  color: #000000;
+  border: 1px solid #d5d8e0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+/* --- Result report preview ------------------------------------------- */
+
+.reportFrame {
+  border-top: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+  height: 45vh;
+  min-height: 260px;
+  background: var(--surface-sunken);
+}
+
+.reportFrame iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  /* The report renders for print, so its own ground stays white. */
+  background: #ffffff;
+}
+
+/* --- Test picker above the report ------------------------------------ */
+
+.picker {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-raised);
+}
+
+.pickerHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+.pickerLegend {
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 0;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+
+/* A checkbox drawn as a chip. It is a real <input> underneath, so it is
+ * reachable, toggleable with Space, and announced as checked — the buttons
+ * this replaces carried no pressed state at all. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-full);
+  background: var(--surface-raised);
+  color: var(--text-secondary);
+
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  white-space: nowrap;
+
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+
+.chip:hover {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.chip input {
+  /* Visually hidden, still focusable and still the thing being toggled. */
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* Selected reads as a fill, a weight change and a tick — not colour alone. */
+.chip:has(input:checked) {
+  background: var(--accent-solid);
+  border-color: var(--accent-solid);
+  color: var(--accent-solid-text);
+  font-weight: var(--weight-semibold);
+}
+
+.chip:has(input:focus-visible) {
+  outline: var(--focus-width) solid var(--focus-color);
+  outline-offset: 2px;
+}
+
+.chipMark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+  border: 1.5px solid currentColor;
+  border-radius: var(--radius-full);
+  font-size: 9px;
+  line-height: 1;
+}
+
+.chip:has(input:checked) .chipMark {
+  background: var(--accent-solid-text);
+  color: var(--accent-solid);
+  border-color: var(--accent-solid-text);
+}
+
+.pickerCount {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  margin: var(--space-2) 0 0;
+}
+
+.pickerEmpty {
+  font-size: var(--text-xs);
+  color: var(--critical-text);
+  font-weight: var(--weight-medium);
+  margin: var(--space-2) 0 0;
+}

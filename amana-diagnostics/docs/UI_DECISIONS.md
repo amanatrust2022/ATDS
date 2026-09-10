@@ -334,3 +334,43 @@ alternative was keeping an app with no navigation, which was cheaper and worse.
 are still `'use client'`, so every navigation starts from a blank page. That is
 the outstanding work in the performance phase, and it is worth more than
 anything that could be trimmed here.
+
+---
+
+## 22. Finish the wallet extraction rather than delete it
+
+**Decision.** Render the `components/features/wallet/` components that had been
+sitting unused, move the live behaviour onto them, and delete ReceptionPage's
+inline copy — rather than deleting the unused code and migrating the copy.
+
+**Why.** `WalletTab`, `BillingAccountModal` and `LedgerModal` — 1,455 lines —
+were imported by ReceptionPage and rendered nowhere, alongside a 341-line
+zustand store used only by them. ReceptionPage carried its own ~970-line inline
+version, and both were being maintained. This is the failure the DepartmentPage
+tests were written to catch: "copied state instead of moving it and shipped dead
+buttons behind a green build."
+
+Deleting the unused half was the lower-risk option and was the recommendation.
+It was overruled, correctly as it turned out: the unused half contains
+**transaction reversal**, which is implemented and tested in `lib/` and had no
+reachable UI at all. It also calls `updateBillingAccountLimit` and
+`upgradeBillingAccount` where the inline copy hand-rolled raw `fetch` calls
+against `/api/billing`.
+
+**What wiring it up found.** Three silent gaps, all fixed here:
+
+- The directory had no **Owner** column, which a recent commit added a narrow
+  owner-only fetch specifically to support, and no **Credit limit** column.
+  Swapping without checking would have dropped both.
+- `externalCharges` existed in the store with **no setter**, so the ledger's
+  Charges tab could only ever render empty.
+- `billingAccounts` was never populated on first load; only a deposit filled it.
+
+**The mitigation.** `WalletTab.test.tsx` is a characterisation suite whose
+purpose is not coverage but that every control reaches something and that no
+column was lost. It is the thing that makes this swap safe to repeat.
+
+**Still owed.** Someone has to click through the wallet in the running app:
+open an account, take a deposit, log a charge, link and unlink a dependant,
+reverse a transaction, print a statement. The tests assert the wiring, not the
+round trip to the database.

@@ -3,7 +3,7 @@
 Measured against the nine-phase plan. Counts come from `npm run check:ui`, not
 from memory.
 
-Last updated: 10 September 2026.
+Last updated: 10 September 2026 (reception migrated).
 
 ---
 
@@ -29,16 +29,16 @@ Last updated: 10 September 2026.
 
 | Metric | Start | Now |
 | --- | --- | --- |
-| Inline `style={{…}}` objects | 2,100 | 2,031 |
-| Hard-coded hex colours | 832 | 795 |
-| Hard-coded `rgb()`/`rgba()` | 470 | 424 |
-| Legacy `--gray-*` / `--teal-*` uses | 1,122 | 1,104 |
-| JS hover handlers | 42 | 40 |
+| Inline `style={{…}}` objects | 2,100 | 1,755 |
+| Hard-coded hex colours | 832 | 762 |
+| Hard-coded `rgb()`/`rgba()` | 470 | 409 |
+| Legacy `--gray-*` / `--teal-*` uses | 1,122 | 904 |
+| JS hover handlers | 42 | 34 |
 | Inline `outline: 'none'` | 48 | **0** |
 | `!important` in components | 23 | 22 |
-| Hand-rolled overlays | 18 | 16 |
-| Raw `<table>` | 23 | 23 |
-| Hard-coded numeric `zIndex` | 46 | 44 |
+| Hand-rolled overlays | 18 | 15 |
+| Raw `<table>` | 23 | 19 |
+| Hard-coded numeric `zIndex` | 46 | 41 |
 
 The large numbers move when screens migrate, which is the bulk of P3 and is the
 work that remains. Every one of them can only go down: `npm run check:ui` fails
@@ -78,8 +78,8 @@ had always been stored next to every parameter and nothing had ever read it.
 
 ## What is not done
 
-**The screen migration.** Around 2,000 inline style objects remain. Reception,
-the admin screens and the department entry forms still carry most of them.
+**The screen migration.** Around 1,750 inline style objects remain. Reception is
+done; the admin screens and the department entry forms carry most of the rest.
 They work, they are theme-aware through the legacy bridge, and they do not yet
 use the component library. This is the bulk of the remaining effort.
 
@@ -105,8 +105,10 @@ default panic thresholds in code. That belongs with the test catalogue screen.
 
 ## Next three things
 
-1. **Migrate reception onto the component library.** It is the highest-traffic
-   screen and carries 308 of the remaining inline styles.
+1. **Click through the wallet in the running app.** The extraction it now uses
+   was never exercised; the tests assert the wiring, not the round trip to the
+   database. Open an account, deposit, log a charge, link and unlink a
+   dependant, reverse a transaction, print a statement.
 2. **Move the route shells to server components**, starting with the department
    screens, and put content-shaped skeletons behind them.
 3. **Rebuild the portal on the system**, with tenant branding threaded through

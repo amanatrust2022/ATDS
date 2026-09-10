@@ -1,39 +1,68 @@
-import React from 'react';
-import { 
-  RiFolderUserLine, RiAddLine, RiSearchLine, RiWalletLine, RiArrowRightSLine
-} from '@remixicon/react';
+'use client';
+
+import { RiAddLine, RiFolderUserLine, RiWalletLine } from '@remixicon/react';
 import { useWalletStore } from '@/lib/store/useWalletStore';
-import { 
-  createBillingAccount, depositToBillingAccount, updatePatientBillingAccount, 
-  registerPatientAndGetId, logExternalCharge, fetchAccountLedger, generateSlipNumber 
-} from '@/lib/store';
-import { Patient, BillingAccount } from '@/lib/store';
+import type { Patient } from '@/lib/store';
+import {
+  Badge,
+  Button,
+  Card,
+  CardBody,
+  CardHeader,
+  EmptyState,
+  Field,
+  Input,
+  Table,
+  TableToolbar,
+} from '@/components/ui';
 import BillingAccountModal from './BillingAccountModal';
 import LedgerModal from './LedgerModal';
 
-const inputStyle = (error?: boolean) => ({
-  width: '100%', padding: '0.65rem 1rem', borderRadius: 'var(--radius)',
-  border: error ? '1px solid var(--red)' : '1px solid var(--gray-300)',
-  fontSize: '0.82rem', fontFamily: 'var(--font-sans)' 
-});
+/**
+ * The billing wallet directory.
+ *
+ * This component existed for months and was rendered nowhere: it was imported
+ * by ReceptionPage and never used, while ReceptionPage carried its own inline
+ * copy. Wiring it up turned up three things the copy had and this did not, all
+ * of which are restored below:
+ *
+ *   - the Owner column, which a recent commit specifically added a narrow
+ *     owner-only fetch to support;
+ *   - the Credit Limit column;
+ *   - anything at all in `externalCharges`, which had no setter in the store,
+ *     so the Charges tab inside the ledger could only ever render empty.
+ *
+ * It also has something the inline copy never did: transaction reversal, which
+ * is built and tested in lib/ and had no reachable UI.
+ */
+
+const naira = (n: number) =>
+  `₦${n.toLocaleString('en-NG', { minimumFractionDigits: 2 })}`;
 
 interface WalletTabProps {
-  organization: any;
+  organization: { id: string; name?: string } | null;
+  /** The queue's patients — used to count members against each account. */
   patients: Patient[];
-  profile: any;
+  profile: { full_name?: string } | null;
   refresh: () => void;
 }
 
-export default function WalletTab({ organization, patients, profile, refresh }: WalletTabProps) {
-  const { 
-    billingAccounts, 
-    billingSearchQuery, 
-    showBillingAccountModal, 
+export default function WalletTab({
+  organization,
+  patients,
+  profile,
+  refresh,
+}: WalletTabProps) {
+  const {
+    billingAccounts,
+    accountOwners,
+    billingSearchQuery,
+    showBillingAccountModal,
     showLedgerModal,
     setBillingSearchQuery,
     setShowBillingAccountModal,
     resetAccountForm,
-    openLedger
+    openLedger,
   } = useWalletStore();
 
   const handleOpenAccount = () => {
@@ -41,105 +70,160 @@ export default function WalletTab({ organization, patients, profile, refresh }: 
     setShowBillingAccountModal(true);
   };
 
-  const filteredAccounts = billingAccounts.filter(acc => 
-    acc.name.toLowerCase().includes(billingSearchQuery.toLowerCase())
-  );
+  const query = billingSearchQuery.trim().toLowerCase();
+  const filtered = query
+    ? billingAccounts.filter((acc) => acc.name.toLowerCase().includes(query))
+    : billingAccounts;
+
+  const ownerNameFor = (acc: (typeof billingAccounts)[number]) => {
+    const owner = accountOwners.find((p) => p.id === Number(acc.owner_patient_id));
+    return owner?.name || '—';
+  };
 
   return (
     <div>
-      {/* Main Action Hub Card */}
-      <div style={{ background: 'white', border: '1px solid var(--gray-200)', borderRadius: 'var(--radius-lg)', padding: '1.5rem', boxShadow: '0 4px 15px rgba(0,0,0,0.05)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
-          <div>
-            <h2 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--gray-900)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-              <RiFolderUserLine size={20} color="var(--teal-600)" /> Client Accounts
-            </h2>
-            <p style={{ fontSize: '0.75rem', color: 'var(--gray-500)', marginTop: '0.15rem' }}>Manage individual and family group deposit wallets, link dependents, and log department bills.</p>
-          </div>
-          <div>
-            <button
-              onClick={handleOpenAccount}
-              style={{ background: 'var(--teal-700)', color: 'white', border: 'none', padding: '0.5rem 1rem', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer', borderRadius: 'var(--radius)', display: 'flex', alignItems: 'center', gap: '0.25rem', transition: 'all 0.15s' }}
-            >
-              <RiAddLine size={16} /> Open Billing Account
-            </button>
-          </div>
-        </div>
+      <Card>
+        <CardHeader
+          title="Client accounts"
+          subtitle="Deposit wallets for individuals and families, and the bills charged against them."
+          actions={
+            <Button intent="primary" icon={<RiAddLine size={15} />} onClick={handleOpenAccount}>
+              Open an account
+            </Button>
+          }
+        />
 
-        {/* Accounts Directory */}
-        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem', maxWidth: 400 }}>
-          <input
-            value={billingSearchQuery}
-            onChange={e => setBillingSearchQuery(e.target.value)}
-            placeholder="Search billing accounts..."
-            style={inputStyle(false)}
+        <CardBody flush>
+          <TableToolbar
+            count={
+              query
+                ? `${filtered.length} of ${billingAccounts.length} accounts`
+                : `${billingAccounts.length} account${billingAccounts.length === 1 ? '' : 's'}`
+            }
+          >
+            <div style={{ minWidth: 240 }}>
+              <Field label="Search accounts" labelHidden>
+                <Input
+                  type="search"
+                  value={billingSearchQuery}
+                  onChange={(e) => setBillingSearchQuery(e.target.value)}
+                  placeholder="Search by account name…"
+                />
+              </Field>
+            </div>
+          </TableToolbar>
+
+          <Table
+            caption="Billing wallet accounts"
+            rows={filtered}
+            rowKey={(acc) => String(acc.id)}
+            maxHeight="60vh"
+            empty={
+              <EmptyState
+                title={query ? 'No account matches that name' : 'No billing accounts yet'}
+                icon={<RiFolderUserLine size={26} />}
+                action={
+                  query ? undefined : (
+                    <Button intent="primary" onClick={handleOpenAccount}>
+                      Open an account
+                    </Button>
+                  )
+                }
+              >
+                {query
+                  ? 'Try a shorter search, or clear it to see every account.'
+                  : 'A billing account lets a family or an individual pay from a deposit instead of settling each visit at the desk.'}
+              </EmptyState>
+            }
+            columns={[
+              {
+                key: 'name',
+                header: 'Account',
+                render: (acc) => (
+                  <span style={{ fontWeight: 'var(--weight-semibold)' }}>{acc.name}</span>
+                ),
+              },
+              { key: 'owner', header: 'Owner', render: ownerNameFor },
+              {
+                key: 'type',
+                header: 'Type',
+                render: (acc) => (
+                  <Badge
+                    tone={
+                      acc.type === 'family'
+                        ? 'info'
+                        : acc.type === 'corporate'
+                          ? 'accent'
+                          : 'success'
+                    }
+                  >
+                    {acc.type}
+                  </Badge>
+                ),
+              },
+              {
+                key: 'members',
+                header: 'Members',
+                numeric: true,
+                render: (acc) => patients.filter((p) => p.billingAccountId === acc.id).length,
+              },
+              {
+                key: 'balance',
+                header: 'Balance',
+                numeric: true,
+                render: (acc) => (
+                  <span
+                    style={{
+                      fontWeight: 'var(--weight-semibold)',
+                      color: acc.balance >= 0 ? 'var(--success-text)' : 'var(--critical-text)',
+                    }}
+                  >
+                    {naira(acc.balance)}
+                  </span>
+                ),
+              },
+              {
+                key: 'credit',
+                header: 'Credit limit',
+                numeric: true,
+                render: (acc) => naira(acc.credit_limit || 0),
+              },
+              {
+                key: 'status',
+                header: 'Status',
+                render: (acc) => {
+                  // Spendable is the deposit plus whatever credit is allowed.
+                  const available = acc.balance + (acc.credit_limit || 0);
+                  return available > 0 ? (
+                    <Badge tone="success">Active</Badge>
+                  ) : (
+                    <Badge tone="critical">Depleted</Badge>
+                  );
+                },
+              },
+              {
+                key: 'actions',
+                header: '',
+                headerLabel: 'Actions',
+                actions: true,
+                render: (acc) => (
+                  <Button
+                    size="sm"
+                    intent="secondary"
+                    icon={<RiWalletLine size={13} />}
+                    onClick={() => openLedger(acc)}
+                  >
+                    Manage
+                  </Button>
+                ),
+              },
+            ]}
           />
-        </div>
-
-        <div style={{ overflowX: 'auto', border: '1px solid var(--gray-200)', borderRadius: 'var(--radius)', background: 'white' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem', textAlign: 'left' }}>
-            <thead>
-              <tr style={{ background: 'var(--gray-50)', borderBottom: '1px solid var(--gray-200)' }}>
-                <th style={{ padding: '0.75rem 1rem', fontWeight: 700, color: 'var(--gray-600)', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Account Name</th>
-                <th style={{ padding: '0.75rem 1rem', fontWeight: 700, color: 'var(--gray-600)', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Type</th>
-                <th style={{ padding: '0.75rem 1rem', fontWeight: 700, color: 'var(--gray-600)', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Linked</th>
-                <th style={{ padding: '0.75rem 1rem', fontWeight: 700, color: 'var(--gray-600)', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Wallet Balance</th>
-                <th style={{ padding: '0.75rem 1rem', fontWeight: 700, color: 'var(--gray-600)', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Status</th>
-                <th style={{ padding: '0.75rem 1rem', textAlign: 'right', fontWeight: 700, color: 'var(--gray-600)', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredAccounts.map(acc => {
-                const linkedCount = patients.filter(p => p.billingAccountId === acc.id).length;
-                const totalAvailable = acc.balance + acc.credit_limit;
-                const isLow = totalAvailable < 5000 && acc.type !== 'corporate';
-                
-                return (
-                  <tr key={acc.id} style={{ borderBottom: '1px solid var(--gray-100)' }}>
-                    <td style={{ padding: '0.75rem 1rem', fontWeight: 600, color: 'var(--gray-900)' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <div style={{ width: 28, height: 28, borderRadius: 6, background: 'var(--teal-50)', color: 'var(--teal-700)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <RiFolderUserLine size={14} />
-                        </div>
-                        {acc.name}
-                      </div>
-                    </td>
-                    <td style={{ padding: '0.75rem 1rem', color: 'var(--gray-600)', textTransform: 'capitalize' }}>{acc.type}</td>
-                    <td style={{ padding: '0.75rem 1rem', color: 'var(--gray-600)' }}>{linkedCount} members</td>
-                    <td style={{ padding: '0.75rem 1rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 700, color: isLow ? 'var(--red)' : 'var(--teal-700)' }}>
-                        <RiWalletLine size={14} />
-                        ₦{acc.balance.toLocaleString('en-NG')}
-                      </div>
-                    </td>
-                    <td style={{ padding: '0.75rem 1rem' }}>
-                      <span style={{ padding: '0.2rem 0.5rem', borderRadius: 20, fontSize: '0.65rem', fontWeight: 700, background: totalAvailable > 0 ? '#dcfce7' : '#fee2e2', color: totalAvailable > 0 ? '#166534' : '#991b1b' }}>
-                        {totalAvailable > 0 ? 'ACTIVE' : 'DEPLETED'}
-                      </span>
-                    </td>
-                    <td style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>
-                      <button
-                        onClick={() => openLedger(acc)}
-                        style={{ background: 'white', border: '1px solid var(--gray-300)', padding: '0.35rem 0.75rem', borderRadius: 4, fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '0.2rem', color: 'var(--gray-700)' }}
-                      >
-                        Manage <RiArrowRightSLine size={14} />
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-              {filteredAccounts.length === 0 && (
-                <tr>
-                  <td colSpan={6} style={{ padding: '3rem 1rem', textAlign: 'center', color: 'var(--gray-400)' }}>No billing wallets registered. Click "Open Billing Account" to register family/individual accounts.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+        </CardBody>
+      </Card>
 
       {showBillingAccountModal && (
-        <BillingAccountModal 
+        <BillingAccountModal
           organization={organization}
           patients={patients}
           profile={profile}
@@ -148,7 +232,7 @@ export default function WalletTab({ organization, patients, profile, refresh }: 
       )}
 
       {showLedgerModal && (
-        <LedgerModal 
+        <LedgerModal
           organization={organization}
           patients={patients}
           profile={profile}

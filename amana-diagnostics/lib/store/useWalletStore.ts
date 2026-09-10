@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { BillingAccount, BillingLedgerTransaction, ExternalDepartmentCharge } from '../store';
+import { BillingAccount, BillingLedgerTransaction, ExternalDepartmentCharge, Patient } from '../store';
 
 interface AccountFormState {
   name: string;
@@ -77,6 +77,12 @@ interface WalletState {
   setBillingSearchQuery: (query: string) => void;
   setWorkspaceTab: (tab: 'members' | 'ledger' | 'charges') => void;
   setBillingTransactions: (txs: BillingLedgerTransaction[]) => void;
+  /** The Charges tab reads these. There was no way to put them in. */
+  setExternalCharges: (charges: ExternalDepartmentCharge[]) => void;
+  /** Owners only, not every patient ever billed to a wallet — the table
+   *  shows one name per account and loading the rest is what made this slow. */
+  accountOwners: Patient[];
+  setAccountOwners: (owners: Patient[]) => void;
   
   // Form updates
   updateAccountForm: (updates: Partial<AccountFormState>) => void;
@@ -174,6 +180,9 @@ export const useWalletStore = create<WalletState>((set, get) => ({
   setBillingSearchQuery: (query) => set({ billingSearchQuery: query }),
   setWorkspaceTab: (tab) => set({ workspaceTab: tab }),
   setBillingTransactions: (txs) => set({ billingTransactions: txs }),
+  setExternalCharges: (charges) => set({ externalCharges: charges }),
+  accountOwners: [],
+  setAccountOwners: (owners) => set({ accountOwners: owners }),
 
   updateAccountForm: (updates) => set((s) => ({ accountForm: { ...s.accountForm, ...updates } })),
   updateNewOwnerForm: (updates) => set((s) => ({ newOwnerForm: { ...s.newOwnerForm, ...updates } })),
