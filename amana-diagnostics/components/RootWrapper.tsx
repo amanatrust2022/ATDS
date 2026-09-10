@@ -2,19 +2,11 @@
 import { useAuth } from '@/components/AuthProvider';
 import { useRouter, usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { homePathFor } from '@/components/shell/navigation';
 
 const PUBLIC_PATHS = ['/', '/login', '/signup', '/update-password', '/download'];
 
-const getRolePath = (role: string | undefined, slug: string) => {
-  switch (role) {
-    case 'admin': return `/${slug}/admin`;
-    case 'lab': 
-    case 'lab_tech': return `/${slug}/lab`;
-    case 'radiology': return `/${slug}/radiology`;
-    case 'reception': return `/${slug}/reception`;
-    default: return `/${slug}/reception`;
-  }
-};
+const getRolePath = homePathFor;
 
 const Spinner = () => (
   <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0f1628' }}>

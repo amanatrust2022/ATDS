@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
-import Header from './Header';
+import { AppShell } from '@/components/shell';
 import { Department, Patient, PatientTest, getTestById, fetchPatients, updateTestResult, subscribeToPatients, fetchCustomTemplates, RadiologyTemplate, fetchCustomTests, setCustomCatalogueCache } from '@/lib/store';
 import { RiTestTubeLine, RiRadarLine, RiCheckLine, RiSettings3Line } from '@remixicon/react';
 import { useAuth } from '@/components/AuthProvider';
@@ -295,7 +295,11 @@ export default function DepartmentPage({ department }: Props) {
   if (!organization) return null;
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--gray-50)', display: 'flex', flexDirection: 'column' }}>
+    <AppShell
+      title={isLab ? 'Laboratory' : 'Radiology'}
+      subtitle={organization.name}
+      flush
+    >
       {/* Toast */}
       {toast && (
         <div style={{
@@ -309,13 +313,6 @@ export default function DepartmentPage({ department }: Props) {
         </div>
       )}
 
-      <Header
-        title={isLab ? 'Laboratory' : 'Radiology'}
-        subtitle={organization.name}
-        icon={isLab ? <RiTestTubeLine size={24} color="white" /> : <RiRadarLine size={24} color="white" />}
-        accentColor={theme.accent}
-        notifications={pendingCount}
-      />
 
       {/* Toolbar */}
       <div style={{ background: 'white', borderBottom: '1px solid var(--gray-300)', padding: '0 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -491,6 +488,6 @@ export default function DepartmentPage({ department }: Props) {
           </div>
         </div>
       )}
-    </div>
+    </AppShell>
   );
 }

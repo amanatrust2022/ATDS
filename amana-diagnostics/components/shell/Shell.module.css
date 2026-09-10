@@ -1,0 +1,626 @@
+/* The application shell.
+ *
+ * There was no persistent navigation at all: a 64px header with a back arrow
+ * and an avatar dropdown, and departments reachable only from inside that
+ * dropdown, and only for admins. A user could not see where they were or what
+ * else existed. */
+
+.shell {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  min-height: 100dvh;
+  background: var(--surface-page);
+}
+
+.main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 100dvh;
+}
+
+.content {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: var(--space-5);
+}
+
+.contentFlush {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* --- Rail --------------------------------------------------------------- */
+
+.rail {
+  display: flex;
+  flex-direction: column;
+  width: 216px;
+  flex-shrink: 0;
+  background: var(--surface-raised);
+  border-right: 1px solid var(--border-subtle);
+  position: sticky;
+  top: 0;
+  height: 100dvh;
+  z-index: var(--z-sticky);
+  transition: width var(--duration-normal) var(--ease-out);
+}
+
+.railCollapsed {
+  width: 56px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-3);
+  min-height: 56px;
+  border-bottom: 1px solid var(--border-subtle);
+  overflow: hidden;
+}
+
+.brandMark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  background: var(--accent-solid);
+  color: var(--accent-solid-text);
+  border-radius: var(--radius-md);
+}
+
+.brandText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.brandName {
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.brandMeta {
+  font-size: var(--text-2xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nav {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: var(--space-2) var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.navGroup {
+  padding: var(--space-3) var(--space-2) var(--space-1);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.navItem {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-2);
+  min-height: 34px;
+
+  border: 0;
+  background: transparent;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  text-align: left;
+  text-decoration: none;
+  width: 100%;
+
+  font-family: var(--font-body);
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+
+.navItem:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+.navItem:focus-visible {
+  outline: var(--focus-width) solid var(--focus-color);
+  outline-offset: -2px;
+}
+
+/* Current section: a filled ground, a weight change AND a left edge, so it
+ * does not depend on the accent colour alone. */
+.navItemActive {
+  background: var(--accent-subtle);
+  color: var(--accent-subtle-text);
+  font-weight: var(--weight-semibold);
+  box-shadow: inset 2px 0 0 var(--accent-solid);
+}
+.navItemActive:hover {
+  background: var(--accent-subtle);
+  color: var(--accent-subtle-text);
+}
+
+.navIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 20px;
+}
+
+.navLabel {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.navCount {
+  flex-shrink: 0;
+  min-width: 20px;
+  padding: 0 var(--space-1);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  color: var(--text-secondary);
+  background: var(--surface-sunken);
+  border-radius: var(--radius-full);
+}
+
+.navCountAlert {
+  color: var(--critical-solid-text);
+  background: var(--critical-solid);
+}
+
+.railFooter {
+  border-top: 1px solid var(--border-subtle);
+  padding: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* --- Header -------------------------------------------------------------- */
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: 0 var(--space-5);
+  min-height: 56px;
+  background: var(--surface-raised);
+  border-bottom: 1px solid var(--border-subtle);
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky);
+}
+
+.headerTitle {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.headerHeading {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+  line-height: var(--leading-tight);
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.headerSub {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.headerTools {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+/* --- Search trigger ------------------------------------------------------ */
+
+.searchTrigger {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: var(--control-height-md);
+  padding: 0 var(--space-2) 0 var(--space-3);
+  min-width: 200px;
+
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+
+  font-family: var(--font-body);
+  font-size: var(--text-md);
+  color: var(--text-muted);
+  text-align: left;
+}
+
+.searchTrigger:hover {
+  border-color: var(--border-default);
+  color: var(--text-secondary);
+}
+
+.searchTrigger:focus-visible {
+  outline: var(--focus-width) solid var(--focus-color);
+  outline-offset: var(--focus-offset);
+}
+
+.searchLabel {
+  flex: 1 1 auto;
+}
+
+.kbd {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--text-muted);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  padding: 1px var(--space-1);
+  white-space: nowrap;
+}
+
+/* --- Clock --------------------------------------------------------------- */
+
+.clock {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: var(--leading-tight);
+}
+
+.clockDate {
+  font-size: var(--text-2xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.clockTime {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+
+/* --- Patient context bar -------------------------------------------------
+ * Once a patient is open, who they are does not scroll away. */
+
+.patientBar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-2) var(--space-5);
+  background: var(--accent-subtle);
+  border-bottom: 1px solid var(--accent-border);
+  position: sticky;
+  top: 56px;
+  z-index: calc(var(--z-sticky) - 1);
+  flex-wrap: wrap;
+}
+
+.patientIdentity {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.patientName {
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.patientId {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.patientFacts {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  font-size: var(--text-xs);
+}
+
+.patientFact {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  white-space: nowrap;
+}
+
+.patientFactLabel {
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+}
+
+.patientFactValue {
+  color: var(--text-primary);
+  font-weight: var(--weight-medium);
+  font-variant-numeric: tabular-nums;
+}
+
+.patientActions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* --- Breadcrumbs ---------------------------------------------------------- */
+
+.crumbs {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex-wrap: wrap;
+}
+
+.crumbLink {
+  color: var(--text-muted);
+  text-decoration: none;
+  border-radius: var(--radius-sm);
+}
+.crumbLink:hover {
+  color: var(--text-link);
+  text-decoration: underline;
+}
+.crumbLink:focus-visible {
+  outline: var(--focus-width) solid var(--focus-color);
+  outline-offset: 2px;
+}
+
+.crumbCurrent {
+  color: var(--text-secondary);
+  font-weight: var(--weight-medium);
+}
+
+.crumbSep {
+  color: var(--text-disabled);
+}
+
+/* --- Command palette ------------------------------------------------------ */
+
+.paletteInputWrap {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.paletteInput {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  font-family: var(--font-body);
+  font-size: var(--text-lg);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.paletteInput::placeholder {
+  color: var(--text-disabled);
+}
+
+.paletteList {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-2);
+  max-height: 52vh;
+  overflow-y: auto;
+}
+
+.paletteGroup {
+  padding: var(--space-3) var(--space-2) var(--space-1);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.paletteItem {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  background: transparent;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--font-body);
+  font-size: var(--text-md);
+  color: var(--text-primary);
+}
+
+/* Highlighted by the arrow keys. Focus stays in the input the whole time,
+ * so this is aria-activedescendant, not real focus. */
+.paletteItemActive {
+  background: var(--accent-subtle);
+  color: var(--accent-subtle-text);
+  box-shadow: inset 2px 0 0 var(--accent-solid);
+}
+
+.paletteItemIcon {
+  display: flex;
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+.paletteItemActive .paletteItemIcon {
+  color: var(--accent-text);
+}
+
+.paletteItemBody {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.paletteItemLabel {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.paletteItemMeta {
+  display: block;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.paletteHint {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-2) var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+  background: var(--surface-sunken);
+  font-size: var(--text-2xs);
+  color: var(--text-muted);
+}
+
+.paletteEmpty {
+  padding: var(--space-8) var(--space-4);
+  text-align: center;
+  color: var(--text-muted);
+  font-size: var(--text-md);
+}
+
+/* --- Responsive ----------------------------------------------------------
+ * Below the tablet breakpoint the rail becomes a bottom bar: on a phone the
+ * thumb is at the bottom of the screen, not the side. */
+
+@media (max-width: 860px) {
+  .shell {
+    grid-template-columns: 1fr;
+  }
+
+  .rail {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    top: auto;
+    width: 100%;
+    height: auto;
+    flex-direction: row;
+    border-right: 0;
+    border-top: 1px solid var(--border-default);
+    z-index: var(--z-sticky);
+    padding-bottom: env(safe-area-inset-bottom, 0);
+  }
+
+  .brand,
+  .railFooter,
+  .navGroup {
+    display: none;
+  }
+
+  .nav {
+    flex-direction: row;
+    justify-content: space-around;
+    padding: var(--space-1);
+    gap: var(--space-1);
+    overflow-x: auto;
+  }
+
+  .navItem {
+    flex-direction: column;
+    gap: 2px;
+    min-width: 60px;
+    min-height: 48px;
+    padding: var(--space-1);
+    font-size: var(--text-2xs);
+    justify-content: center;
+  }
+
+  .navItemActive {
+    box-shadow: inset 0 2px 0 var(--accent-solid);
+  }
+
+  .navCount {
+    position: absolute;
+    transform: translate(14px, -12px);
+  }
+
+  .main {
+    padding-bottom: 64px;
+  }
+
+  .searchTrigger {
+    min-width: 0;
+  }
+
+  .searchLabel,
+  .kbd,
+  .clock {
+    display: none;
+  }
+
+  .patientBar {
+    top: 56px;
+  }
+}

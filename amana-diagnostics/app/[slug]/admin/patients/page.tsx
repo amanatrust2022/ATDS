@@ -4,7 +4,6 @@ import RequireRole from '@/components/RequireRole';
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/components/AuthProvider';
 import { fetchPatients, Patient, PatientTest, updatePatient, updatePatientProfile } from '@/lib/store';
-import Header from '@/components/Header';
 import { patientDisplayName } from '@/lib/store/patientName';
 import {
   RiUserLine, RiSearchLine, RiFilterLine, RiTestTubeLine, RiRadarLine,

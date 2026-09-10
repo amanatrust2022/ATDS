@@ -27,11 +27,14 @@ import type { Patient, PatientTest, Test } from '@/lib/store';
 let authState: any;
 vi.mock('@/components/AuthProvider', () => ({ useAuth: () => authState }));
 
-vi.mock('@/components/Header', () => ({
-  default: ({ title, subtitle, notifications }: any) => (
-    <div data-testid="header">
+// The page renders inside AppShell now rather than the old Header. AppShell
+// needs the app router, which jsdom has no mount for, so it is stubbed down to
+// the parts these tests assert on: the title and the subtitle.
+vi.mock('@/components/shell', () => ({
+  AppShell: ({ title, subtitle, children }: any) => (
+    <div data-testid="shell">
       <span>{title}</span><span>{subtitle}</span>
-      <span data-testid="header-notifications">{notifications}</span>
+      {children}
     </div>
   ),
 }));

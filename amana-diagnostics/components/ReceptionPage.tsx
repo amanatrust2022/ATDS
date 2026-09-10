@@ -7,7 +7,8 @@ import {
   RiFileTextLine, RiMoreLine, RiCloseLine, RiMailLine,
   RiSearchLine, RiWalletLine, RiFolderUserLine,
 } from '@remixicon/react';
-import Header from '@/components/Header';
+import { AppShell } from '@/components/shell';
+import { Tabs } from '@/components/ui';
 import RegistrationTab from './features/registration/RegistrationTab';
 import WalletTab from './features/wallet/WalletTab';
 import { QueueTab } from './features/queue/QueueTab';
@@ -575,50 +576,28 @@ export default function ReceptionPage() {
 
 
   return (
-    <div style={{ minHeight: '100vh', background: 'linear-gradient(180deg, #f5fbfa 0%, #f7f8fb 38%, #eef4f4 100%)', display: 'flex', flexDirection: 'column' }}>
-      <Header
-        title="Reception"
-        subtitle={organization?.name || FALLBACK_ORG_NAME}
-        icon={<RiHospitalLine size={24} color="white" />}
-        accentColor="var(--teal-600)"
-        notifications={newResultsCount}
-      />
-
-      {/* Tabs */}
-      <div style={{ background: 'rgba(255,255,255,0.88)', backdropFilter: 'blur(10px)', borderBottom: '1px solid rgba(148,163,184,0.25)', padding: '0 1.5rem', display: 'flex', gap: 0 }}>
-        {[
-          { id: 'register', label: 'Register Patient', icon: <RiAddLine size={18} /> },
-          { id: 'queue', label: `Patient Queue (${pendingPatients.length})`, icon: <RiClipboardLine size={18} /> },
-          { id: 'results', label: `Results Ready (${newResultsCount})`, icon: <RiCheckLine size={18} />, badge: newResultsCount },
-          { id: 'wallet', label: 'Patient Wallet', icon: < RiWalletLine size={18} /> },
-        ].map(t => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id as Tab)}
-            style={{
-              padding: '0.9rem 1.25rem',
-              border: 'none', background: 'none',
-              cursor: 'pointer',
-              fontSize: '0.82rem', fontWeight: 600,
-              color: tab === t.id ? 'var(--teal-700)' : 'var(--gray-500)',
-              borderBottom: tab === t.id ? '2px solid var(--teal-600)' : '2px solid transparent',
-              transition: 'all 0.15s',
-              display: 'flex', alignItems: 'center', gap: '0.4rem',
-              position: 'relative',
-            }}
-          >
-            {t.icon} {t.label}
-            {t.badge && t.badge > 0 && (
-              <span style={{
-                background: 'var(--red)', color: 'white', borderRadius: 0,
-                padding: '0 5px', fontSize: '0.65rem', fontWeight: 700, lineHeight: '16px',
-              }}>{t.badge}</span>
-            )}
-          </button>
-        ))}
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          {/* User profile & signout moved to universal Header dropdown */}
-        </div>
+    <AppShell
+      title="Reception"
+      subtitle={organization?.name || FALLBACK_ORG_NAME}
+      flush
+    >
+      {/* Radix tabs: arrow keys move between them, only the selected tab is in
+        * the tab order, and each tab is tied to the panel it controls. The strip
+        * this replaces was four buttons with a borderBottom and no roles at all. */}
+      <div style={{ padding: '0 var(--space-5)', background: 'var(--surface-raised)' }}>
+        <Tabs
+          value={tab}
+          onValueChange={(v) => setTab(v as Tab)}
+          ariaLabel="Reception sections"
+          items={[
+            { value: 'register', label: 'Register patient' },
+            { value: 'queue', label: 'Patient queue', count: pendingPatients.length },
+            { value: 'results', label: 'Results ready', count: newResultsCount, alert: newResultsCount > 0 },
+            { value: 'wallet', label: 'Patient wallet' },
+          ]}
+        >
+          <span />
+        </Tabs>
       </div>
 
       <div style={{ flex: 1, padding: '1.5rem', maxWidth: 1400, margin: '0 auto', width: '100%' }}>
@@ -1765,7 +1744,7 @@ export default function ReceptionPage() {
         </div>
       )}
 
-    </div>
+    </AppShell>
   );
 }
 
