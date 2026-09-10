@@ -1,16 +1,10 @@
-'use client';
-import RequireRole from '@/components/RequireRole';
-import DepartmentPage from '@/components/DepartmentPage';
+import type { Metadata } from 'next';
 
-function RadiologyPage() {
-  return <DepartmentPage department="radiology" />;
-}
+import LegacyRouteRedirect from '@/components/LegacyRouteRedirect';
 
-/** Only these roles may open this screen — see components/RequireRole.tsx. */
-export default function GuardedRadiologyPage(props: any) {
-  return (
-    <RequireRole allow={['admin', 'radiology']}>
-      <RadiologyPage {...props} />
-    </RequireRole>
-  );
+export const metadata: Metadata = { title: 'Radiology' };
+
+/** Kept only so an old bookmark still lands somewhere — see the component. */
+export default function LegacyRadiologyPage() {
+  return <LegacyRouteRedirect path="/radiology" message="Taking you to Radiology…" />;
 }

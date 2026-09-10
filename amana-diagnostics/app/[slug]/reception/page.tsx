@@ -1,13 +1,15 @@
-'use client';
+import type { Metadata } from 'next';
+
 import RequireRole from '@/components/RequireRole';
 import ReceptionPage from '@/components/ReceptionPage';
-function SlugReceptionPage() { return <ReceptionPage />; }
+
+export const metadata: Metadata = { title: 'Reception' };
 
 /** Only these roles may open this screen — see components/RequireRole.tsx. */
-export default function GuardedSlugReceptionPage(props: any) {
+export default function Page() {
   return (
     <RequireRole allow={['admin', 'reception']}>
-      <SlugReceptionPage {...props} />
+      <ReceptionPage />
     </RequireRole>
   );
 }

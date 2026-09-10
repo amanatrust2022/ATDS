@@ -26,6 +26,15 @@ export interface NavEntry {
   exact?: boolean;
   /** Words the command palette should also match on. */
   keywords?: string[];
+  /**
+   * The screen manages its own padding, so the shell drops the content inset.
+   *
+   * This lives here rather than as a prop because it is a fact about the route,
+   * not about a render: the department benches and the reception desk have
+   * always run their toolbars edge to edge. With the shell in the layout there
+   * is no call site left to pass it from.
+   */
+  flush?: boolean;
 }
 
 export const NAV: NavEntry[] = [
@@ -36,6 +45,7 @@ export const NAV: NavEntry[] = [
     roles: ['admin', 'reception'],
     group: 'Workspace',
     keywords: ['register', 'patient', 'queue', 'payment', 'wallet', 'front desk'],
+    flush: true,
   },
   {
     id: 'lab',
@@ -44,6 +54,7 @@ export const NAV: NavEntry[] = [
     roles: ['admin', 'lab', 'lab_tech'],
     group: 'Workspace',
     keywords: ['results', 'bench', 'specimen', 'culture', 'widal'],
+    flush: true,
   },
   {
     id: 'radiology',
@@ -52,6 +63,7 @@ export const NAV: NavEntry[] = [
     roles: ['admin', 'radiology'],
     group: 'Workspace',
     keywords: ['scan', 'ultrasound', 'x-ray', 'imaging', 'report'],
+    flush: true,
   },
   {
     id: 'admin',
@@ -143,6 +155,11 @@ export const NAV: NavEntry[] = [
     keywords: ['password', 'name', 'appearance', 'theme', 'density'],
   },
 ];
+
+/** One entry by id, for callers that already know which screen they are on. */
+export function entryById(id: string): NavEntry | undefined {
+  return NAV.find((entry) => entry.id === id);
+}
 
 /** The entries this role may see, in rail order. */
 export function navFor(role: string | undefined): NavEntry[] {

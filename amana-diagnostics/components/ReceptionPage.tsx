@@ -2,10 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 
-import { AppShell } from '@/components/shell';
 import { ErrorBoundary, Tabs } from '@/components/ui';
 import { useAuth } from '@/components/AuthProvider';
-import { FALLBACK_ORG_NAME } from '@/lib/branding';
 
 import RegistrationTab from './features/registration/RegistrationTab';
 import WalletTab from './features/wallet/WalletTab';
@@ -170,7 +168,7 @@ export default function ReceptionPage() {
   const newResultsCount = resultsPatients.length;
 
   return (
-    <AppShell title="Reception" subtitle={organization?.name || FALLBACK_ORG_NAME} flush>
+    <>
       {/* Radix tabs: arrow keys move between them, only the selected tab is in
         * the tab order, and each tab is tied to the panel it controls. The strip
         * this replaces was four buttons with a borderBottom and no roles. */}
@@ -275,6 +273,6 @@ export default function ReceptionPage() {
           onClose={() => setShowResultModal(null)}
         />
       )}
-    </AppShell>
+    </>
   );
 }

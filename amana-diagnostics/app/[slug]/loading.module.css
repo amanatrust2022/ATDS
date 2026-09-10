@@ -1,0 +1,15 @@
+/* The shape a workspace screen has while its code is on the way. */
+.panel {
+  padding: var(--space-6);
+}
+
+.toolbar {
+  display: flex;
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+
+.search {
+  flex: 1;
+  max-width: 280px;
+}

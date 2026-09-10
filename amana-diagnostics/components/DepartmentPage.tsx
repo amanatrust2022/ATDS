@@ -1,7 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import dynamic from 'next/dynamic';
-import { AppShell } from '@/components/shell';
 import { ErrorBoundary, LoadingPanel } from '@/components/ui';
 import { Department, Patient, PatientTest, getTestById, fetchPatients, updateTestResult, subscribeToPatients, fetchCustomTemplates, RadiologyTemplate, fetchCustomTests, setCustomCatalogueCache } from '@/lib/store';
 import { RiTestTubeLine, RiRadarLine, RiCheckLine, RiSettings3Line } from '@remixicon/react';
@@ -333,11 +332,7 @@ export default function DepartmentPage({ department }: Props) {
   if (!organization) return null;
 
   return (
-    <AppShell
-      title={isLab ? 'Laboratory' : 'Radiology'}
-      subtitle={organization.name}
-      flush
-    >
+    <>
       {/* Toast */}
       {toast && (
         <div style={{
@@ -536,6 +531,6 @@ export default function DepartmentPage({ department }: Props) {
         onCancel={() => setPendingCritical([])}
         onAcknowledge={() => { setPendingCritical([]); void handleSubmit(true); }}
       />
-    </AppShell>
+    </>
   );
 }

@@ -374,3 +374,98 @@ column was lost. It is the thing that makes this swap safe to repeat.
 open an account, take a deposit, log a charge, link and unlink a dependant,
 reverse a transaction, print a statement. The tests assert the wiring, not the
 round trip to the database.
+
+---
+
+## 23. The shell belongs to the layout, not to the screen
+
+**Decision.** `AppShell` is mounted once, in `app/[slug]/layout.tsx`, around the
+whole workspace subtree. Screens no longer render it. What a screen needs to
+contribute to the header goes through `components/shell/ShellSlot.tsx`.
+
+**Why.** Every screen opened with its own `<AppShell title=… subtitle=…>`. The
+rail, the header, the breadcrumbs, the clock and the command palette were
+therefore destroyed and rebuilt on every navigation: the whole window blanked
+and redrew, the rail re-read its collapsed state out of `localStorage` each
+time, and the clock restarted. Moving between Reception and the bench looked
+like a page load because structurally it was one. Now only `<main>` changes.
+
+**What that forced.** Three props had no call site left:
+
+- **`title`** already fell back to the active nav entry's label, so the three
+  screens passing one were passing what the shell would have worked out anyway.
+- **`subtitle`** was the workspace name on every screen, and the shell has the
+  organisation in scope. It defaults to it.
+- **`flush`** — whether a screen runs its content edge to edge — is now a field
+  on the nav entry. It is a fact about the route, not about a render: the
+  department benches and the reception desk have always run their toolbars to
+  the edge, and there is no longer a call site to pass it from.
+
+`actions`, `patient` and `commands` stay reachable through the slot rather than
+becoming dead props. Nothing sets them yet.
+
+**The risk this took on.** The heading is no longer rendered by the screen, so
+the DepartmentPage test that asserted it could not stay. `navigation.test.ts`
+replaces it and covers more: that every entry has a label, that each route
+resolves to the heading it should, that exactly three routes are flush, and that
+every role lands on a screen its own rail contains.
+
+---
+
+## 24. Route shells are server components; the screen is the client component
+
+**Decision.** Every `page.tsx` is a server component that renders one client
+screen beside it — `app/[slug]/admin/staff/page.tsx` renders
+`StaffScreen.tsx`. The moves were done with `git mv` so a 1,700-line screen
+keeps its history.
+
+**Why.** All 29 routes were `'use client'`, so nothing in the product had HTML
+before its JavaScript arrived, and no route could export `metadata`. Thirty
+routes shared one browser-tab title — the back button and a row of pinned tabs
+were unreadable. Each route names itself now, against a `'%s · DiagnosticOS'`
+template on the root layout.
+
+**What it does not buy.** Not server-side data fetching. Auth is a Supabase
+session in the browser and every screen loads its own data from a client
+effect, so these shells render a frame, not content. Calling this "server
+components" and stopping here would overstate it: the honest claim is that the
+route boundary is now server-rendered and each screen is a separate client
+island. Moving the data itself server-side needs the session on the server
+first, which is a different piece of work.
+
+**Caught by the build.** A server component cannot hand a client component a
+function, so `LegacyRouteRedirect` takes a path string rather than a
+`(slug) => string`. Worth remembering: this class of mistake compiles.
+
+---
+
+## 25. `/lab`, `/reception` and `/radiology` redirect instead of rendering
+
+**Decision.** The three slug-less department routes now redirect into the
+workspace, the way `/admin/staff` already did.
+
+**Why.** They were second mountings of the same screens from before the product
+was multi-tenant. Nothing linked to them, and every redirect in the app already
+pointed at the slug version, so they were reachable only by being typed. Once
+the shell moved into `app/[slug]/layout.tsx` they would have rendered a screen
+with no navigation around it at all — three more copies to keep in step for no
+one.
+
+---
+
+## 26. One boot screen, and it follows the theme
+
+**Decision.** `components/BootScreen.tsx` replaces both hand-rolled spinners in
+`RootWrapper`, and `RequireRole`'s waiting state is now the design system's
+`LoadingPanel`.
+
+**Why.** The two spinners were hard-coded `#0f1628` navy with a `#4472c4` ring,
+so a light-theme user opened the app to a dark panel that then flashed white.
+`RequireRole` painted a full-height gradient in three more hard-coded colours
+over the whole window; since the shell now sits above it, that state keeps the
+rail and header and only the panel waits.
+
+A bare spinner is the honest answer in exactly one place — before the session
+resolves, when nothing is known and there is no shape to draw a skeleton of.
+Everywhere below the shell, `app/[slug]/loading.tsx` draws a toolbar over a
+table instead, because that is the shape of nearly every screen here.

@@ -3,19 +3,11 @@ import { useAuth } from '@/components/AuthProvider';
 import { useRouter, usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { homePathFor } from '@/components/shell/navigation';
+import BootScreen from '@/components/BootScreen';
 
 const PUBLIC_PATHS = ['/', '/login', '/signup', '/update-password', '/download'];
 
 const getRolePath = homePathFor;
-
-const Spinner = () => (
-  <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0f1628' }}>
-    <div style={{ textAlign: 'center' }}>
-      <div style={{ width: 48, height: 48, border: '3px solid #4472c4', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 1rem' }} />
-      <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem' }}>Loading workspace...</p>
-    </div>
-  </div>
-);
 
 export default function RootWrapper({ children }: { children: React.ReactNode }) {
   const { user, profile, organization, loading, authReady, profileReady } = useAuth();
@@ -163,18 +155,15 @@ export default function RootWrapper({ children }: { children: React.ReactNode })
   }, [user, profile, organization, loading, currentPath, hasAuthResolved]);
 
   // Still loading auth
-  if (loading || !authReady || !profileReady) return <Spinner />;
+  if (loading || !authReady || !profileReady) return <BootScreen />;
 
   // Blocking initial sync screen
   if (isInitialSyncing) {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0f1628' }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ width: 48, height: 48, border: '3px solid #4472c4', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 1rem' }} />
-          <p style={{ color: '#fff', fontSize: '1rem', fontWeight: 500 }}>{syncProgressText}</p>
-          <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.8rem', marginTop: '0.5rem' }}>Setting up your local environment</p>
-        </div>
-      </div>
+      <BootScreen
+        label={syncProgressText}
+        detail="Setting up your local environment"
+      />
     );
   }
 
@@ -186,7 +175,7 @@ export default function RootWrapper({ children }: { children: React.ReactNode })
     currentPath === '/signup' ||
     currentPath === '/onboarding'
   );
-  if (willRedirect) return <Spinner />;
+  if (willRedirect) return <BootScreen label="Taking you to your workspace…" />;
 
   // Unauthenticated on a protected route — return null while redirect fires
   if (!user && !isPublic) return null;

@@ -1,16 +1,10 @@
-'use client';
-import RequireRole from '@/components/RequireRole';
-import ReceptionPage from '@/components/ReceptionPage';
+import type { Metadata } from 'next';
 
-function LegacyReceptionPage() {
-  return <ReceptionPage />;
-}
+import LegacyRouteRedirect from '@/components/LegacyRouteRedirect';
 
-/** Only these roles may open this screen — see components/RequireRole.tsx. */
-export default function GuardedLegacyReceptionPage(props: any) {
-  return (
-    <RequireRole allow={['admin', 'reception']}>
-      <LegacyReceptionPage {...props} />
-    </RequireRole>
-  );
+export const metadata: Metadata = { title: 'Reception' };
+
+/** Kept only so an old bookmark still lands somewhere — see the component. */
+export default function LegacyReceptionPage() {
+  return <LegacyRouteRedirect path="/reception" message="Taking you to Reception…" />;
 }

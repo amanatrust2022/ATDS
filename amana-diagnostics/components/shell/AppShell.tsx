@@ -16,6 +16,7 @@ import { Button, useAppearance } from '@/components/ui';
 import { activeEntry, crumbsFor, navFor, homePathFor } from './navigation';
 import type { NavEntry } from './navigation';
 import { CommandPalette, useCommandPaletteHotkey } from './CommandPalette';
+import { useShellSlotValue } from './ShellSlot';
 import { SyncStatus } from './SyncStatus';
 import type { Command } from './CommandPalette';
 import styles from './Shell.module.css';
@@ -79,14 +80,25 @@ export interface AppShellProps {
 export function AppShell({
   children,
   title,
-  subtitle,
-  actions,
-  patient,
-  commands = [],
-  onCommandQueryChange,
-  commandsLoading,
-  flush = false,
+  subtitle: subtitleProp,
+  actions: actionsProp,
+  patient: patientProp,
+  commands: commandsProp,
+  onCommandQueryChange: onCommandQueryChangeProp,
+  commandsLoading: commandsLoadingProp,
+  flush: flushProp,
 }: AppShellProps) {
+  // The shell sits in the layout now, above the screen it is framing, so most
+  // of what used to arrive as props arrives from the screen through the slot.
+  // Props still win where one is given — the admin layout passes a title for
+  // the no-access screen, which is not a nav entry at all.
+  const slot = useShellSlotValue();
+  const subtitle = subtitleProp ?? slot.subtitle;
+  const actions = actionsProp ?? slot.actions;
+  const patient = patientProp ?? slot.patient;
+  const commands = commandsProp ?? slot.commands ?? [];
+  const onCommandQueryChange = onCommandQueryChangeProp ?? slot.onCommandQueryChange;
+  const commandsLoading = commandsLoadingProp ?? slot.commandsLoading;
   const { profile, organization, signOut } = useAuth();
   const { theme, setTheme } = useAppearance();
   const router = useRouter();
@@ -188,6 +200,14 @@ export function AppShell({
   }, [entries]);
 
   const heading = title ?? current?.label ?? 'Workspace';
+
+  // Whether a screen runs its content edge to edge is a property of the route,
+  // recorded in the nav table, so it survives the shell moving above the page.
+  const flush = flushProp ?? current?.flush ?? false;
+
+  // Every screen was passing the workspace name as its subtitle. It is the
+  // same name on all of them, and the shell already knows it.
+  const headerSub = subtitle ?? organization?.name;
 
   return (
     <div className={styles['shell']}>
@@ -297,7 +317,7 @@ export function AppShell({
               </nav>
             )}
             <h1 className={styles['headerHeading']}>{heading}</h1>
-            {subtitle && <p className={styles['headerSub']}>{subtitle}</p>}
+            {headerSub && <p className={styles['headerSub']}>{headerSub}</p>}
           </div>
 
           <div className={styles['headerTools']}>

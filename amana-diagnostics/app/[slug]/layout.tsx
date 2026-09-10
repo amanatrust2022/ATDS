@@ -1,22 +1,11 @@
-'use client';
-import { useAuth } from '@/components/AuthProvider';
-import { useParams, useRouter } from 'next/navigation';
-import { useEffect } from 'react';
+import WorkspaceFrame from './WorkspaceFrame';
 
+/**
+ * A server component, so the workspace subtree has a static shell that renders
+ * before any of its JavaScript arrives, and so each screen below can name
+ * itself in the browser tab. Every route in the product used to carry the same
+ * title, which made the back button and a row of pinned tabs useless.
+ */
 export default function SlugLayout({ children }: { children: React.ReactNode }) {
-  const { organization, loading } = useAuth();
-  const params = useParams();
-  const slug = params?.slug as string;
-  const router = useRouter();
-
-  useEffect(() => {
-    if (loading) return;
-    if (!organization) return; // RootWrapper handles this redirect
-    if (organization.slug !== slug) {
-      router.replace(`/${organization.slug}/reception`);
-    }
-  }, [organization, loading, slug]);
-
-  // Don't render a blank page — let RootWrapper handle loading state
-  return <>{children}</>;
+  return <WorkspaceFrame>{children}</WorkspaceFrame>;
 }

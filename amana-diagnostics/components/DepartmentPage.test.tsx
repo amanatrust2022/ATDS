@@ -27,18 +27,6 @@ import type { Patient, PatientTest, Test } from '@/lib/store';
 let authState: any;
 vi.mock('@/components/AuthProvider', () => ({ useAuth: () => authState }));
 
-// The page renders inside AppShell now rather than the old Header. AppShell
-// needs the app router, which jsdom has no mount for, so it is stubbed down to
-// the parts these tests assert on: the title and the subtitle.
-vi.mock('@/components/shell', () => ({
-  AppShell: ({ title, subtitle, children }: any) => (
-    <div data-testid="shell">
-      <span>{title}</span><span>{subtitle}</span>
-      {children}
-    </div>
-  ),
-}));
-
 vi.mock('@/components/TemplateManager', () => ({
   default: ({ isOpen }: any) => (isOpen ? <div data-testid="template-manager" /> : null),
 }));
@@ -208,9 +196,11 @@ describe('Department queue', () => {
     expect(screen.getByText('In Progress')).toBeDefined();
   });
 
-  it('titles the page for the department and offers template management only to radiology', async () => {
+  // The heading is no longer this component's to render. The shell sits in
+  // app/[slug]/layout.tsx and takes it from the nav table, so what is asserted
+  // here is what the screen itself still says about which department it is.
+  it('names the department it is showing, and offers template management only to radiology', async () => {
     const lab = await renderPage('lab');
-    expect(screen.getByText('Laboratory')).toBeDefined();
     expect(screen.getByText('Pending Lab Requests')).toBeDefined();
     expect(screen.queryByText(/Manage Templates/)).toBeNull();
     expect(screen.getByText(/Manage Tests/)).toBeDefined();
@@ -218,7 +208,6 @@ describe('Department queue', () => {
 
     fetchPatients.mockResolvedValue([]);
     await renderPage('radiology');
-    expect(screen.getByText('Radiology')).toBeDefined();
     expect(screen.getByText('Pending Radiology Requests')).toBeDefined();
     expect(screen.getByText(/Manage Templates/)).toBeDefined();
   });

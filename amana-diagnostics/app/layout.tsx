@@ -38,7 +38,13 @@ const plexSerif = IBM_Plex_Serif({
 })
 
 export const metadata: Metadata = {
-  title: 'DiagnosticOS — Diagnostic Centre Management',
+  // The template gives every screen its own tab. Before this, thirty routes
+  // shared one title, so a row of pinned tabs and the whole back-button history
+  // read 'DiagnosticOS — Diagnostic Centre Management' over and over.
+  title: {
+    default: 'DiagnosticOS — Diagnostic Centre Management',
+    template: '%s · DiagnosticOS',
+  },
   description: 'Cloud-based LIS for diagnostic centres. Reception, Lab, Radiology, and Results — all in one platform.',
   manifest: '/manifest.json',
 }

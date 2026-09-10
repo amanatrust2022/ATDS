@@ -3,7 +3,7 @@
 Measured against the nine-phase plan. Counts come from `npm run check:ui`, not
 from memory.
 
-Last updated: 10 September 2026 (reception migrated).
+Last updated: 10 September 2026 (shell hoisted into the layout, route shells split).
 
 ---
 
@@ -18,7 +18,7 @@ Last updated: 10 September 2026 (reception migrated).
 | P4 | WCAG 2.1 AA | **Floor in place. Screen-by-screen sweep outstanding.** |
 | P5 | Clinical safety | **Done** |
 | P6 | Responsive, density, dark | **Shipped for shell and new screens. Legacy screens outstanding.** |
-| P7 | Performance | **Started.** Error boundaries and code-splitting done; server components outstanding. |
+| P7 | Performance | **Started.** Error boundaries, code-splitting, the shell in the layout and server route shells done; server-side *data* outstanding. |
 | P8 | Brand and patient surfaces | **Sign-in done. Portal outstanding.** |
 
 ---
@@ -29,10 +29,10 @@ Last updated: 10 September 2026 (reception migrated).
 
 | Metric | Start | Now |
 | --- | --- | --- |
-| Inline `style={{…}}` objects | 2,100 | 1,755 |
-| Hard-coded hex colours | 832 | 762 |
-| Hard-coded `rgb()`/`rgba()` | 470 | 409 |
-| Legacy `--gray-*` / `--teal-*` uses | 1,122 | 904 |
+| Inline `style={{…}}` objects | 2,100 | 1,744 |
+| Hard-coded hex colours | 832 | 754 |
+| Hard-coded `rgb()`/`rgba()` | 470 | 407 |
+| Legacy `--gray-*` / `--teal-*` uses | 1,122 | 902 |
 | JS hover handlers | 42 | 34 |
 | Inline `outline: 'none'` | 48 | **0** |
 | `!important` in components | 23 | 22 |
@@ -66,9 +66,18 @@ That sweep turned up a leak rather than a cosmetic problem: a clinic with no
 admin email on file had its catalogue changes, staff names and workspace link
 mailed to a hard-coded third-party gmail address.
 
-**Navigation exists.** One role-filtered rail, breadcrumbs, a patient context
-bar and a command palette, replacing a back arrow, an avatar dropdown and a
-second dark sidebar that only the admin area had.
+**Navigation exists, and it stays put.** One role-filtered rail, breadcrumbs, a
+patient context bar and a command palette, replacing a back arrow, an avatar
+dropdown and a second dark sidebar that only the admin area had. It is mounted
+once in `app/[slug]/layout.tsx`, so a navigation swaps the panel and nothing
+else. It used to be rendered by each screen and rebuilt from scratch on every
+move, which is why every navigation blanked the window, restarted the clock and
+re-read the rail's collapsed state out of localStorage.
+
+**Every route has a server shell and its own name.** `page.tsx` is a server
+component rendering one client screen beside it, and each one exports
+`metadata`. Thirty routes used to share a single browser-tab title, which made
+the back button and a row of pinned tabs unreadable.
 
 **Results are flagged against their own reference range** as they are typed,
 with critical values as a separate tier carrying a release interlock. The range
@@ -83,9 +92,12 @@ done; the admin screens and the department entry forms carry most of the rest.
 They work, they are theme-aware through the legacy bridge, and they do not yet
 use the component library. This is the bulk of the remaining effort.
 
-**Server components.** All 29 routes are still `'use client'`, so every
-navigation starts from a blank page and a spinner. This is the single change
-that would most improve how fast the product feels, and none of it is done.
+**Server-side data.** The route shells are server components, but they render a
+frame, not content: auth is a Supabase session in the browser, and every screen
+still loads its own data from a client effect. Getting the session onto the
+server is what unlocks the rest, and none of that is done. The honest claim
+today is that the route boundary is server-rendered and each screen is a
+separate client island.
 
 **The patient portal.** Still its own style island with its own blue, its own
 focus rules and no dark theme. Its tenant name and contact details are correct
@@ -109,7 +121,8 @@ default panic thresholds in code. That belongs with the test catalogue screen.
    was never exercised; the tests assert the wiring, not the round trip to the
    database. Open an account, deposit, log a charge, link and unlink a
    dependant, reverse a transaction, print a statement.
-2. **Move the route shells to server components**, starting with the department
-   screens, and put content-shaped skeletons behind them.
+2. **Walk every workspace screen once**, now that the shell is above them rather
+   than inside them. No test would notice a screen that lost its padding, gained
+   a second scrollbar, or now sits under a heading it did not choose.
 3. **Rebuild the portal on the system**, with tenant branding threaded through
    to the screen, the print view and the PDF.

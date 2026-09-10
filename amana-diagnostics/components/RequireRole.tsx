@@ -1,6 +1,7 @@
 'use client';
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { LoadingPanel } from '@/components/ui';
 import { useAuth } from '@/components/AuthProvider';
 import type { Profile } from '@/components/AuthProvider';
 
@@ -62,14 +63,12 @@ export function landingFor(role: Role | undefined, slug: string | undefined): st
   return `/${slug}/reception`;
 }
 
+/**
+ * The shell is above this now, so a screen waiting on its role check keeps the
+ * rail, the header and the breadcrumbs. This used to paint a full-height
+ * gradient over all of it in three hard-coded hex colours that had no dark
+ * counterpart, so on a dark theme it flashed a white page between screens.
+ */
 function Waiting({ message }: { message: string }) {
-  return (
-    <div style={{
-      minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
-      background: 'linear-gradient(180deg, #f5fbfa 0%, #f7f8fb 38%, #eef4f4 100%)',
-      color: 'var(--gray-500)', fontSize: '0.85rem',
-    }}>
-      {message}
-    </div>
-  );
+  return <LoadingPanel label={message} />;
 }

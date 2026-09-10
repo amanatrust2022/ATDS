@@ -1,7 +1,6 @@
 'use client';
 
 import { useAuth } from '@/components/AuthProvider';
-import { AppShell } from '@/components/shell';
 import { EmptyState } from '@/components/ui';
 
 /**
@@ -11,23 +10,22 @@ import { EmptyState } from '@/components/ui';
  * from here. That was the app's third navigation system, after the header's
  * back arrow and the avatar dropdown.
  *
- * It is all one rail now, in AppShell, driven by components/shell/navigation.ts.
- * Admin sections and departments sit in the same list, filtered by role, so
- * nothing needs a switcher.
+ * It is all one rail now, mounted once in app/[slug]/layout.tsx and driven by
+ * components/shell/navigation.ts. What is left here is the access check —
+ * belt to the braces of RequireRole on each screen, and of row-level security
+ * in the database, which is the only one of the three that actually holds.
  */
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const { profile } = useAuth();
 
   if (profile?.role !== 'admin') {
     return (
-      <AppShell title="Administration">
-        <EmptyState title="You do not have access to this area">
-          Administration is limited to workspace administrators. If you need something
-          from here, ask an administrator at your centre.
-        </EmptyState>
-      </AppShell>
+      <EmptyState title="You do not have access to this area">
+        Administration is limited to workspace administrators. If you need something
+        from here, ask an administrator at your centre.
+      </EmptyState>
     );
   }
 
-  return <AppShell>{children}</AppShell>;
+  return <>{children}</>;
 }

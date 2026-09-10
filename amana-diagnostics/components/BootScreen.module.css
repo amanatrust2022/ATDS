@@ -1,0 +1,37 @@
+/*
+ * The one screen that renders before the shell exists.
+ *
+ * It was two copies of a hand-rolled spinner in RootWrapper, both in hard-coded
+ * hex — a navy panel with a blue ring — so on a light theme the app opened dark
+ * and then flashed white. Tokens make it follow the theme the user chose, which
+ * the boot script has already set on <html> by the time this paints.
+ */
+.screen {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-page);
+  padding: var(--space-6);
+}
+
+.inner {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.label {
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  margin: 0;
+}
+
+.detail {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  margin: 0;
+}

@@ -1,13 +1,15 @@
-'use client';
+import type { Metadata } from 'next';
+
 import RequireRole from '@/components/RequireRole';
 import DepartmentPage from '@/components/DepartmentPage';
-function RadiologyPage() { return <DepartmentPage department="radiology" />; }
+
+export const metadata: Metadata = { title: 'Radiology' };
 
 /** Only these roles may open this screen — see components/RequireRole.tsx. */
-export default function GuardedRadiologyPage(props: any) {
+export default function Page() {
   return (
     <RequireRole allow={['admin', 'radiology']}>
-      <RadiologyPage {...props} />
+      <DepartmentPage department="radiology" />
     </RequireRole>
   );
 }

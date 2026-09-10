@@ -1,16 +1,10 @@
-'use client';
-import RequireRole from '@/components/RequireRole';
-import DepartmentPage from '@/components/DepartmentPage';
+import type { Metadata } from 'next';
 
-function LabPage() {
-  return <DepartmentPage department="lab" />;
-}
+import LegacyRouteRedirect from '@/components/LegacyRouteRedirect';
 
-/** Only these roles may open this screen — see components/RequireRole.tsx. */
-export default function GuardedLabPage(props: any) {
-  return (
-    <RequireRole allow={['admin', 'lab', 'lab_tech']}>
-      <LabPage {...props} />
-    </RequireRole>
-  );
+export const metadata: Metadata = { title: 'Laboratory' };
+
+/** Kept only so an old bookmark still lands somewhere — see the component. */
+export default function LegacyLaboratoryPage() {
+  return <LegacyRouteRedirect path="/lab" message="Taking you to Laboratory…" />;
 }

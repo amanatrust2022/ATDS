@@ -1,7 +1,8 @@
-'use client';
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { useAuth } from '@/components/AuthProvider';
+import type { Metadata } from 'next';
+
+import LegacyRouteRedirect from '@/components/LegacyRouteRedirect';
+
+export const metadata: Metadata = { title: 'Staff' };
 
 /**
  * The old, workspace-less staff screen.
@@ -14,23 +15,8 @@ import { useAuth } from '@/components/AuthProvider';
  * invitations, and its own access check let *reception* manage staff.
  *
  * Nothing links here. Rather than keep two implementations of one job in step,
- * this now sends people to the real screen.
+ * this sends people to the real screen.
  */
-export default function LegacyStaffRedirect() {
-  const { organization, loading, profileReady } = useAuth();
-  const router = useRouter();
-
-  useEffect(() => {
-    if (loading || !profileReady) return;
-    router.replace(organization?.slug ? `/${organization.slug}/admin/staff` : '/');
-  }, [loading, profileReady, organization?.slug, router]);
-
-  return (
-    <div style={{
-      minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
-      color: 'var(--gray-500)', fontSize: '0.85rem',
-    }}>
-      Taking you to staff management…
-    </div>
-  );
+export default function LegacyStaffPage() {
+  return <LegacyRouteRedirect path="/admin/staff" message="Taking you to staff management…" />;
 }
