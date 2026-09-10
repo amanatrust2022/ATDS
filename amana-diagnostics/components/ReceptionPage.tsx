@@ -8,7 +8,7 @@ import {
   RiSearchLine, RiWalletLine, RiFolderUserLine,
 } from '@remixicon/react';
 import { AppShell } from '@/components/shell';
-import { Tabs } from '@/components/ui';
+import { ErrorBoundary, Tabs } from '@/components/ui';
 import RegistrationTab from './features/registration/RegistrationTab';
 import WalletTab from './features/wallet/WalletTab';
 import { QueueTab } from './features/queue/QueueTab';
@@ -618,7 +618,8 @@ export default function ReceptionPage() {
 
         {/* ===== REGISTER TAB ===== */}
         {tab === 'register' && (
-          <RegistrationTab 
+          <ErrorBoundary area="registration form">
+            <RegistrationTab 
             patients={patients}
             patientProfiles={patientProfiles}
             doctors={doctors}
@@ -632,27 +633,33 @@ export default function ReceptionPage() {
             setShowSlipModal={setShowSlipModal}
             onRegistered={p => setPatients(prev => [p, ...prev])}
           />
+          </ErrorBoundary>
         )}
 
         {/* ===== QUEUE TAB ===== */}
         {tab === 'queue' && (
-          <QueueTab
+          <ErrorBoundary area="patient queue">
+            <QueueTab
             patients={patients}
             onViewSlip={(p: any) => setShowSlipModal(p)}
             onViewResult={(p: any) => setShowResultModal(p)}
           />
+          </ErrorBoundary>
         )}
         
         {/* ===== RESULTS TAB ===== */}
         {tab === 'results' && (
-          <ResultsTab
+          <ErrorBoundary area="results list">
+            <ResultsTab
             patients={patients}
             onViewSlip={(p: any) => setShowSlipModal(p)}
             onViewResult={(p: any) => setShowResultModal(p)}
           />
+          </ErrorBoundary>
         )}
 
         {tab === 'wallet' && (
+          <ErrorBoundary area="patient wallet">
           <div>
             {/* Main Action Hub Card */}
             <div style={{ background: 'white', border: '1px solid var(--gray-200)', borderRadius: 'var(--radius-lg)', padding: '1.5rem', boxShadow: '0 4px 15px rgba(0,0,0,0.05)' }}>
@@ -761,6 +768,7 @@ export default function ReceptionPage() {
               </div>
             </div>
           </div>
+          </ErrorBoundary>
         )}
       </div>
 

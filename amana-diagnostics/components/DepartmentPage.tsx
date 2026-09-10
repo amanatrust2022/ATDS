@@ -1,6 +1,8 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import dynamic from 'next/dynamic';
 import { AppShell } from '@/components/shell';
+import { ErrorBoundary, LoadingPanel } from '@/components/ui';
 import { Department, Patient, PatientTest, getTestById, fetchPatients, updateTestResult, subscribeToPatients, fetchCustomTemplates, RadiologyTemplate, fetchCustomTests, setCustomCatalogueCache } from '@/lib/store';
 import { RiTestTubeLine, RiRadarLine, RiCheckLine, RiSettings3Line } from '@remixicon/react';
 import { useAuth } from '@/components/AuthProvider';
@@ -12,8 +14,12 @@ import { CriticalValueDialog } from '@/components/features/department/CriticalVa
 import { departmentTheme } from '@/components/features/department/theme';
 import { normaliseSex } from '@/lib/clinical/referenceRange';
 import { useNewTestAlerts } from '@/components/features/department/useNewTestAlerts';
-import TemplateManager from '@/components/TemplateManager';
-import TestManager from '@/components/TestManager';
+const TemplateManager = dynamic(() => import('@/components/TemplateManager'), {
+  loading: () => <LoadingPanel label="Opening templates…" />,
+});
+const TestManager = dynamic(() => import('@/components/TestManager'), {
+  loading: () => <LoadingPanel label="Opening the test catalogue…" />,
+});
 import WidalEntryForm from '@/components/features/department/WidalEntryForm';
 import MpsEntryForm from '@/components/features/department/MpsEntryForm';
 import McsEntryForm from '@/components/features/department/McsEntryForm';
