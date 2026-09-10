@@ -1,0 +1,79 @@
+/* One visit's report.
+ *
+ * Everything on this screen is chrome around one thing: the clinic's own
+ * document, rendered by the same template the bench prints from. So the page
+ * stays quiet and gives the document the width.
+ */
+
+.intro {
+  margin-bottom: var(--space-5);
+}
+
+.heading {
+  font-family: var(--font-display);
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-tight);
+  color: var(--text-primary);
+  text-wrap: balance;
+  margin: 0 0 var(--space-2);
+}
+
+.meta {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.note {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  margin: 0 0 var(--space-4);
+  max-width: 70ch;
+}
+
+/* The document sits on a sunken ground so the white page reads as paper in
+ * light mode and as a lit page in dark mode, rather than as the page itself. */
+.document {
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  overflow-x: auto;
+}
+
+.frame {
+  display: block;
+  width: 100%;
+  /* A printed report is A4-width; below that the frame's own content scrolls
+   * horizontally inside .document rather than squashing the layout. */
+  min-width: 640px;
+  border: 0;
+  background: #ffffff;
+  box-shadow: var(--shadow-sm);
+}
+
+@media (max-width: 640px) {
+  .document {
+    padding: var(--space-2);
+  }
+}
+
+@media print {
+  .intro,
+  .note {
+    display: none;
+  }
+
+  .document {
+    background: none;
+    border: 0;
+    padding: 0;
+    overflow: visible;
+  }
+
+  .frame {
+    min-width: 0;
+    box-shadow: none;
+  }
+}

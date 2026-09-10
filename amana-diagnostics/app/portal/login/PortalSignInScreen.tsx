@@ -1,25 +1,34 @@
 'use client';
+
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import AmanaLogo from '@/components/AmanaLogo';
-import { SUPPORT_EMAIL } from '@/lib/branding';
 
-export default function PortalLoginPage() {
+import { Alert, Button, Field, Input } from '@/components/ui';
+import { SUPPORT_EMAIL } from '@/lib/branding';
+import { startPortalSession } from '@/lib/portalSession';
+
+import styles from './login.module.css';
+
+/**
+ * The one portal screen that runs before anyone knows which clinic the visitor
+ * belongs to — the email address is what identifies them, and it has not been
+ * typed yet. So this screen carries no tenant branding at all, where it used
+ * to show one particular clinic's logo to every patient of every clinic.
+ */
+export default function PortalSignInScreen() {
   const router = useRouter();
-  const [step, setStep] = useState<'email' | 'otp'>('email');
+  const [step, setStep] = useState<'email' | 'code'>('email');
   const [email, setEmail] = useState('');
-  const [otp, setOtp] = useState('');
+  const [code, setCode] = useState('');
   const [otpState, setOtpState] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [info, setInfo] = useState('');
+  const [sent, setSent] = useState(false);
 
-  async function handleSendOtp(e: React.FormEvent) {
-    e.preventDefault();
+  async function sendCode() {
     setLoading(true);
     setError('');
-    setInfo('');
-
+    setSent(false);
     try {
       const res = await fetch('/api/portal/otp', {
         method: 'POST',
@@ -27,12 +36,11 @@ export default function PortalLoginPage() {
         body: JSON.stringify({ email: email.trim() }),
       });
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'We could not send a code to that address.');
 
-      if (!res.ok) throw new Error(data.error || 'Failed to send code');
-
-      setStep('otp');
+      setStep('code');
       setOtpState(data.state || '');
-      setInfo('A 6-digit verification code has been sent to your email.');
+      setSent(true);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -40,25 +48,19 @@ export default function PortalLoginPage() {
     }
   }
 
-  async function handleVerifyOtp(e: React.FormEvent) {
-    e.preventDefault();
+  async function verifyCode() {
     setLoading(true);
     setError('');
-
     try {
       const res = await fetch('/api/portal/otp', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim(), otp: otp.trim(), state: otpState }),
+        body: JSON.stringify({ email: email.trim(), otp: code.trim(), state: otpState }),
       });
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'That code did not match. Check it and try again.');
 
-      if (!res.ok) throw new Error(data.error || 'Verification failed');
-
-      // Store session token
-      localStorage.setItem('portal_token', data.token);
-      localStorage.setItem('portal_email', data.email);
-
+      startPortalSession(data.token, data.email);
       router.push('/portal/dashboard');
     } catch (err: any) {
       setError(err.message);
@@ -68,320 +70,149 @@ export default function PortalLoginPage() {
   }
 
   return (
-    <div style={styles.bg}>
-      {/* Background decorative elements */}
-      <div style={styles.bgCircle1} />
-      <div style={styles.bgCircle2} />
-
-      <div style={styles.card}>
-        {/* Logo / Branding */}
-        <div style={styles.logoArea}>
-          <div style={styles.logoIcon}>
-            <AmanaLogo size={36} inverted={true} />
-          </div>
-          <div>
-            <h1 style={styles.orgName}>Patient Portal</h1>
-            <p style={styles.portalLabel}>Patient Portal</p>
-          </div>
+    <div className={styles['page']}>
+      <div className={styles['card']}>
+        <div className={styles['brand']}>
+          <span className={styles['mark']} aria-hidden="true">
+            {/* An envelope: what this screen does is send you something. */}
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="5" width="18" height="14" rx="2" />
+              <path d="m3 7 9 6 9-6" />
+            </svg>
+          </span>
+          <span className={styles['brandText']}>Patient portal</span>
         </div>
 
         {step === 'email' ? (
-          <form onSubmit={handleSendOtp} style={styles.form}>
-            <h2 style={styles.heading}>Sign In to Your Portal</h2>
-            <p style={styles.subheading}>
-              Enter the email address you used when registering at our clinic. We'll send you a secure verification code.
-            </p>
-
-            <div style={styles.fieldGroup}>
-              <label style={styles.label} htmlFor="portal-email">Email Address</label>
-              <input
-                id="portal-email"
-                type="email"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                placeholder="your@email.com"
-                required
-                style={styles.input}
-                autoComplete="email"
-              />
+          <form
+            className={styles['form']}
+            onSubmit={(e) => {
+              e.preventDefault();
+              void sendCode();
+            }}
+            noValidate
+          >
+            <div>
+              <h1 className={styles['heading']}>See your results</h1>
+              <p className={styles['sub']}>
+                Enter the email address you gave your clinic. We will send a six-digit code
+                to it — there is no password to remember.
+              </p>
             </div>
 
-            {error && <div style={styles.errorBox}>{error}</div>}
+            {error && (
+              <Alert tone="critical" live>
+                {error}
+              </Alert>
+            )}
 
-            <button
+            <Field label="Email address">
+              <Input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                autoComplete="email"
+                required
+              />
+            </Field>
+
+            <Button
               type="submit"
-              disabled={loading || !email.trim()}
-              style={{ ...styles.btn, opacity: loading || !email.trim() ? 0.7 : 1 }}
+              intent="primary"
+              size="lg"
+              fullWidth
+              loading={loading}
+              disabled={!email.trim()}
             >
-              {loading ? 'Sending Code…' : 'Send Verification Code →'}
-            </button>
-
-            <p style={styles.footerNote}>
-              This portal is for viewing your diagnostic results and medical history only.
-            </p>
+              Send me a code
+            </Button>
           </form>
         ) : (
-          <form onSubmit={handleVerifyOtp} style={styles.form}>
-            <h2 style={styles.heading}>Enter Verification Code</h2>
-            <p style={styles.subheading}>
-              We sent a 6-digit code to <strong>{email}</strong>. It expires in 10 minutes.
-            </p>
+          <form
+            className={styles['form']}
+            onSubmit={(e) => {
+              e.preventDefault();
+              void verifyCode();
+            }}
+            noValidate
+          >
+            <div>
+              <h1 className={styles['heading']}>Check your email</h1>
+              <p className={styles['sub']}>
+                We sent a six-digit code to <strong>{email}</strong>. It expires in ten
+                minutes.
+              </p>
+            </div>
 
-            {info && <div style={styles.infoBox}>{info}</div>}
+            {sent && !error && (
+              <Alert tone="success" live>
+                Code sent. It may take a minute to arrive — check your spam folder if it
+                does not.
+              </Alert>
+            )}
 
-            <div style={styles.fieldGroup}>
-              <label style={styles.label} htmlFor="portal-otp">6-Digit Code</label>
-              <input
-                id="portal-otp"
+            {error && (
+              <Alert tone="critical" live>
+                {error}
+              </Alert>
+            )}
+
+            <Field label="Six-digit code">
+              <Input
+                className={styles['code']}
                 type="text"
                 inputMode="numeric"
                 pattern="[0-9]{6}"
                 maxLength={6}
-                value={otp}
-                onChange={e => setOtp(e.target.value.replace(/\D/g, ''))}
+                value={code}
+                onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
                 placeholder="000000"
-                required
-                style={{ ...styles.input, ...styles.otpInput }}
                 autoComplete="one-time-code"
                 autoFocus
+                required
               />
-            </div>
+            </Field>
 
-            {error && <div style={styles.errorBox}>{error}</div>}
-
-            <button
+            <Button
               type="submit"
-              disabled={loading || otp.length !== 6}
-              style={{ ...styles.btn, opacity: loading || otp.length !== 6 ? 0.7 : 1 }}
+              intent="primary"
+              size="lg"
+              fullWidth
+              loading={loading}
+              disabled={code.length !== 6}
             >
-              {loading ? 'Verifying…' : 'Access My Portal →'}
-            </button>
+              Sign in
+            </Button>
 
-            <button
-              type="button"
-              onClick={() => { setStep('email'); setOtp(''); setOtpState(''); setError(''); }}
-              style={styles.backBtn}
-            >
-              ← Use a different email
-            </button>
-
-            <button
-              type="button"
-              onClick={() => { setOtp(''); handleSendOtp({ preventDefault: () => {} } as any); }}
-              style={styles.resendBtn}
-              disabled={loading}
-            >
-              Resend code
-            </button>
+            <div className={styles['alternatives']}>
+              <Button
+                intent="link"
+                size="sm"
+                onClick={() => {
+                  setStep('email');
+                  setCode('');
+                  setOtpState('');
+                  setError('');
+                  setSent(false);
+                }}
+              >
+                Use a different email
+              </Button>
+              <Button intent="link" size="sm" disabled={loading} onClick={() => { setCode(''); void sendCode(); }}>
+                Send a new code
+              </Button>
+            </div>
           </form>
         )}
       </div>
 
-      <p style={styles.bottomNote}>
-        Need help? Contact us at{' '}
-        <a href="mailto:{SUPPORT_EMAIL}" style={styles.link}>{SUPPORT_EMAIL}</a>
+      <p className={styles['help']}>
+        {/* This read `mailto:{SUPPORT_EMAIL}` — a literal in the href, not the
+          * constant — so the one link a stuck patient had opened a mail
+          * composer addressed to nobody. */}
+        Stuck? Write to <a className={styles['link']} href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>
       </p>
     </div>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  bg: {
-    minHeight: '100vh',
-    background: 'linear-gradient(135deg, #0a1628 0%, #0c2347 50%, #111d3b 100%)',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: '24px 16px',
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  bgCircle1: {
-    position: 'absolute',
-    top: '-120px',
-    right: '-120px',
-    width: '400px',
-    height: '400px',
-    borderRadius: '50%',
-    background: 'radial-gradient(circle, rgba(5, 99, 193, 0.25) 0%, transparent 70%)',
-    pointerEvents: 'none',
-  },
-  bgCircle2: {
-    position: 'absolute',
-    bottom: '-80px',
-    left: '-80px',
-    width: '300px',
-    height: '300px',
-    borderRadius: '50%',
-    background: 'radial-gradient(circle, rgba(201, 151, 58, 0.15) 0%, transparent 70%)',
-    pointerEvents: 'none',
-  },
-  card: {
-    background: 'rgba(255, 255, 255, 0.04)',
-    backdropFilter: 'blur(20px)',
-    WebkitBackdropFilter: 'blur(20px)',
-    border: '1px solid rgba(255, 255, 255, 0.12)',
-    borderRadius: '0px',
-    padding: '40px 36px',
-    width: '100%',
-    maxWidth: '460px',
-    boxShadow: '0 24px 64px rgba(0, 0, 0, 0.5)',
-    animation: 'fadeIn 0.4s ease forwards',
-  },
-  logoArea: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '12px',
-    marginBottom: '32px',
-    paddingBottom: '24px',
-    borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
-  },
-  logoIcon: {
-    flexShrink: 0,
-  },
-  orgName: {
-    color: '#ffffff',
-    fontSize: '15px',
-    fontWeight: '700',
-    fontFamily: '"Times New Roman", Times, serif',
-    margin: '0',
-    lineHeight: '1.2',
-  },
-  portalLabel: {
-    color: '#85a9eb',
-    fontSize: '11px',
-    fontFamily: '"IBM Plex Sans", sans-serif',
-    margin: '2px 0 0',
-    textTransform: 'uppercase',
-    letterSpacing: '1.5px',
-    fontWeight: '500',
-  },
-  form: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0',
-  },
-  heading: {
-    color: '#ffffff',
-    fontSize: '22px',
-    fontWeight: '700',
-    fontFamily: '"Times New Roman", Times, serif',
-    margin: '0 0 10px',
-  },
-  subheading: {
-    color: '#b0bcd4',
-    fontSize: '14px',
-    lineHeight: '1.6',
-    margin: '0 0 28px',
-    fontFamily: '"IBM Plex Sans", sans-serif',
-  },
-  fieldGroup: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '8px',
-    marginBottom: '20px',
-  },
-  label: {
-    color: '#85a9eb',
-    fontSize: '12px',
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: '0.8px',
-    fontFamily: '"IBM Plex Sans", sans-serif',
-  },
-  input: {
-    background: 'rgba(255, 255, 255, 0.07)',
-    border: '1px solid rgba(255, 255, 255, 0.15)',
-    borderRadius: '0px',
-    padding: '14px 16px',
-    color: '#ffffff',
-    fontSize: '15px',
-    fontFamily: '"IBM Plex Sans", sans-serif',
-     transition: 'border-color 0.2s',
-    width: '100%',
-  },
-  otpInput: {
-    fontSize: '28px',
-    letterSpacing: '14px',
-    textAlign: 'center',
-    fontFamily: '"IBM Plex Mono", monospace',
-    padding: '16px 16px',
-  },
-  errorBox: {
-    background: 'rgba(192, 57, 43, 0.15)',
-    border: '1px solid rgba(192, 57, 43, 0.4)',
-    color: '#f5b7b1',
-    padding: '12px 16px',
-    fontSize: '14px',
-    marginBottom: '16px',
-    fontFamily: '"IBM Plex Sans", sans-serif',
-    lineHeight: '1.5',
-  },
-  infoBox: {
-    background: 'rgba(30, 126, 90, 0.15)',
-    border: '1px solid rgba(30, 126, 90, 0.4)',
-    color: '#a9dfbf',
-    padding: '12px 16px',
-    fontSize: '14px',
-    marginBottom: '16px',
-    fontFamily: '"IBM Plex Sans", sans-serif',
-    lineHeight: '1.5',
-  },
-  btn: {
-    background: 'linear-gradient(135deg, #0563c1 0%, #1e7e5a 100%)',
-    color: '#ffffff',
-    border: 'none',
-    padding: '15px 24px',
-    fontSize: '15px',
-    fontWeight: '600',
-    cursor: 'pointer',
-    fontFamily: '"IBM Plex Sans", sans-serif',
-    letterSpacing: '0.3px',
-    transition: 'transform 0.15s, box-shadow 0.15s',
-    width: '100%',
-    marginBottom: '12px',
-  },
-  backBtn: {
-    background: 'transparent',
-    border: 'none',
-    color: '#85a9eb',
-    fontSize: '13px',
-    cursor: 'pointer',
-    fontFamily: '"IBM Plex Sans", sans-serif',
-    padding: '4px 0',
-    textDecoration: 'underline',
-    marginBottom: '8px',
-    textAlign: 'left',
-  },
-  resendBtn: {
-    background: 'transparent',
-    border: 'none',
-    color: '#85a9eb',
-    fontSize: '13px',
-    cursor: 'pointer',
-    fontFamily: '"IBM Plex Sans", sans-serif',
-    padding: '4px 0',
-    textDecoration: 'underline',
-    textAlign: 'left',
-  },
-  footerNote: {
-    color: '#6b7fa0',
-    fontSize: '12px',
-    marginTop: '4px',
-    fontFamily: '"IBM Plex Sans", sans-serif',
-    lineHeight: '1.5',
-    textAlign: 'center',
-  },
-  bottomNote: {
-    color: '#6b7fa0',
-    fontSize: '13px',
-    marginTop: '24px',
-    fontFamily: '"IBM Plex Sans", sans-serif',
-    textAlign: 'center',
-  },
-  link: {
-    color: '#85a9eb',
-    textDecoration: 'underline',
-  },
-};

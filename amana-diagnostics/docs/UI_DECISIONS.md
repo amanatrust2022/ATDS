@@ -469,3 +469,64 @@ A bare spinner is the honest answer in exactly one place — before the session
 resolves, when nothing is known and there is no shape to draw a skeleton of.
 Everywhere below the shell, `app/[slug]/loading.tsx` draws a toolbar over a
 table instead, because that is the shape of nearly every screen here.
+
+---
+
+## 27. The portal is one tenant's product, not one tenant's brand
+
+**Decision.** The three portal screens are rebuilt on the design system, and
+every trace of a specific clinic is gone from them. The header mark is now the
+clinic's own initials, drawn from the name the API returns.
+
+**Why.** `<AmanaLogo>` — one clinic's shield — was hard-coded into all three
+portal screens. This is the same defect as the eighteen hard-coded clinic names
+that decision #12 dealt with, and it survived that sweep because a logo is a
+component import rather than a string. Every clinic's patients were being shown
+another clinic's mark on the page where they collect their own medical results.
+
+**Initials, not a logo, because there is no logo.** `organizations` has `name`,
+`address`, `phone`, `email`, `letterhead_line2` and `letterhead_html`, and no
+logo column. A monogram in the accent colour is right for every tenant on day
+one and needs no upload flow. If a logo column is ever added, this is the single
+place that changes.
+
+**The report is the exception, and it was already correct.**
+`/api/portal/render` builds the document with `getResultTemplate`, which lays
+the results over the tenant's own `letterhead_html`. So the branding on the
+report — on screen, in print and in the PDF — is the clinic's real letterhead,
+and always was. The portal screen around it is chrome; it does not restate the
+letterhead, and it hides itself when printing.
+
+**What was dropped.** The report screen had a fallback that rendered the results
+as its own cards and tables when the render endpoint failed. That is a portal
+improvising a clinical document the clinic never signed — different layout, no
+letterhead, no signature block, no reference-range presentation the bench
+agreed. It now says the document did not load and offers a way to get it.
+
+**Also fixed on the way through, each of which was live:**
+
+- `<a href="mailto:{SUPPORT_EMAIL}">` — a literal in the attribute, not the
+  constant. The one link a stuck patient had opened a composer addressed to
+  nobody.
+- Visits opened from a `<div onClick>` with no `aria-expanded`, so a keyboard
+  or screen-reader user could not open one at all.
+- The portal layout injected a `<style>` block: a second `* { margin: 0 }` reset
+  that `globals.css` already does, a `body { background: #f4f6fb }` that
+  overrode the theme, an `input:focus` rule with `!important` fighting the
+  design system's focus ring, and a `button:hover { transform }` that lifted
+  every button in the component library by a pixel.
+- `RootWrapper` held `/portal` behind the staff Supabase auth check, so a
+  patient opening a link to their results sat through the staff boot screen
+  first. The portal has its own token and never needed that session.
+- Signing out cleared `portal_token` in two places and `portal_email` in one, so
+  a signed-out patient's address stayed on the machine. Both keys now go
+  through `lib/portalSession.ts`.
+- The report sat in a fixed-height iframe inside a scrolling page — two
+  scrollbars, and the reader had to find the right one. The frame now grows to
+  its document.
+
+**The portal follows the theme.** Unlike the staff sign-in screen (#20), which
+commits to one dark treatment because it is the product's front door, the portal
+is read on a patient's own phone, often at night. It takes the theme that phone
+asked for, which it can now do because every colour on it comes from the
+semantic token layer.

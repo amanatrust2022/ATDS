@@ -1,0 +1,166 @@
+/* The patient-facing frame.
+ *
+ * The portal used to be its own style island: a #0a1628 navy gradient, IBM
+ * Plex declared by name in every rule, and a `body { background: #f4f6fb }`
+ * injected from a <style> tag in the layout. It followed neither theme, so a
+ * patient with a dark phone got a white page, and none of its colours were
+ * checked against the contrast script. Everything below comes from the
+ * semantic token layer, which means the portal now follows the theme the
+ * patient's device asked for.
+ */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  background: var(--surface-page);
+}
+
+/* --- Header --- */
+
+.header {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky);
+  background: var(--surface-raised);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.headerInner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: var(--space-3) var(--space-5);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.brandText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.orgName {
+  font-family: var(--font-display);
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+  line-height: var(--leading-tight);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.eyebrow {
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* The tenant's mark: its initials, because there is no logo on file. */
+.mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  background: var(--accent-solid);
+  color: var(--accent-solid-text);
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-tight);
+}
+
+.markSm {
+  width: 28px;
+  height: 28px;
+  font-size: var(--text-2xs);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+/* --- Body --- */
+
+.main {
+  flex: 1;
+  width: 100%;
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-5) var(--space-10);
+}
+
+/* --- Footer --- */
+
+.footer {
+  border-top: 1px solid var(--border-subtle);
+  background: var(--surface-sunken);
+  padding: var(--space-6) var(--space-5);
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.contact {
+  color: var(--text-secondary);
+}
+
+.disclaimer {
+  max-width: 60ch;
+  margin: var(--space-2) auto 0;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  line-height: var(--leading-normal);
+  text-wrap: balance;
+}
+
+.link {
+  color: var(--text-link);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+@media (max-width: 640px) {
+  .headerInner {
+    padding: var(--space-3) var(--space-4);
+    gap: var(--space-3);
+  }
+
+  .main {
+    padding: var(--space-5) var(--space-4) var(--space-8);
+  }
+}
+
+/* On paper the header, the footer and every control are noise: the report
+ * itself carries the clinic's letterhead. */
+@media print {
+  .header,
+  .footer {
+    display: none;
+  }
+
+  .main {
+    max-width: none;
+    padding: 0;
+  }
+}

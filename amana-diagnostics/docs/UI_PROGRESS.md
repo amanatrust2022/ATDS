@@ -3,7 +3,7 @@
 Measured against the nine-phase plan. Counts come from `npm run check:ui`, not
 from memory.
 
-Last updated: 10 September 2026 (shell hoisted into the layout, route shells split).
+Last updated: 10 September 2026 (patient portal rebuilt on the design system).
 
 ---
 
@@ -19,7 +19,7 @@ Last updated: 10 September 2026 (shell hoisted into the layout, route shells spl
 | P5 | Clinical safety | **Done** |
 | P6 | Responsive, density, dark | **Shipped for shell and new screens. Legacy screens outstanding.** |
 | P7 | Performance | **Started.** Error boundaries, code-splitting, the shell in the layout and server route shells done; server-side *data* outstanding. |
-| P8 | Brand and patient surfaces | **Sign-in done. Portal outstanding.** |
+| P8 | Brand and patient surfaces | **Done.** Sign-in, and the portal rebuilt on the system. |
 
 ---
 
@@ -29,16 +29,16 @@ Last updated: 10 September 2026 (shell hoisted into the layout, route shells spl
 
 | Metric | Start | Now |
 | --- | --- | --- |
-| Inline `style={{…}}` objects | 2,100 | 1,744 |
-| Hard-coded hex colours | 832 | 754 |
-| Hard-coded `rgb()`/`rgba()` | 470 | 407 |
+| Inline `style={{…}}` objects | 2,100 | 1,735 |
+| Hard-coded hex colours | 832 | 621 |
+| Hard-coded `rgb()`/`rgba()` | 470 | 383 |
 | Legacy `--gray-*` / `--teal-*` uses | 1,122 | 902 |
 | JS hover handlers | 42 | 34 |
 | Inline `outline: 'none'` | 48 | **0** |
-| `!important` in components | 23 | 22 |
+| `!important` in components | 23 | 21 |
 | Hand-rolled overlays | 18 | 15 |
-| Raw `<table>` | 23 | 19 |
-| Hard-coded numeric `zIndex` | 46 | 41 |
+| Raw `<table>` | 23 | 18 |
+| Hard-coded numeric `zIndex` | 46 | 39 |
 
 The large numbers move when screens migrate, which is the bulk of P3 and is the
 work that remains. Every one of them can only go down: `npm run check:ui` fails
@@ -79,6 +79,14 @@ component rendering one client screen beside it, and each one exports
 `metadata`. Thirty routes used to share a single browser-tab title, which made
 the back button and a row of pinned tabs unreadable.
 
+**The patient portal is on the system.** All three screens rebuilt out of the
+component library and the token layer, so the portal follows the patient's
+theme instead of painting its own navy over it. Every trace of one particular
+clinic is gone from it: the header mark is the clinic's own initials, and the
+report itself is the clinic's real letterhead, because it is rendered by the
+same template the bench prints from. A visit now opens from a button with
+`aria-expanded` rather than a `<div onClick>` a keyboard could not reach.
+
 **Results are flagged against their own reference range** as they are typed,
 with critical values as a separate tier carrying a release interlock. The range
 had always been stored next to every parameter and nothing had ever read it.
@@ -87,7 +95,7 @@ had always been stored next to every parameter and nothing had ever read it.
 
 ## What is not done
 
-**The screen migration.** Around 1,750 inline style objects remain. Reception is
+**The screen migration.** Around 1,735 inline style objects remain. Reception is
 done; the admin screens and the department entry forms carry most of the rest.
 They work, they are theme-aware through the legacy bridge, and they do not yet
 use the component library. This is the bulk of the remaining effort.
@@ -98,10 +106,6 @@ still loads its own data from a client effect. Getting the session onto the
 server is what unlocks the rest, and none of that is done. The honest claim
 today is that the route boundary is server-rendered and each screen is a
 separate client island.
-
-**The patient portal.** Still its own style island with its own blue, its own
-focus rules and no dark theme. Its tenant name and contact details are correct
-now; its logo and accent are not yet threaded through.
 
 **A screen-by-screen accessibility sweep.** The primitives are clean and axe
 runs over them in CI, but the legacy screens have not been walked with the mouse
@@ -124,5 +128,6 @@ default panic thresholds in code. That belongs with the test catalogue screen.
 2. **Walk every workspace screen once**, now that the shell is above them rather
    than inside them. No test would notice a screen that lost its padding, gained
    a second scrollbar, or now sits under a heading it did not choose.
-3. **Rebuild the portal on the system**, with tenant branding threaded through
-   to the screen, the print view and the PDF.
+3. **Sit with the portal on a phone**, signed in as a real patient. The screens
+   are rebuilt but the round trip — code by email, visit list, report, print —
+   has only been exercised by tests and a build.

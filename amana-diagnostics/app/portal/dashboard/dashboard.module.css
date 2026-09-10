@@ -1,0 +1,151 @@
+/* A patient's visit history.
+ *
+ * The screen this replaces opened each visit from a <div onClick> — no
+ * keyboard, no aria-expanded — and drew its own status chips in six hex
+ * colours. Both are now the design system's.
+ */
+
+.intro {
+  margin-bottom: var(--space-6);
+}
+
+.heading {
+  font-family: var(--font-display);
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-tight);
+  color: var(--text-primary);
+  text-wrap: balance;
+  margin: 0 0 var(--space-2);
+}
+
+.sub {
+  font-size: var(--text-md);
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.visits {
+  list-style: none;
+  margin: var(--space-5) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.skeletonGap {
+  height: var(--space-3);
+}
+
+/* Clips the disclosure row’s hover fill to the card’s rounded corners. */
+.visitCard {
+  overflow: hidden;
+}
+
+/* --- The disclosure row --- */
+
+.visitButton {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  width: 100%;
+  padding: var(--space-4) var(--space-5);
+  background: none;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+
+.visitButton:hover {
+  background: var(--surface-hover);
+}
+
+.visitLead {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  margin-right: auto;
+}
+
+.visitDate {
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+}
+
+.visitMeta {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.chevron {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+/* --- The tests inside a visit --- */
+
+.tests {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.test {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.testName {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--text-md);
+  color: var(--text-primary);
+  min-width: 0;
+}
+
+.testDept {
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.visitAction {
+  margin-top: var(--space-4);
+}
+
+.pendingNote {
+  margin-top: var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  max-width: 60ch;
+}
+
+@media (max-width: 640px) {
+  .visitButton {
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    padding: var(--space-4);
+  }
+
+  .visitLead {
+    /* The pill and chevron drop to their own line below the date. */
+    flex: 1 0 100%;
+  }
+
+  .chevron {
+    margin-left: auto;
+  }
+}

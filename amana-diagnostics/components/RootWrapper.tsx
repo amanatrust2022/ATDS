@@ -154,6 +154,13 @@ export default function RootWrapper({ children }: { children: React.ReactNode })
     }
   }, [user, profile, organization, loading, currentPath, hasAuthResolved]);
 
+  // A patient on the portal has no staff session to wait for. The portal
+  // authenticates against its own emailed code, and the effects above already
+  // treat /portal as public — but every return below this point held it behind
+  // the Supabase auth check, so a patient opening a link to their results sat
+  // through the staff boot screen before the portal appeared.
+  if (currentPath.startsWith('/portal')) return <>{children}</>;
+
   // Still loading auth
   if (loading || !authReady || !profileReady) return <BootScreen />;
 
