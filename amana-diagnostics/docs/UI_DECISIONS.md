@@ -224,3 +224,113 @@ workspace link to an unrelated third party. It now sends nothing and logs.
 **Still open.** The portal pages below sign-in are tenant-aware for their name
 and contact details, but logo and accent are not yet threaded through. That is
 finished in the brand phase.
+
+---
+
+## 14. One navigation table, three consumers
+
+**Decision.** `components/shell/navigation.ts` is the single list of what each
+role can reach. The rail, the command palette, the breadcrumbs and the
+after-login redirect all derive from it.
+
+**Why.** The role-to-destination mapping was written out three separate times —
+`RootWrapper`'s redirect, `Header`'s back button, and the admin sidebar's
+"Department Switcher" — and could drift. `homePathFor` now derives the landing
+screen from the same table the rail renders, so a role added to it cannot end up
+with a home screen it has no entry for.
+
+**Rules out.** Adding a screen by editing a component's JSX.
+
+---
+
+## 15. The patient context bar
+
+**Decision.** Once a patient is open, their name, ID and key facts stay pinned
+below the header regardless of which tab is showing.
+
+**Why.** The old app printed the name at the top of whichever tab you were in
+and lost it as soon as you moved. "Which patient am I looking at" is the
+question a mis-filed result answers wrongly, and every major EHR converged on
+pinning it for that reason.
+
+---
+
+## 16. Focus never leaves the command palette's input
+
+**Decision.** Arrow keys move a highlight tracked with `aria-activedescendant`;
+real focus stays in the text field.
+
+**Why.** Moving focus into the list means every arrow key press is stolen from
+the query. The pattern exists precisely for this case.
+
+---
+
+## 17. The critical-value dialog cannot be dismissed by accident
+
+**Decision.** `dismissible={false}` — no scrim click, no `Escape`. The only ways
+out are "Go back and check" and an acknowledgement that requires a tick.
+
+**Why.** This is the one place in the product where blocking those exits is
+right. Everywhere else, an accidental close costs a re-open; here it would mean
+a panic value released without anyone looking at it.
+
+**Rules out.** Using `dismissible={false}` anywhere that merely wants attention.
+
+---
+
+## 18. Default panic limits are a starting point, not an authority
+
+**Decision.** `DEFAULT_CRITICAL_LIMITS` covers analytes where published critical
+limits are broadly consistent, deliberately conservative, and overridable per
+workspace through `criticalLimitsFor`.
+
+**Why.** Every laboratory sets its own critical limits and a medical director is
+expected to sign them off. Shipping a fixed table as though it were settled
+would be a clinical claim this product is not in a position to make. Shipping
+nothing would leave the interlock with nothing to fire on.
+
+**Open.** The override has no UI yet — a workspace can only supply one in code.
+That belongs with the test catalogue screen.
+
+---
+
+## 19. "No opinion" is not "normal"
+
+**Decision.** `deriveFlag` returns `null` when the result is not numeric or the
+range cannot be read, and `''` only when the value was checked and found in
+range. The two are never conflated.
+
+**Why.** An empty flag is an assertion that the result is normal, and that
+assertion has to be earned. A parser that fell back to `''` on anything it could
+not read would silently mark unparseable results as fine — which is the exact
+failure the whole phase exists to remove. A sexed range with no patient sex on
+file returns `null` for the same reason: picking an arm would be a guess with a
+clinical consequence.
+
+---
+
+## 20. The sign-in screen does not follow the theme
+
+**Decision.** It commits to one dark treatment, with every colour painted
+explicitly rather than taken from the semantic tokens.
+
+**Why.** It is the front door and should look the same to everyone. The tokens
+describe the app's themed surfaces; borrowing them here would make the first
+impression depend on a setting the visitor has not made yet. The trade is that
+its contrast is verified by hand rather than by `check-contrast.mjs` — every
+pair was measured, and none is below 5.5:1.
+
+---
+
+## 21. Bundle size went up, on purpose
+
+**Decision.** Accepted +23 kB on the department screens and +32 kB on reception.
+
+**Why.** Persistent navigation, the command palette and the Radix primitives
+that make the overlays accessible cost more than the code-splitting saved. The
+alternative was keeping an app with no navigation, which was cheaper and worse.
+
+**The number that will actually move it** is server components: all 29 routes
+are still `'use client'`, so every navigation starts from a blank page. That is
+the outstanding work in the performance phase, and it is worth more than
+anything that could be trimmed here.

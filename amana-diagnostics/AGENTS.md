@@ -7,9 +7,10 @@ This version has breaking changes — APIs, conventions, and file structure may 
 # Building UI in this repo
 
 The interface is being moved onto a design system. **Read
-[`docs/DESIGN_SYSTEM.md`](docs/DESIGN_SYSTEM.md) before writing any UI**, and
+[`docs/DESIGN_SYSTEM.md`](docs/DESIGN_SYSTEM.md) before writing any UI**,
 [`docs/UI_DECISIONS.md`](docs/UI_DECISIONS.md) before changing how the system
-itself works.
+itself works, and [`docs/UI_PROGRESS.md`](docs/UI_PROGRESS.md) for what is
+migrated and what is not.
 
 ## The rules
 
