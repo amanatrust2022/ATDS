@@ -1,5 +1,7 @@
 'use client';
 import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
+import { Button, Dialog, Field, Input } from '@/components/ui';
+import styles from './Notices.module.css';
 
 /**
  * Messages, questions and prompts, without the browser's own dialogs.
@@ -85,112 +87,97 @@ export function NoticeProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
-const TONE_STYLE: Record<Tone, { bg: string; border: string; fg: string }> = {
-  success: { bg: '#ecfdf5', border: '#a7f3d0', fg: '#065f46' },
-  error: { bg: '#fef2f2', border: '#fecaca', fg: '#991b1b' },
-  info: { bg: '#f8fafc', border: '#e2e8f0', fg: '#334155' },
-};
-
+/**
+ * Two live regions, not one.
+ *
+ * Everything used to be announced politely, which meant a failure waited
+ * behind whatever the screen reader was already saying. An error interrupts;
+ * a confirmation waits its turn.
+ */
 function NoticeStack({ notices, onDismiss }: { notices: Notice[]; onDismiss: (id: number) => void }) {
-  if (!notices.length) return null;
+  const errors = notices.filter(n => n.tone === 'error');
+  const rest = notices.filter(n => n.tone !== 'error');
 
   return (
-    <div
-      // Announced to a screen reader without stealing focus, which is the one
-      // thing the native dialog did well.
-      role="status"
-      aria-live="polite"
-      style={{
-        position: 'fixed', top: 16, right: 16, zIndex: 10000,
-        display: 'flex', flexDirection: 'column', gap: 8,
-        maxWidth: 380, pointerEvents: 'none',
-      }}
-    >
-      {notices.map(n => {
-        const t = TONE_STYLE[n.tone];
-        return (
-          <div
-            key={n.id}
-            onClick={() => onDismiss(n.id)}
-            style={{
-              pointerEvents: 'auto', cursor: 'pointer',
-              background: t.bg, border: `1px solid ${t.border}`, color: t.fg,
-              padding: '0.7rem 0.9rem', borderRadius: 6, fontSize: '0.8rem',
-              lineHeight: 1.45, whiteSpace: 'pre-wrap',
-              boxShadow: '0 10px 30px -12px rgba(15,23,42,0.35)',
-            }}
-          >
-            {n.message}
-          </div>
-        );
-      })}
+    <div className={styles.stack}>
+      <div role="alert" aria-live="assertive" className={styles.region}>
+        {errors.map(n => <NoticeCard key={n.id} notice={n} onDismiss={onDismiss} />)}
+      </div>
+      <div role="status" aria-live="polite" className={styles.region}>
+        {rest.map(n => <NoticeCard key={n.id} notice={n} onDismiss={onDismiss} />)}
+      </div>
     </div>
   );
 }
 
+/** What the tone means, for anyone who cannot see the colour. */
+const TONE_WORD: Record<Tone, string> = {
+  success: 'Done',
+  error: 'Problem',
+  info: 'Note',
+};
+
+function NoticeCard({ notice, onDismiss }: { notice: Notice; onDismiss: (id: number) => void }) {
+  return (
+    // A dismiss button, not a clickable div: the old card could only be
+    // dismissed with a mouse, so an error a keyboard user could not clear
+    // stayed on screen for the rest of the session.
+    <div className={[styles.card, styles[notice.tone]].join(' ')}>
+      <span className={styles.tone}>{TONE_WORD[notice.tone]}</span>
+      <span className={styles.message}>{notice.message}</span>
+      <button
+        type="button"
+        className={styles.dismiss}
+        onClick={() => onDismiss(notice.id)}
+        aria-label={`Dismiss: ${notice.message}`}
+      >
+        <span aria-hidden="true">&times;</span>
+      </button>
+    </div>
+  );
+}
+
+/**
+ * The question  and  put on screen.
+ *
+ * It was a hand-rolled overlay: no focus trap, no Escape, and focus never
+ * returned to whatever had asked. Built on the shared Dialog now, so all four
+ * come from the primitive.
+ */
 function QuestionDialog({ question, onDone }: { question: Question; onDone: () => void }) {
   const [text, setText] = useState(question.input?.value ?? '');
   const asksForText = !!question.input;
 
   const finish = (value: any) => { question.resolve(value); onDone(); };
+  const cancelValue = asksForText ? null : false;
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      style={{
-        position: 'fixed', inset: 0, zIndex: 10001,
-        background: 'rgba(15,23,42,0.45)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem',
-      }}
-      onClick={() => finish(asksForText ? null : false)}
+    <Dialog
+      open
+      onOpenChange={(next) => { if (!next) finish(cancelValue); }}
+      title={asksForText ? 'One more thing' : 'Please confirm'}
+      titleHidden
+      size="sm"
+      footer={
+        <>
+          <Button intent="ghost" onClick={() => finish(cancelValue)}>Cancel</Button>
+          <Button intent="primary" onClick={() => finish(asksForText ? text : true)}>OK</Button>
+        </>
+      }
     >
-      <div
-        onClick={e => e.stopPropagation()}
-        style={{
-          background: 'white', borderRadius: 8, maxWidth: 460, width: '100%',
-          padding: '1.25rem', boxShadow: '0 30px 60px -20px rgba(15,23,42,0.5)',
-        }}
-      >
-        <div style={{ fontSize: '0.85rem', color: 'var(--gray-800)', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>
-          {question.message}
+      <p className={styles.question}>{question.message}</p>
+      {asksForText && (
+        <div style={{ marginTop: 'var(--space-4)' }}>
+          <Field label={question.message} labelHidden>
+            <Input
+              autoFocus
+              value={text}
+              onChange={e => setText(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') finish(text); }}
+            />
+          </Field>
         </div>
-
-        {asksForText && (
-          <input
-            autoFocus
-            value={text}
-            onChange={e => setText(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') finish(text); }}
-            style={{
-              width: '100%', marginTop: '0.9rem', padding: '0.55rem 0.75rem',
-              border: '1px solid var(--gray-300)', borderRadius: 4, fontSize: '0.82rem',
-            }}
-          />
-        )}
-
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '1.1rem' }}>
-          <button
-            onClick={() => finish(asksForText ? null : false)}
-            style={{
-              background: 'none', border: '1px solid var(--gray-300)', color: 'var(--gray-700)',
-              padding: '0.45rem 0.9rem', borderRadius: 4, fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer',
-            }}
-          >
-            Cancel
-          </button>
-          <button
-            autoFocus={!asksForText}
-            onClick={() => finish(asksForText ? text : true)}
-            style={{
-              background: 'var(--teal-700, #0f766e)', border: 'none', color: 'white',
-              padding: '0.45rem 0.9rem', borderRadius: 4, fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
-            }}
-          >
-            OK
-          </button>
-        </div>
-      </div>
-    </div>
+      )}
+    </Dialog>
   );
 }

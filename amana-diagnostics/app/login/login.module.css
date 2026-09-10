@@ -1,0 +1,433 @@
+/* The sign-in screen.
+ *
+ * The version this replaces set its placeholder text at rgba(255,255,255,0.2)
+ * on #0a0f1e — 1.82:1, where AA needs 4.5 — its body copy at 3.18:1, and its
+ * icons at 2.19:1. It was also a two-column flex with no breakpoint, so the
+ * marketing panel squeezed the form off a phone.
+ *
+ * This is one of the few places in the product that commits to a single dark
+ * treatment rather than following the theme: it is the front door, and it
+ * should look the same to everyone. Every colour is therefore painted
+ * explicitly instead of inherited. */
+
+.page {
+  min-height: 100dvh;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  background: #0a0f1e;
+  color: #eef1f8;
+  font-family: var(--font-body);
+}
+
+/* Below the tablet breakpoint the marketing panel is not worth the width. */
+@media (max-width: 900px) {
+  .page {
+    grid-template-columns: 1fr;
+  }
+  .aside {
+    display: none;
+  }
+}
+
+/* --- Brand panel --- */
+
+.aside {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: var(--space-8);
+  padding: var(--space-12);
+  background: linear-gradient(150deg, #142348 0%, #0a0f1e 65%);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.brandMark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  background: #4472c4;
+  color: #ffffff;
+  border-radius: var(--radius-md);
+  flex-shrink: 0;
+}
+
+.brandName {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
+  color: #ffffff;
+  letter-spacing: var(--tracking-tight);
+}
+
+.version {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  /* 4.9:1 on the panel — a version string still has to be readable. */
+  color: #98a6c4;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: var(--radius-sm);
+  padding: 2px var(--space-1);
+}
+
+.pitch {
+  max-width: 30ch;
+}
+
+.pitchHead {
+  font-family: var(--font-display);
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-tight);
+  color: #ffffff;
+  text-wrap: balance;
+  margin: 0 0 var(--space-3);
+}
+
+.pitchBody {
+  font-size: var(--text-md);
+  line-height: var(--leading-normal);
+  /* 7.3:1 — the old body copy sat at 3.18:1. */
+  color: #b9c4dd;
+  margin: 0;
+}
+
+.points {
+  list-style: none;
+  margin: var(--space-5) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  font-size: var(--text-md);
+  color: #b9c4dd;
+}
+
+.point {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.pointMark {
+  color: #7fa3e0;
+  flex-shrink: 0;
+}
+
+.asideFoot {
+  font-size: var(--text-xs);
+  color: #8e9bb8;
+}
+
+/* --- Form panel --- */
+
+.main {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
+}
+
+.form {
+  width: 100%;
+  max-width: 400px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* Only shown when the brand panel is hidden, so the screen still says what
+ * it is on a phone. */
+.mobileBrand {
+  display: none;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+@media (max-width: 900px) {
+  .mobileBrand {
+    display: flex;
+  }
+}
+
+.heading {
+  font-size: var(--text-xl);
+  font-weight: var(--weight-bold);
+  color: #ffffff;
+  margin: 0;
+  line-height: var(--leading-tight);
+}
+
+.sub {
+  font-size: var(--text-md);
+  color: #b9c4dd;
+  margin: var(--space-1) 0 var(--space-2);
+}
+
+/* --- Controls. Dark-panel variants of the shared control styles; the
+ * semantic tokens describe the app's themed surfaces, not this one. --- */
+
+.label {
+  display: block;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: #b9c4dd;
+  margin-bottom: var(--space-1);
+}
+
+.inputWrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.input {
+  width: 100%;
+  height: 42px;
+  padding: 0 var(--space-3) 0 40px;
+
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  color: #ffffff;
+
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: var(--radius-md);
+}
+
+.input::placeholder {
+  /* 4.6:1 on the input's own ground. The old placeholder was 1.82:1. */
+  color: #97a3bd;
+}
+
+.input:hover {
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.input:focus-visible {
+  outline: 2px solid #7fa3e0;
+  outline-offset: 1px;
+  border-color: #7fa3e0;
+}
+
+.inputIcon {
+  position: absolute;
+  left: 13px;
+  display: flex;
+  color: #97a3bd;
+  pointer-events: none;
+}
+
+.reveal {
+  position: absolute;
+  right: var(--space-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: #b9c4dd;
+  cursor: pointer;
+}
+
+.reveal:hover {
+  color: #ffffff;
+}
+
+.reveal:focus-visible {
+  outline: 2px solid #7fa3e0;
+  outline-offset: 1px;
+}
+
+.submit {
+  height: 44px;
+  width: 100%;
+  margin-top: var(--space-1);
+
+  background: #3a63b0;
+  color: #ffffff;
+  border: 0;
+  border-radius: var(--radius-md);
+
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+}
+
+.submit:hover:not(:disabled) {
+  background: #4472c4;
+}
+
+.submit:focus-visible {
+  outline: 2px solid #7fa3e0;
+  outline-offset: 2px;
+}
+
+.submit:disabled {
+  background: #2a3f66;
+  color: #b9c4dd;
+  cursor: not-allowed;
+}
+
+.error {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: rgba(180, 35, 26, 0.18);
+  border: 1px solid rgba(255, 147, 132, 0.4);
+  border-left: 3px solid #ff9384;
+  border-radius: var(--radius-md);
+  /* 7.9:1 on the page ground. */
+  color: #ffb4a8;
+  font-size: var(--text-md);
+  line-height: var(--leading-snug);
+}
+
+.errorMark {
+  font-weight: var(--weight-bold);
+  flex-shrink: 0;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-top: var(--space-1);
+}
+
+.link {
+  background: none;
+  border: 0;
+  padding: 0;
+  /* 7.5:1 on the page ground. */
+  color: #9dbcf0;
+  font-family: var(--font-body);
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  text-decoration: none;
+  border-radius: var(--radius-sm);
+}
+
+.link:hover {
+  color: #ffffff;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.link:focus-visible {
+  outline: 2px solid #7fa3e0;
+  outline-offset: 2px;
+}
+
+/* --- LAN setup guide --- */
+
+.lan {
+  margin-top: var(--space-6);
+  padding-top: var(--space-5);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.lanToggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  width: 100%;
+  height: 38px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: var(--radius-md);
+  color: #b9c4dd;
+  font-family: var(--font-body);
+  font-size: var(--text-md);
+  cursor: pointer;
+}
+
+.lanToggle:hover {
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
+.lanToggle:focus-visible {
+  outline: 2px solid #7fa3e0;
+  outline-offset: 2px;
+}
+
+.lanBody {
+  margin-top: var(--space-3);
+  padding: var(--space-4);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-md);
+  font-size: var(--text-md);
+  color: #b9c4dd;
+  line-height: var(--leading-normal);
+}
+
+.lanSteps {
+  margin: var(--space-2) 0 0;
+  padding-left: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.address {
+  display: block;
+  margin-top: var(--space-2);
+  padding: var(--space-2);
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: var(--text-base);
+  color: #9dbcf0;
+  text-align: center;
+  user-select: all;
+  overflow-wrap: anywhere;
+}
+
+.lanNote {
+  margin-top: var(--space-3);
+  font-size: var(--text-xs);
+  color: #8e9bb8;
+}
+
+/* --- Reset-sent confirmation --- */
+
+.sent {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  text-align: center;
+}
+
+.sentMark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  background: rgba(18, 121, 90, 0.25);
+  border: 1px solid #5fcfa4;
+  border-radius: var(--radius-full);
+  color: #8fdcbd;
+}

@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import { RiMicroscopeLine, RiLockPasswordLine, RiMailLine, RiEyeLine, RiEyeOffLine, RiComputerLine } from '@remixicon/react';
+import styles from './login.module.css';
 
 async function withTimeout(promise: any, ms: number, onWarning: () => void): Promise<any> {
   const timer = setTimeout(onWarning, ms);
@@ -205,138 +206,203 @@ export default function LoginPage() {
     setLoading(false);
   };
 
-  const inp: React.CSSProperties = { width: '100%', padding: '0.75rem 0.9rem 0.75rem 2.8rem', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 8, color: 'white', fontSize: '0.9rem'  };
+  const submitting = loading;
 
   return (
-    <div style={{ minHeight: '100vh', background: '#0a0f1e', display: 'flex', fontFamily: 'var(--font-body)' }}>
-      <style>{`input::placeholder { color: rgba(255,255,255,0.2); } input:focus { border-color: #4472c4 !important; }`}</style>
-
-      {/* Left panel - branding */}
-      <div style={{ flex: 1, background: 'linear-gradient(135deg, #111c3d 0%, #0a0f1e 100%)', padding: '3rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', borderRight: '1px solid rgba(255,255,255,0.06)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-          <div style={{ background: '#4472c4', borderRadius: 8, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <RiMicroscopeLine size={18} color="white" />
-          </div>
-          <span style={{ color: 'white', fontWeight: 700, fontSize: '1rem' }}>DiagnosticOS</span>
-          <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.72rem', background: 'rgba(255,255,255,0.06)', padding: '0.15rem 0.4rem', borderRadius: 4, fontFamily: 'monospace' }}>v1.2.20</span>
+    <div className={styles.page}>
+      {/* --- Brand panel --- */}
+      <aside className={styles.aside}>
+        <div className={styles.brand}>
+          <span className={styles.brandMark} aria-hidden="true">
+            <RiMicroscopeLine size={19} />
+          </span>
+          <span className={styles.brandName}>DiagnosticOS</span>
+          <span className={styles.version}>v1.2.20</span>
         </div>
-        <div>
-          <p style={{ color: 'rgba(255,255,255,0.2)', fontSize: '0.78rem', fontStyle: 'italic' }}>
-            "We cut patient wait time by 40% in the first month."
+
+        <div className={styles.pitch}>
+          <h2 className={styles.pitchHead}>Reception, lab and radiology on one record.</h2>
+          <p className={styles.pitchBody}>
+            Built for diagnostic centres that cannot depend on the internet staying up.
           </p>
-          <p style={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.72rem', marginTop: '0.5rem' }}>— Admin, Northside Diagnostics</p>
+          <ul className={styles.points}>
+            <li className={styles.point}>
+              <span className={styles.pointMark} aria-hidden="true">&bull;</span>
+              Keeps working offline, and syncs when the connection returns
+            </li>
+            <li className={styles.point}>
+              <span className={styles.pointMark} aria-hidden="true">&bull;</span>
+              Results flagged against their reference range as they are typed
+            </li>
+            <li className={styles.point}>
+              <span className={styles.pointMark} aria-hidden="true">&bull;</span>
+              Patients collect their own reports from the portal
+            </li>
+          </ul>
         </div>
-      </div>
 
-      {/* Right panel - form */}
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
-        <div style={{ width: '100%', maxWidth: 420 }}>
-          {resetSent ? (
-            <div style={{ textAlign: 'center', color: 'white' }}>
-              <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>✉️</div>
-              <h2 style={{ fontWeight: 700, marginBottom: '0.5rem' }}>Check your email</h2>
-              <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.85rem', marginBottom: '1.5rem' }}>we sent a password reset link to {email}</p>
-              <button onClick={() => { setResetMode(false); setResetSent(false); }} style={{ background: 'none', border: '1px solid rgba(255,255,255,0.2)', color: 'white', padding: '0.6rem 1.5rem', borderRadius: 8, cursor: 'pointer', fontSize: '0.85rem' }}>Back to sign in</button>
-            </div>
-          ) : (
-            <>
-              <h2 style={{ color: 'white', fontSize: '1.6rem', fontWeight: 700, marginBottom: '0.4rem' }}>
-                {resetMode ? 'Reset password' : 'Sign in to your workspace'}
-              </h2>
-              <p style={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.85rem', marginBottom: '2rem' }}>
-                {resetMode ? 'Enter your email to receive a reset link.' : 'Enter your credentials to continue.'}
+        <p className={styles.asideFoot}>
+          Every device on the clinic network works from the same records.
+        </p>
+      </aside>
+
+      {/* --- Form panel --- */}
+      <main className={styles.main}>
+        {resetSent ? (
+          <div className={styles.form}>
+            <div className={styles.sent}>
+              <span className={styles.sentMark} aria-hidden="true">
+                <RiMailLine size={20} />
+              </span>
+              <h1 className={styles.heading}>Check your email</h1>
+              <p className={styles.sub}>
+                If {email} has an account, a link to set a new password is on its way.
+                It expires in an hour.
               </p>
-              <form onSubmit={resetMode ? handleReset : handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                <div style={{ position: 'relative' }}>
-                  <RiMailLine size={16} color="rgba(255,255,255,0.25)" style={{ position: 'absolute', left: '0.9rem', top: '50%', transform: 'translateY(-50%)' }} />
-                  <input type="email" value={email} onChange={e => setEmail(e.target.value)} required placeholder="Email address" style={inp} />
+              <button
+                type="button"
+                className={styles.link}
+                onClick={() => { setResetMode(false); setResetSent(false); }}
+              >
+                Back to sign in
+              </button>
+            </div>
+          </div>
+        ) : (
+          <form
+            className={styles.form}
+            onSubmit={resetMode ? handleReset : handleLogin}
+            noValidate
+          >
+            <div className={styles.mobileBrand}>
+              <span className={styles.brandMark} aria-hidden="true">
+                <RiMicroscopeLine size={17} />
+              </span>
+              <span className={styles.brandName}>DiagnosticOS</span>
+            </div>
+
+            <div>
+              <h1 className={styles.heading}>
+                {resetMode ? 'Reset your password' : 'Sign in'}
+              </h1>
+              <p className={styles.sub}>
+                {resetMode
+                  ? 'We will email you a link to set a new one.'
+                  : 'Use the address your centre registered you with.'}
+              </p>
+            </div>
+
+            {/* role="alert" so a failed sign-in is announced when it happens,
+              * not only when the field is next focused. */}
+            {error && (
+              <p className={styles.error} role="alert">
+                <span className={styles.errorMark} aria-hidden="true">!</span>
+                <span>{error}</span>
+              </p>
+            )}
+
+            <div>
+              <label className={styles.label} htmlFor="login-email">Email address</label>
+              <div className={styles.inputWrap}>
+                <span className={styles.inputIcon} aria-hidden="true">
+                  <RiMailLine size={16} />
+                </span>
+                <input
+                  id="login-email"
+                  className={styles.input}
+                  type="email"
+                  autoComplete="username"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  placeholder="you@centre.example"
+                  required
+                  aria-invalid={error ? true : undefined}
+                />
+              </div>
+            </div>
+
+            {!resetMode && (
+              <div>
+                <label className={styles.label} htmlFor="login-password">Password</label>
+                <div className={styles.inputWrap}>
+                  <span className={styles.inputIcon} aria-hidden="true">
+                    <RiLockPasswordLine size={16} />
+                  </span>
+                  <input
+                    id="login-password"
+                    className={styles.input}
+                    type={showPassword ? 'text' : 'password'}
+                    autoComplete="current-password"
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    placeholder="Your password"
+                    required
+                    aria-invalid={error ? true : undefined}
+                  />
+                  <button
+                    type="button"
+                    className={styles.reveal}
+                    onClick={() => setShowPassword(!showPassword)}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    aria-pressed={showPassword}
+                  >
+                    {showPassword ? <RiEyeOffLine size={16} /> : <RiEyeLine size={16} />}
+                  </button>
                 </div>
-                {!resetMode && (
-                  <div style={{ position: 'relative' }}>
-                    <RiLockPasswordLine size={16} color="rgba(255,255,255,0.25)" style={{ position: 'absolute', left: '0.9rem', top: '50%', transform: 'translateY(-50%)' }} />
-                    <input 
-                      type={showPassword ? "text" : "password"} 
-                      value={password} 
-                      onChange={e => setPassword(e.target.value)} 
-                      required 
-                      placeholder="Password" 
-                      style={{ ...inp, paddingRight: '2.8rem' }} 
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      style={{
-                        position: 'absolute',
-                        right: '0.9rem',
-                        top: '50%',
-                        transform: 'translateY(-50%)',
-                        background: 'none',
-                        border: 'none',
-                        color: 'rgba(255,255,255,0.25)',
-                        cursor: 'pointer',
-                        padding: 0,
-                        display: 'flex',
-                        alignItems: 'center'
-                      }}
-                    >
-                      {showPassword ? <RiEyeOffLine size={16} /> : <RiEyeLine size={16} />}
-                    </button>
+              </div>
+            )}
+
+            <button type="submit" className={styles.submit} disabled={submitting} aria-busy={submitting}>
+              {submitting
+                ? (resetMode ? 'Sending the link…' : statusText)
+                : (resetMode ? 'Email me a reset link' : 'Sign in')}
+            </button>
+
+            <div className={styles.row}>
+              <button
+                type="button"
+                className={styles.link}
+                onClick={() => { setResetMode(!resetMode); setError(''); }}
+              >
+                {resetMode ? 'Back to sign in' : 'Forgotten your password?'}
+              </button>
+              <a href="/signup" className={styles.link}>Create a workspace</a>
+            </div>
+
+            {isLocalMode && (
+              <div className={styles.lan}>
+                <button
+                  type="button"
+                  className={styles.lanToggle}
+                  onClick={() => setShowLanGuide(!showLanGuide)}
+                  aria-expanded={showLanGuide}
+                  aria-controls="lan-guide"
+                >
+                  <RiComputerLine size={15} aria-hidden="true" />
+                  Connect another device in the clinic
+                </button>
+
+                {showLanGuide && (
+                  <div className={styles.lanBody} id="lan-guide">
+                    <p><strong>To use reception, lab or radiology from another device:</strong></p>
+                    <ol className={styles.lanSteps}>
+                      <li>Put the device on the same Wi-Fi or network cable as this computer.</li>
+                      <li>
+                        Open its browser and go to:
+                        <code className={styles.address}>http://{serverIp}</code>
+                      </li>
+                      <li>Bookmark it, so tomorrow is one tap.</li>
+                    </ol>
+                    <p className={styles.lanNote}>
+                      This computer has to stay on and running DiagnosticOS for the others to reach it.
+                    </p>
                   </div>
                 )}
-                {error && <p style={{ color: '#f87171', fontSize: '0.82rem', background: 'rgba(248,113,113,0.1)', padding: '0.6rem 0.9rem', borderRadius: 6 }}>{error}</p>}
-                <button type="submit" disabled={loading} style={{ background: loading ? '#2a4a8a' : '#4472c4', border: 'none', color: 'white', padding: '0.8rem', borderRadius: 8, fontWeight: 700, fontSize: '0.95rem', cursor: loading ? 'not-allowed' : 'pointer', marginTop: '0.25rem' }}>
-                  {loading ? (resetMode ? 'Sending...' : statusText) : (resetMode ? 'Send reset link' : 'Sign in')}
-                </button>
-              </form>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1.5rem' }}>
-                <button onClick={() => { setResetMode(!resetMode); setError(''); }} style={{ background: 'none', border: 'none', color: '#7fa3e0', cursor: 'pointer', fontSize: '0.8rem', padding: 0 }}>
-                  {resetMode ? '← Back to sign in' : 'Forgot password?'}
-                </button>
-                <a href="/signup" style={{ color: '#7fa3e0', textDecoration: 'none', fontSize: '0.8rem', fontWeight: 600 }}>Create workspace →</a>
               </div>
-              {isLocalMode && (
-                <div style={{ marginTop: '2.5rem', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '1.5rem' }}>
-                  <button 
-                    onClick={() => setShowLanGuide(!showLanGuide)} 
-                    style={{ 
-                      background: 'rgba(255,255,255,0.04)', 
-                      border: '1px solid rgba(255,255,255,0.08)', 
-                      color: 'rgba(255,255,255,0.6)', 
-                      padding: '0.6rem 1rem', 
-                      borderRadius: 8, 
-                      cursor: 'pointer', 
-                      fontSize: '0.8rem',
-                      width: '100%',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '0.5rem'
-                    }}
-                  >
-                    <RiComputerLine size={14} />
-                    {showLanGuide ? 'Hide Clinic Setup Guide' : 'Connect Other Clinic Devices'}
-                  </button>
-                  {showLanGuide && (
-                    <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.04)', borderRadius: 8, padding: '1rem', marginTop: '0.75rem', fontSize: '0.8rem', color: 'rgba(255,255,255,0.55)', lineHeight: '1.4' }}>
-                      <p style={{ fontWeight: 600, color: 'white', marginBottom: '0.5rem' }}>How to connect other departments (Reception, Lab, etc.):</p>
-                      <ol style={{ paddingLeft: '1.1rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                        <li>Connect the other device (laptop, tablet, or phone) to the <strong>same Wi-Fi or LAN network</strong> as this computer.</li>
-                        <li>Open the web browser (e.g. Chrome) on that device and type:
-                          <div style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', padding: '0.4rem 0.6rem', borderRadius: 4, fontFamily: 'monospace', color: '#7fa3e0', marginTop: '0.3rem', userSelect: 'all', textAlign: 'center' }}>
-                            http://{serverIp}
-                          </div>
-                        </li>
-                        <li>Bookmark the address on that device for easy, single-click access every day!</li>
-                      </ol>
-                      <p style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.3)', marginTop: '0.8rem', fontStyle: 'italic' }}>Note: This host computer must remain turned on and the DiagnosticOS app running for other devices to connect.</p>
-                    </div>
-                  )}
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      </div>
+            )}
+          </form>
+        )}
+      </main>
     </div>
   );
 }

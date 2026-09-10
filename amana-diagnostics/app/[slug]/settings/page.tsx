@@ -3,7 +3,8 @@ import RequireRole from '@/components/RequireRole';
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/components/AuthProvider';
 import { createClient } from '@/lib/supabase';
-import Header from '@/components/Header';
+import { AppShell } from '@/components/shell';
+import { AppearanceSettings } from '@/components/features/settings/AppearanceSettings';
 import { RiUserSettingsLine, RiCheckLine, RiSave3Line, RiUploadCloud2Line } from '@remixicon/react';
 
 function UserSettings() {
@@ -119,13 +120,7 @@ function UserSettings() {
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--gray-50)', display: 'flex', flexDirection: 'column' }}>
-      <Header
-        title="My Profile"
-        subtitle={organization?.name}
-        icon={<RiUserSettingsLine size={24} color="white" />}
-        accentColor="var(--teal-600)"
-      />
+    <AppShell title="My profile" subtitle={organization?.name}>
 
       <div style={{ padding: '2rem', maxWidth: 800, margin: '0 auto', width: '100%' }}>
         <div style={{ background: 'white', border: '1px solid var(--gray-200)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
@@ -246,7 +241,11 @@ function UserSettings() {
           </div>
         </div>
       </div>
-    </div>
+
+        <div style={{ marginTop: 'var(--space-5)' }}>
+          <AppearanceSettings />
+        </div>
+    </AppShell>
   );
 }
 

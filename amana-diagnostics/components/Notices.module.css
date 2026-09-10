@@ -1,0 +1,133 @@
+/* Toasts. The stack is fixed to the top-right on a workstation and to the
+ * bottom on a phone, where the top corner is under the browser chrome and out
+ * of thumb reach. */
+
+.stack {
+  position: fixed;
+  top: var(--space-4);
+  right: var(--space-4);
+  z-index: var(--z-toast);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: min(380px, calc(100vw - var(--space-8)));
+  /* The container must not swallow clicks on the page underneath; each card
+   * takes its own pointer events back. */
+  pointer-events: none;
+}
+
+.region {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.card {
+  pointer-events: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-3);
+
+  border: 1px solid;
+  border-left-width: 3px;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+
+  font-size: var(--text-md);
+  line-height: var(--leading-snug);
+  white-space: pre-wrap;
+
+  animation: noticeIn var(--duration-normal) var(--ease-out);
+}
+
+@keyframes noticeIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card { animation: none; }
+}
+
+.success {
+  background: var(--success-subtle);
+  border-color: var(--success-border);
+  border-left-color: var(--success-solid);
+  color: var(--success-text);
+}
+
+.error {
+  background: var(--critical-subtle);
+  border-color: var(--critical-border);
+  border-left-color: var(--critical-solid);
+  color: var(--critical-text);
+}
+
+.info {
+  background: var(--info-subtle);
+  border-color: var(--info-border);
+  border-left-color: var(--info-solid);
+  color: var(--info-text);
+}
+
+/* The tone in words, so the meaning does not rest on the colour. */
+.tone {
+  flex-shrink: 0;
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  padding-top: 2px;
+}
+
+.message {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.dismiss {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: inherit;
+  opacity: 0.6;
+  cursor: pointer;
+  font-size: var(--text-base);
+  line-height: 1;
+}
+
+.dismiss:hover {
+  opacity: 1;
+}
+
+.dismiss:focus-visible {
+  outline: var(--focus-width) solid currentColor;
+  outline-offset: 1px;
+  opacity: 1;
+}
+
+.question {
+  font-size: var(--text-base);
+  color: var(--text-primary);
+  line-height: var(--leading-normal);
+  white-space: pre-wrap;
+  margin: 0;
+}
+
+@media (max-width: 560px) {
+  .stack {
+    top: auto;
+    bottom: calc(64px + var(--space-3));
+    left: var(--space-3);
+    right: var(--space-3);
+    width: auto;
+  }
+}
