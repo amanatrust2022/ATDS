@@ -7,8 +7,10 @@ import { useAuth } from '@/components/AuthProvider';
 import { RADIOLOGY_TEMPLATES, serializeRadiologyResults, deserializeRadiologyResults, RadiologyFormState, convertTextToFormattedHtml } from '@/lib/radiology-templates';
 import { windowStartIso } from '@/lib/store/useQueueStore';
 import DepartmentQueue from '@/components/features/department/DepartmentQueue';
-import ParameterTable from '@/components/features/department/ParameterTable';
+import ParameterTable, { criticalRows } from '@/components/features/department/ParameterTable';
+import { CriticalValueDialog } from '@/components/features/department/CriticalValueDialog';
 import { departmentTheme } from '@/components/features/department/theme';
+import { normaliseSex } from '@/lib/clinical/referenceRange';
 import { useNewTestAlerts } from '@/components/features/department/useNewTestAlerts';
 import TemplateManager from '@/components/TemplateManager';
 import TestManager from '@/components/TestManager';
@@ -44,6 +46,9 @@ export default function DepartmentPage({ department }: Props) {
   const [professional, setProfessional] = useState('');
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
+  /** Panic values on this test that nobody has acknowledged yet. Non-empty
+   *  means the release is blocked. */
+  const [pendingCritical, setPendingCritical] = useState<ReturnType<typeof criticalRows>>([]);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
   const [loadingData, setLoadingData] = useState(true);
   const [customTemplates, setCustomTemplates] = useState<RadiologyTemplate[]>([]);
@@ -233,9 +238,21 @@ export default function DepartmentPage({ department }: Props) {
     }
   };
 
-  const handleSubmit = async () => {
+  /** `acknowledged` is passed by the critical-value dialog, and only by it. */
+  const handleSubmit = async (acknowledged = false) => {
     if (!selected) return;
     if (!professional.trim()) { showToast('Please enter your name or staff ID', 'error'); return; }
+
+    // A critical value is not released silently. Nothing about the old save
+    // distinguished a potassium of 7.1 from a normal one: the flag was a
+    // dropdown nobody had to touch, and the result went to reception either
+    // way. The technologist has to see the value and say so.
+    const critical = criticalRows(results, normaliseSex(selected.patient.sex));
+    if (critical.length > 0 && !acknowledged) {
+      setPendingCritical(critical);
+      return;
+    }
+
     setSaving(true);
  
     let finalResults = results;
@@ -255,6 +272,20 @@ export default function DepartmentPage({ department }: Props) {
     }
 
     try {
+      // The acknowledgement goes with the result. Recording it only in the
+      // browser would mean the one fact worth auditing later — that a human
+      // saw the panic value and acted — vanished with the tab. It rides in the
+      // notes rather than a new column so this needs no migration; a dedicated
+      // column is the right home once one is being added anyway.
+      const criticalNow = criticalRows(finalResults as any, normaliseSex(selected.patient.sex));
+      const notesToSave = criticalNow.length > 0
+        ? [
+            notes.trim(),
+            `[Critical value acknowledged by ${professional} at ${new Date().toISOString()}: ` +
+              criticalNow.map(c => `${c.row.parameter} ${c.row.result}${c.row.unit ? " " + c.row.unit : ""} (${c.flag})`).join("; ") + ']',
+          ].filter(Boolean).join(String.fromCharCode(10))
+        : notes;
+
       await updateTestResult(selected.test.id!, {
         status: 'completed',
         results: finalResults,
@@ -262,7 +293,7 @@ export default function DepartmentPage({ department }: Props) {
         completedBySignatureUrl: profile?.signature_url || undefined,
         completedByTitle: profile?.title || undefined,
         completedAt: new Date().toISOString(),
-        notes,
+        notes: notesToSave,
       });
       // Refresh here rather than waiting to be told. The realtime channel is
       // the only other thing that moves this test out of the bench's queue, and
@@ -281,6 +312,7 @@ export default function DepartmentPage({ department }: Props) {
       setWidalState(null);
       setMpsState(null);
       setRadiologyState(null);
+      setPendingCritical([]);
     } catch (err: any) {
       showToast('Failed to save result: ' + err.message, 'error');
     } finally {
@@ -428,7 +460,7 @@ export default function DepartmentPage({ department }: Props) {
                 />
               ) : (
                 <div style={{ overflowX: 'auto', marginBottom: '1rem' }}>
-                  <ParameterTable results={results} onUpdate={updateResult} theme={theme} />
+                  <ParameterTable results={results} onUpdate={updateResult} sex={normaliseSex(selected.patient.sex)} />
                 </div>
               )}
               {((isWidal && widalState) || (isMPs && mpsState)) && results.length > 0 && (
@@ -437,7 +469,7 @@ export default function DepartmentPage({ department }: Props) {
                     Additional Parameters
                   </h3>
                   <div style={{ overflowX: 'auto', border: '1px solid var(--gray-200)', borderRadius: 'var(--radius)' }}>
-                    <ParameterTable results={results} onUpdate={updateResult} theme={theme} />
+                    <ParameterTable results={results} onUpdate={updateResult} sex={normaliseSex(selected.patient.sex)} />
                   </div>
                 </div>
               )}
@@ -445,7 +477,7 @@ export default function DepartmentPage({ department }: Props) {
                 <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--gray-700)', marginBottom: '0.3rem', textTransform: 'uppercase' }}>Comments / Remarks (optional)</label>
                 <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} placeholder="Additional clinical comments or interpretation..." style={{ width: '100%', padding: '0.55rem 0.75rem', border: '1px solid var(--gray-300)', borderRadius: 'var(--radius)', fontSize: '0.82rem', resize: 'vertical', fontFamily: 'var(--font-body)' }} />
               </div>
-              <button onClick={handleSubmit} disabled={saving} style={{ background: theme.accent, color: 'white', border: 'none', borderRadius: 'var(--radius)', padding: '0.75rem 2rem', fontSize: '0.88rem', fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1, transition: 'all 0.15s' }}>
+              <button onClick={() => handleSubmit()} disabled={saving} style={{ background: theme.accent, color: 'white', border: 'none', borderRadius: 'var(--radius)', padding: '0.75rem 2rem', fontSize: '0.88rem', fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1, transition: 'all 0.15s' }}>
                 {saving ? 'Sending...' : <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}><RiCheckLine size={16} /> Submit & Send to Reception</span>}
               </button>
             </div>
@@ -488,6 +520,16 @@ export default function DepartmentPage({ department }: Props) {
           </div>
         </div>
       )}
+
+      {/* The release interlock. A panic value has to be seen and named before
+        * it can leave the bench; the acknowledgement is recorded with the
+        * result so it is answerable afterwards. */}
+      <CriticalValueDialog
+        rows={pendingCritical}
+        professional={professional}
+        onCancel={() => setPendingCritical([])}
+        onAcknowledge={() => { setPendingCritical([]); void handleSubmit(true); }}
+      />
     </AppShell>
   );
 }

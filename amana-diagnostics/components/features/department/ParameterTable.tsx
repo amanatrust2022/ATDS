@@ -1,5 +1,15 @@
 'use client';
-import type { DepartmentTheme } from './theme';
+
+import { useMemo } from 'react';
+import { Field, Input, ResultFlag, ResultDelta, Select } from '@/components/ui';
+import {
+  deriveFlag,
+  isCritical,
+  isSignificantDelta,
+  type Flag,
+  type Sex,
+} from '@/lib/clinical/referenceRange';
+import styles from './ParameterTable.module.css';
 
 export interface EditableResult {
   parameter: string;
@@ -7,65 +17,167 @@ export interface EditableResult {
   unit: string;
   range: string;
   flag: string;
+  /** The patient's last value for this parameter, when there is one. */
+  previous?: number | null;
 }
 
 interface Props {
   results: EditableResult[];
   onUpdate: (index: number, field: 'result' | 'flag', value: string) => void;
-  theme: DepartmentTheme;
+  /** Lets a sexed reference range resolve. Unknown means no flag is derived. */
+  sex?: Sex;
 }
 
-const headings = ['Parameter', 'Result', 'Unit', 'Reference Range', 'Flag'];
+/**
+ * The parameter/result grid — the whole form for an ordinary test, and the
+ * "Additional parameters" block under a Widal or MPs matrix.
+ *
+ * Three things changed here, and they are the clinical point of the overhaul.
+ *
+ * 1. THE FLAG IS DERIVED. The reference range has always sat in the next
+ *    column and nothing ever read it; the technologist set H or L by hand from
+ *    a dropdown. An unset flag looked exactly like a normal result. The flag is
+ *    now computed as the value is typed, and the dropdown becomes an override
+ *    rather than the only source.
+ *
+ * 2. CRITICAL IS ITS OWN TIER. A panic value is not a louder abnormal. It gets
+ *    its own mark and its own row treatment, and DepartmentPage will not
+ *    release the test until it has been acknowledged.
+ *
+ * 3. NOTHING IS COLOUR ALONE. Every flag carries its letter, its word and its
+ *    fill. The previous version tinted the input red or blue, which is invisible
+ *    to a colour-blind technologist and gone entirely on the monochrome
+ *    printouts clinics hand to patients.
+ */
+export default function ParameterTable({ results, onUpdate, sex = 'unknown' }: Props) {
+  /* What the range says each row is, alongside what the technologist has
+   * actually recorded. The two are separate on purpose: an override that
+   * disagrees with the range is a legitimate clinical act, and the row says so
+   * rather than silently replacing one with the other. */
+  const derived = useMemo(
+    () =>
+      results.map((r) =>
+        deriveFlag(r.result, r.range, { parameter: r.parameter, sex }),
+      ),
+    [results, sex],
+  );
 
-/** High reads red, low reads blue, normal stays plain. */
-const flagBackground = (flag: string) =>
-  flag === 'H' ? '#fdf2f2' : flag === 'L' ? '#eff6ff' : 'white';
+  return (
+    <div className={styles['wrap']}>
+      <table className={styles['table']}>
+        <caption className="sr-only">
+          Test parameters, with each result flagged against its reference range
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">Parameter</th>
+            <th scope="col">Result</th>
+            <th scope="col">Unit</th>
+            <th scope="col">Reference range</th>
+            <th scope="col">Flag</th>
+            <th scope="col">Override</th>
+          </tr>
+        </thead>
+        <tbody>
+          {results.map((row, i) => {
+            const suggested = derived[i] ?? null;
+            // What the row actually carries: the override if one was set,
+            // otherwise what the range says.
+            const effective = (row.flag || suggested || '') as Flag;
+            const critical = isCritical(effective);
+            const overridden =
+              row.flag !== '' && suggested !== null && row.flag !== suggested;
 
-const flagColour = (flag: string) =>
-  flag === 'H' ? 'var(--red)' : flag === 'L' ? '#1a6aaf' : 'var(--gray-500)';
+            const previous = row.previous;
+            const current = Number(row.result);
+            const showDelta =
+              previous !== null &&
+              previous !== undefined &&
+              Number.isFinite(current) &&
+              row.result.trim() !== '';
+
+            return (
+              <tr key={`${row.parameter}-${i}`} className={critical ? styles['critical'] : ''}>
+                <th scope="row" className={styles['parameter']}>
+                  {row.parameter}
+                </th>
+
+                <td className={styles['resultCell']}>
+                  <Field label={`${row.parameter} result`} labelHidden>
+                    <Input
+                      value={row.result}
+                      onChange={(e) => onUpdate(i, 'result', e.target.value)}
+                      placeholder="Enter result"
+                      inputMode="decimal"
+                      className={styles['resultInput']}
+                    />
+                  </Field>
+                  {showDelta && (
+                    <ResultDelta
+                      previous={previous}
+                      current={current}
+                      unit={row.unit}
+                      significant={isSignificantDelta(previous, current)}
+                    />
+                  )}
+                </td>
+
+                <td className={styles['unit']}>{row.unit || '—'}</td>
+
+                <td className={styles['range']}>{row.range || '—'}</td>
+
+                <td className={styles['flagCell']}>
+                  <ResultFlag value={effective} />
+                  {overridden && (
+                    <span className={styles['overrideNote']}>
+                      set by hand
+                      <span className="sr-only">
+                        , overriding the {suggested === '' ? 'in-range' : suggested} result
+                        derived from the reference range
+                      </span>
+                    </span>
+                  )}
+                </td>
+
+                <td className={styles['overrideCell']}>
+                  <Field label={`Override the flag for ${row.parameter}`} labelHidden>
+                    <Select
+                      value={row.flag}
+                      onChange={(e) => onUpdate(i, 'flag', e.target.value)}
+                      className={styles['overrideSelect']}
+                    >
+                      <option value="">
+                        {suggested === null ? 'No range' : 'From range'}
+                      </option>
+                      <option value="H">H — high</option>
+                      <option value="L">L — low</option>
+                      <option value="HH">HH — critical high</option>
+                      <option value="LL">LL — critical low</option>
+                    </Select>
+                  </Field>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 /**
- * The plain parameter/result grid, used both as the whole form for an ordinary
- * test and as the "Additional Parameters" block beneath a Widal or MPs matrix.
+ * The rows a technologist has to acknowledge before the test can be released.
+ *
+ * Exported so DepartmentPage can gate the save on it without re-deriving the
+ * flags and risking the two disagreeing.
  */
-export default function ParameterTable({ results, onUpdate, theme }: Props) {
-  return (
-    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
-      <thead>
-        <tr style={{ background: theme.light }}>
-          {headings.map(h => (
-            <th key={h} style={{ padding: '0.6rem 0.75rem', textAlign: 'left', fontWeight: 700, color: theme.text, borderBottom: `1px solid ${theme.border}`, whiteSpace: 'nowrap', fontSize: '0.75rem' }}>{h}</th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-        {results.map((r, i) => (
-          <tr key={i} style={{ borderBottom: '1px solid var(--gray-100)' }}>
-            <td style={{ padding: '0.45rem 0.75rem', fontWeight: 500 }}>{r.parameter}</td>
-            <td style={{ padding: '0.3rem 0.5rem' }}>
-              <input
-                value={r.result}
-                onChange={e => onUpdate(i, 'result', e.target.value)}
-                placeholder="Enter result"
-                style={{ padding: '0.35rem 0.6rem', border: '1px solid var(--gray-300)', borderRadius: 0, fontSize: '0.8rem', width: '100%', minWidth: 120, background: flagBackground(r.flag), fontFamily: 'var(--font-body)' }}
-              />
-            </td>
-            <td style={{ padding: '0.45rem 0.75rem', color: 'var(--gray-500)' }}>{r.unit || '—'}</td>
-            <td style={{ padding: '0.45rem 0.75rem', color: 'var(--gray-500)', fontFamily: 'var(--font-mono)', fontSize: '0.72rem' }}>{r.range || '—'}</td>
-            <td style={{ padding: '0.3rem 0.5rem' }}>
-              <select
-                value={r.flag}
-                onChange={e => onUpdate(i, 'flag', e.target.value)}
-                style={{ padding: '0.35rem 0.5rem', borderRadius: 0, fontSize: '0.8rem', border: '1px solid var(--gray-300)', background: flagBackground(r.flag), color: flagColour(r.flag), fontWeight: r.flag ? 700 : 400, fontFamily: 'var(--font-body)' }}
-              >
-                <option value="">Normal</option>
-                <option value="H">H (High)</option>
-                <option value="L">L (Low)</option>
-              </select>
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
+export function criticalRows(results: EditableResult[], sex: Sex = 'unknown') {
+  return results
+    .map((row) => {
+      const flag = (row.flag ||
+        deriveFlag(row.result, row.range, { parameter: row.parameter, sex }) ||
+        '') as Flag;
+      return { row, flag };
+    })
+    .filter(({ flag }) => isCritical(flag));
 }

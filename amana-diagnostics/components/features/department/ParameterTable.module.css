@@ -1,0 +1,163 @@
+/* The result grid. Dense on purpose — a technologist works down twenty rows
+ * of it — but every row still has to survive a monochrome printout. */
+
+.wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: var(--text-sm);
+  min-width: 640px;
+}
+
+.table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  white-space: nowrap;
+
+  background: var(--accent-subtle);
+  color: var(--accent-subtle-text);
+  border-bottom: 1px solid var(--accent-border);
+
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+}
+
+.table tbody tr {
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.table tbody td,
+.table tbody th {
+  padding: var(--space-1) var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+  vertical-align: middle;
+}
+
+/* A row carrying a panic value. The left edge is what makes it findable when
+ * scanning, and it is a shape rather than only a tint, so it survives both
+ * greyscale and a colour-blind reader. */
+.critical td,
+.critical th {
+  background: var(--critical-subtle);
+}
+.critical th:first-child {
+  box-shadow: inset 3px 0 0 var(--critical-solid);
+}
+
+.parameter {
+  text-align: left;
+  font-weight: var(--weight-medium);
+  color: var(--text-primary);
+  min-width: 160px;
+}
+
+.resultCell {
+  min-width: 170px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-top: var(--space-1);
+  padding-bottom: var(--space-1);
+}
+
+.resultInput {
+  height: var(--control-height-sm);
+  min-width: 110px;
+  font-variant-numeric: tabular-nums;
+}
+
+.unit {
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.range {
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  white-space: nowrap;
+}
+
+.flagCell {
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+  padding-bottom: var(--space-2);
+}
+
+/* Says the flag disagrees with the reference range because a person said so.
+ * A silent override would look identical to a derived one. */
+.overrideNote {
+  font-size: var(--text-2xs);
+  color: var(--text-muted);
+  font-style: italic;
+  white-space: nowrap;
+}
+
+.overrideCell {
+  width: 1%;
+}
+
+.overrideSelect {
+  height: var(--control-height-sm);
+  font-size: var(--text-xs);
+  min-width: 130px;
+}
+
+/* Below the tablet breakpoint the grid stops being a table and becomes a
+ * stack of cards, because six columns at 390px is unreadable. */
+@media (max-width: 720px) {
+  .table {
+    min-width: 0;
+  }
+  .table thead {
+    display: none;
+  }
+  .table tbody tr {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: var(--space-1) var(--space-3);
+    padding: var(--space-3) 0;
+    border-bottom: 1px solid var(--border-default);
+  }
+  .table tbody td,
+  .table tbody th {
+    border-bottom: 0;
+    padding: 0 var(--space-3);
+  }
+  .parameter {
+    grid-column: 1 / -1;
+    font-weight: var(--weight-semibold);
+  }
+  .resultCell {
+    grid-column: 1;
+  }
+  .flagCell {
+    grid-column: 2;
+    justify-content: flex-end;
+  }
+  .unit,
+  .range {
+    grid-column: 1 / -1;
+    font-size: var(--text-2xs);
+  }
+  .overrideCell {
+    grid-column: 1 / -1;
+    width: auto;
+  }
+  .overrideSelect {
+    width: 100%;
+  }
+}
