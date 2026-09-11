@@ -35,14 +35,15 @@
 
   /* Neutral. Slight blue bias, so it sits with the accent rather than looking
    * like an unconsidered mid-grey. */
-  --n-0:   #ffffff;
-  --n-25:  #fbfcfd;
-  --n-50:  #f7f8fa;
+  --n-0: #ffffff;
+  --n-25: #fbfcfd;
+  --n-50: #f7f8fa;
   --n-100: #eff0f5;
   --n-200: #dfe2ea;
   --n-300: #c5c8d1;
   --n-400: #878da0;
-  --n-500: #5f6779;  /* 5.67:1 on white - lightest neutral legal as body text */
+  --n-500: #5f6779;
+  /* 5.67:1 on white - lightest neutral legal as body text */
   --n-600: #4c5266;
   --n-700: #3b4152;
   --n-800: #2f3441;
@@ -50,31 +51,33 @@
   --n-950: #12151b;
 
   /* Accent. The product's existing blue, extended into a full ramp. */
-  --a-50:  #edf1fd;
+  --a-50: #edf1fd;
   --a-100: #dce5fa;
   --a-200: #bed1f6;
   --a-300: #a4c0f0;
   --a-400: #85a9eb;
   --a-500: #618dde;
-  --a-600: #4472c4;  /* white on this = 4.72:1 */
-  --a-700: #28448a;  /* white on this = 9.19:1 */
+  --a-600: #4472c4;
+  /* white on this = 4.72:1 */
+  --a-700: #28448a;
+  /* white on this = 9.19:1 */
   --a-800: #1c3062;
   --a-850: #16264d;
   --a-900: #111d3b;
 
   /* Status. Deliberately not blue: a blue "success" and a blue "primary
    * action" are indistinguishable at a glance. */
-  --rd-50:    #fcf0ef;
-  --rd-100:   #fadbd8;
-  --rd-200:   #f3c9c5;
-  --rd-500:   #b4231a;
-  --rd-700:   #8f1c14;
-  --am-50:  #fdf6e7;
+  --rd-50: #fcf0ef;
+  --rd-100: #fadbd8;
+  --rd-200: #f3c9c5;
+  --rd-500: #b4231a;
+  --rd-700: #8f1c14;
+  --am-50: #fdf6e7;
   --am-100: #fef3cd;
   --am-200: #ecd9a4;
   --am-500: #8a5a00;
   --am-700: #6d4700;
-  --gr-50:  #eaf5f0;
+  --gr-50: #eaf5f0;
   --gr-100: #d5f0e8;
   --gr-200: #bcdcd0;
   --gr-500: #0f6b4f;
@@ -82,82 +85,83 @@
 
   /* Dark-theme raw values, declared here so the theme blocks below only
    * re-point semantic tokens and never invent a colour. */
-  --d-page:   #0d1017;
+  --d-page: #0d1017;
   --d-raised: #151a23;
   --d-sunken: #1b212c;
-  --d-line:   #29303c;
+  --d-line: #29303c;
   --d-line-2: #666f82;
-  --d-text:   #e6e9f0;
+  --d-text: #e6e9f0;
   --d-text-2: #a3abbd;
-  --d-text-3: #8b94a6;   /* 6.24:1 on page, 5.29:1 on sunken - the tightest pair */
+  --d-text-3: #8b94a6;
+  /* 6.24:1 on page, 5.29:1 on sunken - the tightest pair */
 
   /* ==========================================================================
    * 2. SEMANTIC - the only layer components may use
    * ====================================================================== */
 
   /* Surfaces */
-  --surface-page:     var(--n-50);
-  --surface-raised:   var(--n-0);
-  --surface-sunken:   var(--n-100);
-  --surface-inset:    var(--n-25);
-  --surface-overlay:  var(--n-0);
-  --surface-scrim:    rgba(18, 21, 27, 0.55);
-  --surface-hover:    var(--n-50);
+  --surface-page: var(--n-50);
+  --surface-raised: var(--n-0);
+  --surface-sunken: var(--n-100);
+  --surface-inset: var(--n-25);
+  --surface-overlay: var(--n-0);
+  --surface-scrim: rgba(18, 21, 27, 0.55);
+  --surface-hover: var(--n-50);
   --surface-selected: var(--a-50);
 
   /* Borders. --border-default is 1.69:1 on white: it is a boundary, not text.
    * A boundary that carries meaning uses --border-strong (3.31:1). */
-  --border-subtle:  var(--n-100);
+  --border-subtle: var(--n-100);
   --border-default: var(--n-300);
-  --border-strong:  var(--n-400);
-  --border-heavy:   var(--n-600);
+  --border-strong: var(--n-400);
+  --border-heavy: var(--n-600);
 
   /* Text */
-  --text-primary:   var(--n-900);
+  --text-primary: var(--n-900);
   --text-secondary: var(--n-600);
-  --text-muted:     var(--n-500);
-  --text-disabled:  var(--n-400);
-  --text-inverse:   var(--n-0);
-  --text-link:      var(--a-700);
+  --text-muted: var(--n-500);
+  --text-disabled: var(--n-400);
+  --text-inverse: var(--n-0);
+  --text-link: var(--a-700);
 
   /* Accent */
-  --accent-solid:       var(--a-700);
+  --accent-solid: var(--a-700);
   --accent-solid-hover: var(--a-800);
-  --accent-solid-text:  var(--n-0);
-  --accent-muted:       var(--a-600);
-  --accent-subtle:      var(--a-50);
+  --accent-solid-text: var(--n-0);
+  --accent-muted: var(--a-600);
+  --accent-subtle: var(--a-50);
   --accent-subtle-text: var(--a-800);
-  --accent-border:      var(--a-200);
-  --accent-text:        var(--a-700);
+  --accent-border: var(--a-200);
+  --accent-text: var(--a-700);
 
   /* Status. Each is a set: solid fill, subtle tint, text, border. */
-  --critical-solid:      var(--rd-500);
+  --critical-solid: var(--rd-500);
   --critical-solid-text: var(--n-0);
-  --critical-subtle:     var(--rd-50);
-  --critical-text:       var(--rd-700);
-  --critical-border:     var(--rd-200);
+  --critical-subtle: var(--rd-50);
+  --critical-text: var(--rd-700);
+  --critical-border: var(--rd-200);
 
-  --warning-solid:      var(--am-500);
+  --warning-solid: var(--am-500);
   --warning-solid-text: var(--n-0);
-  --warning-subtle:     var(--am-50);
-  --warning-text:       var(--am-700);
-  --warning-border:     var(--am-200);
+  --warning-subtle: var(--am-50);
+  --warning-text: var(--am-700);
+  --warning-border: var(--am-200);
 
-  --success-solid:      var(--gr-500);
+  --success-solid: var(--gr-500);
   --success-solid-text: var(--n-0);
-  --success-subtle:     var(--gr-50);
-  --success-text:       var(--gr-700);
-  --success-border:     var(--gr-200);
+  --success-subtle: var(--gr-50);
+  --success-text: var(--gr-700);
+  --success-border: var(--gr-200);
 
-  --info-solid:      var(--a-700);
+  --info-solid: var(--a-700);
   --info-solid-text: var(--n-0);
-  --info-subtle:     var(--a-50);
-  --info-text:       var(--a-800);
-  --info-border:     var(--a-200);
+  --info-subtle: var(--a-50);
+  --info-text: var(--a-800);
+  --info-border: var(--a-200);
 
   /* Focus. One ring, everywhere, in both themes. */
-  --focus-color:  var(--a-600);
-  --focus-width:  2px;
+  --focus-color: var(--a-600);
+  --focus-width: 2px;
   --focus-offset: 2px;
 
   /* ==========================================================================
@@ -165,50 +169,50 @@
    * ====================================================================== */
 
   /* Space. 4px base. Replaces 199 ad-hoc padding values. */
-  --space-0:  0;
-  --space-1:  0.25rem;
-  --space-2:  0.5rem;
-  --space-3:  0.75rem;
-  --space-4:  1rem;
-  --space-5:  1.25rem;
-  --space-6:  1.5rem;
-  --space-8:  2rem;
+  --space-0: 0;
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
   --space-10: 2.5rem;
   --space-12: 3rem;
   --space-16: 4rem;
 
   /* Type. Nine steps replacing 80. The dense clinical tables sit at
    * --text-sm; --text-2xs is for uppercase labels only, never prose. */
-  --text-2xs:  0.6875rem;
-  --text-xs:   0.75rem;
-  --text-sm:   0.8125rem;
-  --text-md:   0.875rem;
+  --text-2xs: 0.6875rem;
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-md: 0.875rem;
   --text-base: 1rem;
-  --text-lg:   1.125rem;
-  --text-xl:   1.375rem;
-  --text-2xl:  1.75rem;
-  --text-3xl:  2.25rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.375rem;
+  --text-2xl: 1.75rem;
+  --text-3xl: 2.25rem;
 
-  --leading-tight:  1.2;
-  --leading-snug:   1.35;
+  --leading-tight: 1.2;
+  --leading-snug: 1.35;
   --leading-normal: 1.5;
-  --leading-loose:  1.65;
+  --leading-loose: 1.65;
 
-  --weight-normal:   400;
-  --weight-medium:   500;
+  --weight-normal: 400;
+  --weight-medium: 500;
   --weight-semibold: 600;
-  --weight-bold:     700;
+  --weight-bold: 700;
 
-  --tracking-tight:  -0.01em;
+  --tracking-tight: -0.01em;
   --tracking-normal: 0;
-  --tracking-wide:   0.06em;
-  --tracking-caps:   0.08em;
+  --tracking-wide: 0.06em;
+  --tracking-caps: 0.08em;
 
   /* Radius. The product's look is square. Change here, not per element. */
   --radius-none: 0px;
-  --radius-sm:   0px;
-  --radius-md:   0px;
-  --radius-lg:   0px;
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
   --radius-full: 9999px;
 
   /* Elevation. Tinted with the neutral's hue rather than pure black. */
@@ -220,20 +224,20 @@
 
   /* Layers. The app had 14 unmanaged z-index values from 0 to 10001.
    * Anything that stacks picks one of these seven. */
-  --z-base:     0;
-  --z-sticky:   100;
+  --z-base: 0;
+  --z-sticky: 100;
   --z-dropdown: 200;
-  --z-overlay:  300;
-  --z-modal:    400;
-  --z-toast:    500;
-  --z-tooltip:  600;
+  --z-overlay: 300;
+  --z-modal: 400;
+  --z-toast: 500;
+  --z-tooltip: 600;
 
   /* Motion */
   --duration-instant: 80ms;
-  --duration-fast:    140ms;
-  --duration-normal:  220ms;
-  --duration-slow:    320ms;
-  --ease-out:    cubic-bezier(0.16, 1, 0.3, 1);
+  --duration-fast: 140ms;
+  --duration-normal: 220ms;
+  --duration-slow: 320ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
 
   /* ==========================================================================
@@ -243,15 +247,15 @@
   --control-height-md: 34px;
   --control-height-lg: 40px;
   --control-padding-x: var(--space-3);
-  --control-font:      var(--text-md);
-  --row-padding-y:     var(--space-3);
-  --row-padding-x:     var(--space-4);
-  --section-gap:       var(--space-6);
+  --control-font: var(--text-md);
+  --row-padding-y: var(--space-3);
+  --row-padding-x: var(--space-4);
+  --section-gap: var(--space-6);
 
   /* Type families. next/font fills the --font-face-* variables. */
   --font-display: var(--font-face-serif), Georgia, 'Times New Roman', serif;
-  --font-body:    var(--font-face-sans), -apple-system, 'Segoe UI', system-ui, sans-serif;
-  --font-mono:    var(--font-face-mono), ui-monospace, Consolas, monospace;
+  --font-body: var(--font-face-sans), -apple-system, 'Segoe UI', system-ui, sans-serif;
+  --font-mono: var(--font-face-mono), ui-monospace, Consolas, monospace;
 }
 
 /* =============================================================================
@@ -262,59 +266,59 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
-    --surface-page:     var(--d-page);
-    --surface-raised:   var(--d-raised);
-    --surface-sunken:   var(--d-sunken);
-    --surface-inset:    #10141c;
-    --surface-overlay:  var(--d-raised);
-    --surface-scrim:    rgba(0, 0, 0, 0.7);
-    --surface-hover:    #1e2531;
+    --surface-page: var(--d-page);
+    --surface-raised: var(--d-raised);
+    --surface-sunken: var(--d-sunken);
+    --surface-inset: #10141c;
+    --surface-overlay: var(--d-raised);
+    --surface-scrim: rgba(0, 0, 0, 0.7);
+    --surface-hover: #1e2531;
     --surface-selected: #16203a;
 
-    --border-subtle:  #20262f;
+    --border-subtle: #20262f;
     --border-default: var(--d-line);
-    --border-strong:  var(--d-line-2);
-    --border-heavy:   #4a5568;
+    --border-strong: var(--d-line-2);
+    --border-heavy: #4a5568;
 
-    --text-primary:   var(--d-text);
+    --text-primary: var(--d-text);
     --text-secondary: var(--d-text-2);
-    --text-muted:     var(--d-text-3);
-    --text-disabled:  #6f7788;
-    --text-inverse:   var(--d-page);
-    --text-link:      #86aae6;
+    --text-muted: var(--d-text-3);
+    --text-disabled: #6f7788;
+    --text-inverse: var(--d-page);
+    --text-link: #86aae6;
 
-    --accent-solid:       #3f6cc4;
+    --accent-solid: #3f6cc4;
     --accent-solid-hover: #35609f;
-    --accent-solid-text:  #ffffff;
-    --accent-muted:       #5a83d0;
-    --accent-subtle:      #16203a;
+    --accent-solid-text: #ffffff;
+    --accent-muted: #5a83d0;
+    --accent-subtle: #16203a;
     --accent-subtle-text: #b8cdf5;
-    --accent-border:      #2c4372;
-    --accent-text:        #8fb3f5;
+    --accent-border: #2c4372;
+    --accent-text: #8fb3f5;
 
-    --critical-solid:      #c22f24;
+    --critical-solid: #c22f24;
     --critical-solid-text: #ffffff;
-    --critical-subtle:     #2a1614;
-    --critical-text:       #ffb4a8;
-    --critical-border:     #4d2822;
+    --critical-subtle: #2a1614;
+    --critical-text: #ffb4a8;
+    --critical-border: #4d2822;
 
-    --warning-solid:      #9a6600;
+    --warning-solid: #9a6600;
     --warning-solid-text: #ffffff;
-    --warning-subtle:     #251d0e;
-    --warning-text:       #f0cd8b;
-    --warning-border:     #453518;
+    --warning-subtle: #251d0e;
+    --warning-text: #f0cd8b;
+    --warning-border: #453518;
 
-    --success-solid:      #12795a;
+    --success-solid: #12795a;
     --success-solid-text: #ffffff;
-    --success-subtle:     #10241d;
-    --success-text:       #8fdcbd;
-    --success-border:     #1e4335;
+    --success-subtle: #10241d;
+    --success-text: #8fdcbd;
+    --success-border: #1e4335;
 
-    --info-solid:      #3f6cc4;
+    --info-solid: #3f6cc4;
     --info-solid-text: #ffffff;
-    --info-subtle:     #141d2e;
-    --info-text:       #a9c8f5;
-    --info-border:     #2c4372;
+    --info-subtle: #141d2e;
+    --info-text: #a9c8f5;
+    --info-border: #2c4372;
 
     --focus-color: #7fa3e0;
 
@@ -326,59 +330,59 @@
 }
 
 :root[data-theme='dark'] {
-  --surface-page:     var(--d-page);
-  --surface-raised:   var(--d-raised);
-  --surface-sunken:   var(--d-sunken);
-  --surface-inset:    #10141c;
-  --surface-overlay:  var(--d-raised);
-  --surface-scrim:    rgba(0, 0, 0, 0.7);
-  --surface-hover:    #1e2531;
+  --surface-page: var(--d-page);
+  --surface-raised: var(--d-raised);
+  --surface-sunken: var(--d-sunken);
+  --surface-inset: #10141c;
+  --surface-overlay: var(--d-raised);
+  --surface-scrim: rgba(0, 0, 0, 0.7);
+  --surface-hover: #1e2531;
   --surface-selected: #16203a;
 
-  --border-subtle:  #20262f;
+  --border-subtle: #20262f;
   --border-default: var(--d-line);
-  --border-strong:  var(--d-line-2);
-  --border-heavy:   #4a5568;
+  --border-strong: var(--d-line-2);
+  --border-heavy: #4a5568;
 
-  --text-primary:   var(--d-text);
+  --text-primary: var(--d-text);
   --text-secondary: var(--d-text-2);
-  --text-muted:     var(--d-text-3);
-  --text-disabled:  #6f7788;
-  --text-inverse:   var(--d-page);
-  --text-link:      #86aae6;
+  --text-muted: var(--d-text-3);
+  --text-disabled: #6f7788;
+  --text-inverse: var(--d-page);
+  --text-link: #86aae6;
 
-  --accent-solid:       #3f6cc4;
+  --accent-solid: #3f6cc4;
   --accent-solid-hover: #35609f;
-  --accent-solid-text:  #ffffff;
-  --accent-muted:       #5a83d0;
-  --accent-subtle:      #16203a;
+  --accent-solid-text: #ffffff;
+  --accent-muted: #5a83d0;
+  --accent-subtle: #16203a;
   --accent-subtle-text: #b8cdf5;
-  --accent-border:      #2c4372;
-  --accent-text:        #8fb3f5;
+  --accent-border: #2c4372;
+  --accent-text: #8fb3f5;
 
-  --critical-solid:      #c22f24;
+  --critical-solid: #c22f24;
   --critical-solid-text: #ffffff;
-  --critical-subtle:     #2a1614;
-  --critical-text:       #ffb4a8;
-  --critical-border:     #4d2822;
+  --critical-subtle: #2a1614;
+  --critical-text: #ffb4a8;
+  --critical-border: #4d2822;
 
-  --warning-solid:      #9a6600;
+  --warning-solid: #9a6600;
   --warning-solid-text: #ffffff;
-  --warning-subtle:     #251d0e;
-  --warning-text:       #f0cd8b;
-  --warning-border:     #453518;
+  --warning-subtle: #251d0e;
+  --warning-text: #f0cd8b;
+  --warning-border: #453518;
 
-  --success-solid:      #12795a;
+  --success-solid: #12795a;
   --success-solid-text: #ffffff;
-  --success-subtle:     #10241d;
-  --success-text:       #8fdcbd;
-  --success-border:     #1e4335;
+  --success-subtle: #10241d;
+  --success-text: #8fdcbd;
+  --success-border: #1e4335;
 
-  --info-solid:      #3f6cc4;
+  --info-solid: #3f6cc4;
   --info-solid-text: #ffffff;
-  --info-subtle:     #141d2e;
-  --info-text:       #a9c8f5;
-  --info-border:     #2c4372;
+  --info-subtle: #141d2e;
+  --info-text: #a9c8f5;
+  --info-border: #2c4372;
 
   --focus-color: #7fa3e0;
 
@@ -399,10 +403,10 @@
   --control-height-md: 28px;
   --control-height-lg: 34px;
   --control-padding-x: var(--space-2);
-  --control-font:      var(--text-sm);
-  --row-padding-y:     var(--space-1);
-  --row-padding-x:     var(--space-3);
-  --section-gap:       var(--space-4);
+  --control-font: var(--text-sm);
+  --row-padding-y: var(--space-1);
+  --row-padding-x: var(--space-3);
+  --section-gap: var(--space-4);
 }
 
 [data-density='comfortable'] {
@@ -410,10 +414,10 @@
   --control-height-md: 40px;
   --control-height-lg: 48px;
   --control-padding-x: var(--space-4);
-  --control-font:      var(--text-base);
-  --row-padding-y:     var(--space-4);
-  --row-padding-x:     var(--space-5);
-  --section-gap:       var(--space-8);
+  --control-font: var(--text-base);
+  --row-padding-y: var(--space-4);
+  --row-padding-x: var(--space-5);
+  --section-gap: var(--space-8);
 }
 
 /* =============================================================================
@@ -442,8 +446,8 @@
   --gray-300: var(--border-default);
   --gray-200: var(--border-subtle);
   --gray-100: var(--surface-sunken);
-  --gray-50:  var(--surface-page);
-  --white:    var(--surface-raised);
+  --gray-50: var(--surface-page);
+  --white: var(--surface-raised);
 
   --teal-900: var(--a-900);
   --teal-850: var(--a-850);
@@ -455,22 +459,22 @@
   --teal-300: var(--accent-border);
   --teal-200: var(--accent-border);
   --teal-100: var(--accent-subtle);
-  --teal-50:  var(--accent-subtle);
+  --teal-50: var(--accent-subtle);
 
-  --red:         var(--critical-solid);
-  --red-50:      var(--critical-subtle);
-  --red-200:     var(--critical-border);
-  --red-light:   var(--critical-subtle);
-  --green:       var(--success-solid);
+  --red: var(--critical-solid);
+  --red-50: var(--critical-subtle);
+  --red-200: var(--critical-border);
+  --red-light: var(--critical-subtle);
+  --green: var(--success-solid);
   --green-light: var(--success-subtle);
-  --amber:       var(--warning-solid);
-  --amber-700:   var(--warning-text);
+  --amber: var(--warning-solid);
+  --amber-700: var(--warning-text);
   --amber-light: var(--warning-subtle);
-  --blue-600:    var(--info-solid);
-  --gold:        #c9973a;
-  --gold-light:  #f0c97a;
+  --blue-600: var(--info-solid);
+  --gold: #c9973a;
+  --gold-light: #f0c97a;
 
   --font-sans: var(--font-body);
-  --radius:    var(--radius-md);
+  --radius: var(--radius-md);
   --focus-ring: 0 0 0 2px var(--surface-raised), 0 0 0 4px var(--focus-color);
 }
