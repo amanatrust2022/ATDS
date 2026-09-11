@@ -84,8 +84,13 @@ export default function ReferralSelection({
               {matchingDoctors.map(d => (
                 <div key={d.id} onClick={() => { setSelectedDoctorId(d.id); setDoctorSearch(''); setShowDoctorDrop(false); setForm({ referredBy: `Dr. ${d.name}` }); }} style={dropItemStyle}>
                   <div style={{ fontWeight: 600, fontSize: '0.8rem' }}>Dr. {d.name}</div>
+                  {/* No commission shown. The commission actually paid comes
+                    * from the test price catalogue, not the doctor's record —
+                    * see lib/store/registrationBilling.ts. Nothing can set the
+                    * figure on the record, so it read "No commission" beside
+                    * every doctor on the list, referred visits included. */}
                   <div style={{ fontSize: '0.68rem', color: 'var(--gray-400)' }}>
-                    {d.facility_name || 'Independent'} · {d.commission_value > 0 ? `${d.commission_type === 'percentage' ? d.commission_value + '%' : '₦' + d.commission_value} commission` : 'No commission'}
+                    {d.facility_name || 'Independent'}
                   </div>
                 </div>
               ))}
@@ -150,9 +155,11 @@ export default function ReferralSelection({
               {matchingFacilities.map(f => (
                 <div key={f.id} onClick={() => { setSelectedFacilityId(f.id); setFacilitySearch(''); setShowFacilityDrop(false); setForm({ referringFacility: f.name }); }} style={dropItemStyle}>
                   <div style={{ fontWeight: 600, fontSize: '0.8rem' }}>{f.name}</div>
-                  <div style={{ fontSize: '0.68rem', color: 'var(--gray-400)' }}>
-                    {f.address || ''}{f.commission_value > 0 ? ` · ${f.commission_type === 'percentage' ? f.commission_value + '%' : '₦' + f.commission_value} commission` : ''}
-                  </div>
+                  {/* Commission dropped here too — same reason as the doctors
+                    * list above. */}
+                  {f.address && (
+                    <div style={{ fontSize: '0.68rem', color: 'var(--gray-400)' }}>{f.address}</div>
+                  )}
                 </div>
               ))}
               {matchingFacilities.length === 0 && !facilitySearch && (
