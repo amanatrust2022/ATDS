@@ -1,333 +1,421 @@
 'use client';
-import RequireRole from '@/components/RequireRole';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { RiRadarLine, RiSaveLine, RiTestTubeLine } from '@remixicon/react';
+
 import { useAuth } from '@/components/AuthProvider';
-import { TEST_CATALOGUE, TestPrice, fetchTestPrices, upsertTestPrices, fetchCustomTests, Test } from '@/lib/store';
+import RequireRole from '@/components/RequireRole';
+import { useShellSlot } from '@/components/shell';
 import {
-  RiPriceTag3Line, RiSaveLine, RiCheckLine, RiErrorWarningLine,
-  RiTestTubeLine, RiRadarLine,
-} from '@remixicon/react';
+  Alert,
+  Button,
+  Card,
+  CardBody,
+  CardHeader,
+  EmptyState,
+  Field,
+  Input,
+  Select,
+  SkeletonRows,
+  Table,
+} from '@/components/ui';
+import {
+  TEST_CATALOGUE,
+  Test,
+  fetchCustomTests,
+  fetchTestPrices,
+  upsertTestPrices,
+} from '@/lib/store';
+
+import styles from './pricing.module.css';
+
+type CommissionType = 'percentage' | 'flat' | 'none';
+
+/**
+ * What one test costs, and what a referrer earns on it.
+ *
+ * Prices and commission values are held as the raw text of their boxes, not as
+ * numbers. Parsing on every keystroke meant an emptied box became a 0, which
+ * then showed as "0" rather than blank and — worse — wrote a key the saved copy
+ * had never had, so the screen believed there were unsaved changes for the rest
+ * of the session. The numbers are parsed once, at the two places that need
+ * them: the dirty check and the save.
+ */
+type Draft = {
+  price: string;
+  commissionType: CommissionType;
+  commissionValue: string;
+};
+
+const BLANK: Draft = { price: '', commissionType: 'percentage', commissionValue: '' };
+
+const num = (raw: string) => {
+  const n = parseFloat(raw);
+  return Number.isFinite(n) ? n : 0;
+};
+
+/** The three fields as the database will hold them, whatever was typed. */
+const settled = (d: Draft) => ({
+  price: num(d.price),
+  commissionType: d.commissionType,
+  commissionValue: d.commissionType === 'none' ? 0 : num(d.commissionValue),
+});
 
 function TestPricingPage() {
   const { organization } = useAuth();
+
   const [catalogue, setCatalogue] = useState<Test[]>([]);
-  const [categories, setCategories] = useState<string[]>([]);
-  const [prices, setPrices] = useState<Record<string, number>>({});
-  const [commTypes, setCommTypes] = useState<Record<string, 'percentage' | 'flat' | 'none'>>({});
-  const [commValues, setCommValues] = useState<Record<string, number>>({});
-  const [saved, setSaved] = useState<{
-    prices: Record<string, number>;
-    commTypes: Record<string, 'percentage' | 'flat' | 'none'>;
-    commValues: Record<string, number>;
-  }>({ prices: {}, commTypes: {}, commValues: {} });
+  const [draft, setDraft] = useState<Record<string, Draft>>({});
+  const [saved, setSaved] = useState<Record<string, Draft>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [successMsg, setSuccessMsg] = useState('');
-  const [errorMsg, setErrorMsg] = useState('');
-  const [filterCat, setFilterCat] = useState('');
-  const [filterDept, setFilterDept] = useState<'all' | 'lab' | 'radiology'>('all');
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [search, setSearch] = useState('');
+  const [dept, setDept] = useState<'all' | 'lab' | 'radiology'>('all');
+  const [category, setCategory] = useState('');
 
   useEffect(() => {
     if (!organization?.id) return;
-    Promise.all([
-      fetchTestPrices(organization.id),
-      fetchCustomTests(organization.id),
-    ]).then(([priceData, customTests]) => {
-      const pMap: Record<string, number> = {};
-      const tMap: Record<string, 'percentage' | 'flat' | 'none'> = {};
-      const vMap: Record<string, number> = {};
-      priceData.forEach(p => {
-        pMap[p.test_id] = p.price;
-        tMap[p.test_id] = (p.commission_type as any) || 'percentage';
-        vMap[p.test_id] = p.commission_value || 0;
-      });
-      setPrices(pMap);
-      setCommTypes(tMap);
-      setCommValues(vMap);
-      setSaved({ prices: pMap, commTypes: tMap, commValues: vMap });
+    let live = true;
+    Promise.all([fetchTestPrices(organization.id), fetchCustomTests(organization.id)]).then(
+      ([priceRows, customTests]) => {
+        if (!live) return;
 
-      // Merge defaults with custom tests
-      const merged = [...TEST_CATALOGUE];
-      customTests.forEach(ct => {
-        const idx = merged.findIndex(t => t.id === ct.id);
-        if (idx !== -1) {
-          if (ct.is_active === false) {
-            merged.splice(idx, 1);
-          } else {
-            merged[idx] = ct;
+        const rows: Record<string, Draft> = {};
+        priceRows.forEach((p) => {
+          rows[p.test_id] = {
+            price: p.price ? String(p.price) : '',
+            commissionType: (p.commission_type as CommissionType) || 'percentage',
+            commissionValue: p.commission_value ? String(p.commission_value) : '',
+          };
+        });
+        setDraft(rows);
+        setSaved(rows);
+
+        // A custom test overrides the built-in of the same id, and one turned
+        // off disappears from the list entirely.
+        const merged = [...TEST_CATALOGUE];
+        customTests.forEach((ct) => {
+          const idx = merged.findIndex((t) => t.id === ct.id);
+          if (idx !== -1) {
+            if (ct.is_active === false) merged.splice(idx, 1);
+            else merged[idx] = ct;
+          } else if (ct.is_active !== false) {
+            merged.push(ct);
           }
-        } else if (ct.is_active !== false) {
-          merged.push(ct);
-        }
-      });
-      setCatalogue(merged);
-
-      const uniqueCats = Array.from(new Set(merged.map(t => t.category)));
-      setCategories(uniqueCats);
-
-      setLoading(false);
-    });
+        });
+        setCatalogue(merged);
+        setLoading(false);
+      },
+    );
+    return () => {
+      live = false;
+    };
   }, [organization?.id]);
 
-  const setPrice = (testId: string, val: string) => {
-    const num = parseFloat(val);
-    setPrices(prev => ({ ...prev, [testId]: isNaN(num) ? 0 : num }));
+  const edit = (id: string, patch: Partial<Draft>) => {
+    setSuccess('');
+    setDraft((prev) => ({ ...prev, [id]: { ...(prev[id] ?? BLANK), ...patch } }));
   };
 
-  const setCommType = (testId: string, val: 'percentage' | 'flat' | 'none') => {
-    setCommTypes(prev => ({ ...prev, [testId]: val }));
-    if (val === 'none') {
-      setCommValues(prev => ({ ...prev, [testId]: 0 }));
-    }
-  };
+  const changed = useCallback(
+    (id: string) => {
+      const a = settled(draft[id] ?? BLANK);
+      const b = settled(saved[id] ?? BLANK);
+      return (
+        a.price !== b.price ||
+        a.commissionType !== b.commissionType ||
+        a.commissionValue !== b.commissionValue
+      );
+    },
+    [draft, saved],
+  );
 
-  const setCommValue = (testId: string, val: string) => {
-    const num = parseFloat(val);
-    setCommValues(prev => ({ ...prev, [testId]: isNaN(num) ? 0 : num }));
-  };
+  // Only tests actually in the catalogue count. Comparing the two maps whole
+  // let a key for a test that no longer exists hold the screen dirty forever.
+  const isDirty = useMemo(() => catalogue.some((t) => changed(t.id)), [catalogue, changed]);
 
-  const isDirty = JSON.stringify({ prices, commTypes, commValues }) !== JSON.stringify(saved);
+  const categories = useMemo(
+    () => Array.from(new Set(catalogue.map((t) => t.category))),
+    [catalogue],
+  );
 
-  const totalRevenue = catalogue.reduce((sum, t) => sum + (prices[t.id] || 0), 0);
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return catalogue.filter(
+      (t) =>
+        (!category || t.category === category) &&
+        (dept === 'all' || t.department === dept) &&
+        (!q || t.name.toLowerCase().includes(q)),
+    );
+  }, [catalogue, category, dept, search]);
 
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     if (!organization?.id) return;
     setSaving(true);
-    setErrorMsg('');
+    setError('');
     try {
-      const rows = catalogue.map(t => ({
-        organization_id: organization.id,
-        test_id: t.id,
-        test_name: t.name,
-        price: prices[t.id] || 0,
-        commission_type: commTypes[t.id] || 'percentage',
-        commission_value: commValues[t.id] || 0,
-      }));
+      // The whole catalogue, not the filtered view. The filters hide rows; the
+      // write must not, or narrowing to radiology before saving would wipe
+      // every price in the lab.
+      const rows = catalogue.map((t) => {
+        const s = settled(draft[t.id] ?? BLANK);
+        return {
+          organization_id: organization.id,
+          test_id: t.id,
+          test_name: t.name,
+          price: s.price,
+          commission_type: s.commissionType,
+          commission_value: s.commissionValue,
+        };
+      });
       await upsertTestPrices(rows, organization.id);
-      setSaved({ prices: { ...prices }, commTypes: { ...commTypes }, commValues: { ...commValues } });
-      setSuccessMsg(`${rows.length} test prices and commissions saved successfully.`);
-      setTimeout(() => setSuccessMsg(''), 3000);
+      setSaved(draft);
+      setSuccess(`Saved ${rows.length} prices.`);
     } catch (e: any) {
-      setErrorMsg(e.message);
+      setError(e?.message || 'Could not save the price list.');
     } finally {
       setSaving(false);
     }
-  };
+  }, [catalogue, draft, organization?.id]);
 
-  const filteredTests = catalogue.filter(t => {
-    const catMatch = !filterCat || t.category === filterCat;
-    const deptMatch = filterDept === 'all' || t.department === filterDept;
-    const q = search.toLowerCase();
-    const searchMatch = !q || t.name.toLowerCase().includes(q);
-    return catMatch && deptMatch && searchMatch;
-  });
+  useShellSlot(
+    {
+      subtitle: 'What each test costs, and what a referrer earns on it.',
+      actions: (
+        <div className={styles['unsaved']}>
+          {isDirty && <span className={styles['unsavedNote']}>Unsaved changes</span>}
+          <Button
+            intent="primary"
+            icon={<RiSaveLine size={15} />}
+            loading={saving}
+            disabled={!isDirty}
+            onClick={handleSave}
+          >
+            {isDirty ? 'Save price list' : 'All saved'}
+          </Button>
+        </div>
+      ),
+    },
+    [isDirty, saving, handleSave],
+  );
+
+  // A price list is dozens of small edits and one write. Closing the tab
+  // halfway through lost the lot, silently.
+  useEffect(() => {
+    if (!isDirty) return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [isDirty]);
+
+  const priced = catalogue.filter((t) => settled(draft[t.id] ?? BLANK).price > 0);
+  const earning = catalogue.filter((t) => settled(draft[t.id] ?? BLANK).commissionValue > 0);
+  const total = priced.reduce((sum, t) => sum + settled(draft[t.id] ?? BLANK).price, 0);
+
+  const stats = [
+    { label: 'Tests', value: String(catalogue.length) },
+    { label: 'Priced', value: `${priced.length} of ${catalogue.length}` },
+    { label: 'Earn commission', value: String(earning.length) },
+    { label: 'List total', value: `₦${total.toLocaleString()}` },
+  ];
+
+  const columns = [
+    {
+      key: 'name',
+      header: 'Test',
+      render: (t: Test) => <span className={styles['name']}>{t.name}</span>,
+    },
+    {
+      key: 'department',
+      header: 'Department',
+      render: (t: Test) => (
+        <span className={styles['dept']}>
+          {t.department === 'lab' ? (
+            <RiTestTubeLine size={13} aria-hidden="true" />
+          ) : (
+            <RiRadarLine size={13} aria-hidden="true" />
+          )}
+          {t.department === 'lab' ? 'Lab' : 'Radiology'}
+        </span>
+      ),
+    },
+    {
+      key: 'specimen',
+      header: 'Specimen',
+      render: (t: Test) => <span className={styles['muted']}>{t.specimen || '—'}</span>,
+    },
+    {
+      key: 'price',
+      header: 'Price',
+      numeric: true,
+      render: (t: Test) => (
+        <Input
+          // Named after its own row. Three identical boxes a row and a dozen
+          // rows on screen: without this every one of them was "edit text",
+          // and nothing but counting told you which test you were pricing.
+          aria-label={`Price for ${t.name}`}
+          className={[styles['priceCell'], changed(t.id) ? styles['changed'] : '']
+            .filter(Boolean)
+            .join(' ')}
+          type="number"
+          min={0}
+          step={100}
+          numeric
+          prefix="₦"
+          placeholder="0"
+          value={(draft[t.id] ?? BLANK).price}
+          onChange={(e) => edit(t.id, { price: e.target.value })}
+        />
+      ),
+    },
+    {
+      key: 'commissionType',
+      header: 'Commission',
+      render: (t: Test) => (
+        <Select
+          aria-label={`Commission type for ${t.name}`}
+          className={styles['typeCell']}
+          value={(draft[t.id] ?? BLANK).commissionType}
+          onChange={(e) => edit(t.id, { commissionType: e.target.value as CommissionType })}
+        >
+          <option value="percentage">Percentage of the price</option>
+          <option value="flat">Flat amount</option>
+          <option value="none">No commission</option>
+        </Select>
+      ),
+    },
+    {
+      key: 'commissionValue',
+      header: 'Rate',
+      numeric: true,
+      render: (t: Test) => {
+        const row = draft[t.id] ?? BLANK;
+        const none = row.commissionType === 'none';
+        return (
+          <Input
+            aria-label={`Commission value for ${t.name}`}
+            className={[styles['priceCell'], changed(t.id) ? styles['changed'] : '']
+              .filter(Boolean)
+              .join(' ')}
+            type="number"
+            min={0}
+            step={row.commissionType === 'flat' ? 100 : 1}
+            numeric
+            prefix={row.commissionType === 'flat' ? '₦' : '%'}
+            placeholder="0"
+            disabled={none}
+            value={none ? '' : row.commissionValue}
+            onChange={(e) => edit(t.id, { commissionValue: e.target.value })}
+          />
+        );
+      },
+    },
+  ];
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--gray-50)' }}>
-      {/* Header */}
-      <div style={{ background: 'white', borderBottom: '1px solid var(--gray-200)', padding: '1.5rem 2rem' }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.2rem' }}>
-              <RiPriceTag3Line size={22} color="var(--teal-600)" />
-              <h1 style={{ fontSize: '1.3rem', fontWeight: 700, color: 'var(--gray-900)', margin: 0 }}>Test Price &amp; Commission Catalog</h1>
-            </div>
-            <p style={{ color: 'var(--gray-500)', fontSize: '0.82rem', margin: 0 }}>
-              Set prices and referral commission settings for all {catalogue.length} tests.
-            </p>
-          </div>
-          <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-            {successMsg && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--green)', fontSize: '0.82rem', fontWeight: 600 }}>
-                <RiCheckLine size={16} /> {successMsg}
+    <div className={styles['screen']}>
+      {error && (
+        <Alert tone="critical" live>
+          {error}
+        </Alert>
+      )}
+      {success && !isDirty && (
+        <Alert tone="success" live>
+          {success}
+        </Alert>
+      )}
+
+      <div className={styles['stats']}>
+        {stats.map((s) => (
+          <Card key={s.label}>
+            <CardBody>
+              <div className={styles['stat']}>
+                <span className={styles['statValue']}>{s.value}</span>
+                <span className={styles['statLabel']}>{s.label}</span>
               </div>
-            )}
-            <button
-              onClick={handleSave}
-              disabled={saving || !isDirty}
-              style={{
-                display: 'flex', alignItems: 'center', gap: '0.4rem',
-                padding: '0.6rem 1.2rem', background: isDirty ? 'var(--teal-700)' : 'var(--gray-300)',
-                color: 'white', border: 'none', fontSize: '0.82rem', fontWeight: 700,
-                cursor: saving || !isDirty ? 'not-allowed' : 'pointer', borderRadius: 0,
-                transition: 'background 0.2s',
-              }}
-            >
-              <RiSaveLine size={16} /> {saving ? 'Saving…' : isDirty ? 'Save All Changes' : 'All Saved'}
-            </button>
-          </div>
-        </div>
-        {errorMsg && (
-          <div style={{ marginTop: '0.75rem', background: 'var(--red-light)', color: 'var(--red)', padding: '0.6rem 1rem', fontSize: '0.8rem', display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
-            <RiErrorWarningLine size={15} /> {errorMsg}
-          </div>
-        )}
+            </CardBody>
+          </Card>
+        ))}
       </div>
 
-      <div style={{ padding: '1.5rem 2rem', maxWidth: 1300, margin: '0 auto' }}>
-        {/* Stats row */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.75rem', marginBottom: '1.5rem' }}>
-          {[
-            { label: 'Total Tests', value: catalogue.length, color: 'var(--teal-600)', fmt: (v: number) => v },
-            { label: 'Tests with Prices', value: Object.values(prices).filter(v => v > 0).length, color: 'var(--green)', fmt: (v: number) => v },
-            { label: 'Tests with Commission', value: Object.keys(commTypes).filter(k => commTypes[k] !== 'none' && (commValues[k] || 0) > 0).length, color: 'var(--gold)', fmt: (v: number) => v },
-            { label: 'Total Price List', value: totalRevenue, color: 'var(--teal-700)', fmt: (v: number) => `₦${v.toLocaleString()}` },
-          ].map(s => (
-            <div key={s.label} style={{ background: 'white', border: '1px solid var(--gray-200)', padding: '0.9rem 1.1rem' }}>
-              <div style={{ fontSize: '1.4rem', fontWeight: 800, color: s.color }}>{(s.fmt as any)(s.value)}</div>
-              <div style={{ fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', color: 'var(--gray-500)', marginTop: '0.1rem' }}>{s.label}</div>
-            </div>
-          ))}
-        </div>
-
-        {/* Filters */}
-        <div style={{ background: 'white', border: '1px solid var(--gray-200)', padding: '0.85rem 1.1rem', marginBottom: '1rem', display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
-          <input
-            value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Search tests…"
-            style={{ flex: '1 1 180px', padding: '0.45rem 0.75rem', border: '1px solid var(--gray-300)', borderRadius: 0, fontSize: '0.8rem', fontFamily: 'var(--font-body)'  }}
-          />
-          <select value={filterDept} onChange={e => setFilterDept(e.target.value as any)} style={selectStyle}>
-            <option value="all">All Departments</option>
-            <option value="lab">Lab</option>
-            <option value="radiology">Radiology</option>
-          </select>
-          <select value={filterCat} onChange={e => setFilterCat(e.target.value)} style={selectStyle}>
-            <option value="">All Categories</option>
-            {categories.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
-          {(search || filterCat || filterDept !== 'all') && (
-            <button onClick={() => { setSearch(''); setFilterCat(''); setFilterDept('all'); }} style={{ padding: '0.4rem 0.75rem', border: '1px solid var(--gray-300)', background: 'white', fontSize: '0.75rem', cursor: 'pointer', borderRadius: 0, color: 'var(--gray-600)' }}>
-              Clear
-            </button>
-          )}
-          <span style={{ fontSize: '0.75rem', color: 'var(--gray-400)', marginLeft: 'auto' }}>{filteredTests.length} tests shown</span>
-        </div>
-
-        {/* Price grid by category */}
-        {loading ? (
-          <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--gray-400)' }}>Loading pricing catalog…</div>
-        ) : (
-          categories.filter(cat => !filterCat || cat === filterCat).map(cat => {
-            const testsInCat = filteredTests.filter(t => t.category === cat);
-            if (testsInCat.length === 0) return null;
-            return (
-              <div key={cat} style={{ marginBottom: '1.5rem' }}>
-                <div style={{ background: 'var(--teal-800)', color: 'white', padding: '0.6rem 1rem', fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 0 }}>
-                  {cat}
-                </div>
-                <div style={{ background: 'white', border: '1px solid var(--gray-200)', borderTop: 'none' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
-                    <thead>
-                      <tr style={{ background: 'var(--gray-50)', borderBottom: '1px solid var(--gray-200)' }}>
-                        <th style={thStyle}>Test Name</th>
-                        <th style={thStyle}>Department</th>
-                        <th style={thStyle}>Specimen</th>
-                        <th style={{ ...thStyle, width: 140 }}>Price (₦)</th>
-                        <th style={{ ...thStyle, width: 150 }}>Comm. Type</th>
-                        <th style={{ ...thStyle, width: 130 }}>Comm. Value</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {testsInCat.map((t, idx) => (
-                        <tr key={t.id} style={{ borderBottom: '1px solid var(--gray-100)', background: idx % 2 === 0 ? 'white' : 'var(--gray-50)' }}>
-                          <td style={{ padding: '0.65rem 1rem', fontWeight: 600, color: 'var(--gray-900)' }}>{t.name}</td>
-                          <td style={{ padding: '0.65rem 1rem' }}>
-                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.72rem', fontWeight: 700, color: t.department === 'lab' ? 'var(--teal-700)' : '#7c3aed' }}>
-                              {t.department === 'lab' ? <RiTestTubeLine size={13} /> : <RiRadarLine size={13} />}
-                              {t.department === 'lab' ? 'Lab' : 'Radiology'}
-                            </span>
-                          </td>
-                          <td style={{ padding: '0.65rem 1rem', color: 'var(--gray-500)', fontSize: '0.78rem' }}>{t.specimen}</td>
-                          <td style={{ padding: '0.5rem 1rem' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                              <span style={{ color: 'var(--gray-500)', fontSize: '0.85rem', fontWeight: 600 }}>₦</span>
-                              <input
-                                type="number"
-                                min={0}
-                                step={100}
-                                value={prices[t.id] ?? ''}
-                                onChange={e => setPrice(t.id, e.target.value)}
-                                placeholder="0"
-                                style={{
-                                  flex: 1, padding: '0.4rem 0.6rem', border: '1px solid var(--gray-300)',
-                                  borderRadius: 0, fontSize: '0.85rem', fontFamily: 'var(--font-body)',
-                                   textAlign: 'right', fontWeight: 700,
-                                  background: (prices[t.id] || 0) !== (saved.prices?.[t.id] || 0) ? 'rgba(68,114,196,0.06)' : 'white',
-                                  borderColor: (prices[t.id] || 0) !== (saved.prices?.[t.id] || 0) ? 'var(--teal-400)' : 'var(--gray-300)',
-                                  color: 'var(--gray-900)',
-                                }}
-                              />
-                            </div>
-                          </td>
-                          <td style={{ padding: '0.5rem 1rem' }}>
-                            <select
-                              value={commTypes[t.id] || 'percentage'}
-                              onChange={e => setCommType(t.id, e.target.value as any)}
-                              style={{
-                                width: '100%', padding: '0.4rem 0.6rem', border: '1px solid var(--gray-300)',
-                                borderRadius: 0, fontSize: '0.82rem', fontFamily: 'var(--font-body)',
-                                 background: 'white', color: 'var(--gray-900)',
-                                borderColor: (commTypes[t.id] || 'percentage') !== (saved.commTypes?.[t.id] || 'percentage') ? 'var(--teal-400)' : 'var(--gray-300)',
-                              }}
-                            >
-                              <option value="percentage">Percentage (%)</option>
-                              <option value="flat">Flat Rate (₦)</option>
-                              <option value="none">None (0%)</option>
-                            </select>
-                          </td>
-                          <td style={{ padding: '0.5rem 1rem' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                              <span style={{ color: 'var(--gray-500)', fontSize: '0.85rem', fontWeight: 600 }}>
-                                {commTypes[t.id] === 'flat' ? '₦' : '%'}
-                              </span>
-                              <input
-                                type="number"
-                                min={0}
-                                step={commTypes[t.id] === 'flat' ? 100 : 1}
-                                disabled={commTypes[t.id] === 'none'}
-                                value={commTypes[t.id] === 'none' ? 0 : (commValues[t.id] ?? '')}
-                                onChange={e => setCommValue(t.id, e.target.value)}
-                                placeholder="0"
-                                style={{
-                                  flex: 1, padding: '0.4rem 0.6rem', border: '1px solid var(--gray-300)',
-                                  borderRadius: 0, fontSize: '0.85rem', fontFamily: 'var(--font-body)',
-                                   textAlign: 'right', fontWeight: 700,
-                                  background: commTypes[t.id] === 'none' ? 'var(--gray-100)' : (commValues[t.id] || 0) !== (saved.commValues?.[t.id] || 0) ? 'rgba(68,114,196,0.06)' : 'white',
-                                  borderColor: commTypes[t.id] === 'none' ? 'var(--gray-300)' : (commValues[t.id] || 0) !== (saved.commValues?.[t.id] || 0) ? 'var(--teal-400)' : 'var(--gray-300)',
-                                  color: commTypes[t.id] === 'none' ? 'var(--gray-400)' : 'var(--gray-900)',
-                                }}
-                              />
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            );
-          })
-        )}
-
-        {/* Floating save bar when dirty */}
-        {isDirty && (
-          <div style={{ position: 'fixed', bottom: '1.5rem', right: '1.5rem', background: 'var(--teal-800)', color: 'white', padding: '0.75rem 1.25rem', display: 'flex', alignItems: 'center', gap: '0.75rem', boxShadow: '0 8px 24px rgba(0,0,0,0.25)', animation: 'fadeIn 0.2s ease', zIndex: 50 }}>
-            <span style={{ fontSize: '0.82rem', fontWeight: 600 }}>You have unsaved catalog changes</span>
-            <button onClick={handleSave} disabled={saving} style={{ background: 'white', color: 'var(--teal-800)', border: 'none', padding: '0.4rem 1rem', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-              <RiSaveLine size={14} /> {saving ? 'Saving…' : 'Save Now'}
-            </button>
+      <Card>
+        <CardBody>
+          <div className={styles['filters']}>
+            <Field label="Search" labelHidden className={styles['searchField']}>
+              <Input
+                type="search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search tests…"
+              />
+            </Field>
+            <Field label="Department">
+              <Select value={dept} onChange={(e) => setDept(e.target.value as typeof dept)}>
+                <option value="all">All departments</option>
+                <option value="lab">Lab</option>
+                <option value="radiology">Radiology</option>
+              </Select>
+            </Field>
+            <Field label="Category">
+              <Select value={category} onChange={(e) => setCategory(e.target.value)}>
+                <option value="">All categories</option>
+                {categories.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <span className={styles['count']}>
+              {filtered.length} of {catalogue.length} shown
+            </span>
           </div>
-        )}
-      </div>
+        </CardBody>
+      </Card>
+
+      {loading ? (
+        <Card>
+          <CardBody>
+            <div className={styles['loading']}>
+              <SkeletonRows rows={8} columns={[3, 1, 1, 1, 1, 1]} />
+            </div>
+          </CardBody>
+        </Card>
+      ) : filtered.length === 0 ? (
+        <Card>
+          <CardBody>
+            <EmptyState title="No tests match those filters">
+              Widen the search, or clear the department and category.
+            </EmptyState>
+          </CardBody>
+        </Card>
+      ) : (
+        // Grouped by category, because that is how the desk reads a price list
+        // — all of haematology at once, not alphabetically across the whole lab.
+        categories
+          .filter((c) => filtered.some((t) => t.category === c))
+          .map((c) => (
+            <Card key={c}>
+              <CardHeader title={c} />
+              <CardBody flush>
+                <Table
+                  caption={`${c} prices`}
+                  rows={filtered.filter((t) => t.category === c)}
+                  rowKey={(t: Test) => t.id}
+                  columns={columns}
+                />
+              </CardBody>
+            </Card>
+          ))
+      )}
     </div>
   );
 }
-
-const thStyle: React.CSSProperties = { padding: '0.6rem 1rem', textAlign: 'left', fontWeight: 700, fontSize: '0.7rem', color: 'var(--gray-500)', textTransform: 'uppercase' };
-const selectStyle: React.CSSProperties = { padding: '0.45rem 0.75rem', border: '1px solid var(--gray-300)', borderRadius: 0, fontSize: '0.8rem', fontFamily: 'var(--font-body)',  background: 'white', color: 'var(--gray-700)' };
 
 /** Only these roles may open this screen — see components/RequireRole.tsx. */
 export default function GuardedTestPricingPage(props: any) {
