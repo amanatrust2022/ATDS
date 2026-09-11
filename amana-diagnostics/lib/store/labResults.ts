@@ -298,12 +298,24 @@ export const emptyMpsState = (): MpsFormState => ({
 });
 
 export const serializeMpsResults = (mpsState: MpsFormState) => {
+  /**
+   * What a blank findings field means depends on the film.
+   *
+   * On a negative film it means nil, and nil is the finding — there is no
+   * parasite to grade and no species to name. On a film the technologist has
+   * marked positive it means nobody wrote it down, and printing "Nil" there
+   * makes the report contradict itself: parasites seen, density nil, species
+   * nil. The form no longer fills those in for them (it used to pick
+   * Plasmodium falciparum), so the gap has to survive to the page as a gap.
+   */
+  const blank = mpsState.parasiteSeen === 'Seen' ? 'Not recorded' : 'Nil';
+
   return [
     { parameter: 'MPs: Parasites', result: mpsState.parasiteSeen || 'Not Seen', unit: '', range: 'Not Seen' },
-    { parameter: 'MPs: Density (Plus)', result: mpsState.densityPlus || 'Nil', unit: '', range: 'Nil' },
-    { parameter: 'MPs: Density (Count)', result: mpsState.densityCount || 'Nil', unit: 'p/µL', range: 'Nil' },
-    { parameter: 'MPs: Species', result: mpsState.species || 'Nil', unit: '', range: '' },
-    { parameter: 'MPs: Stage', result: mpsState.stage || 'Nil', unit: '', range: '' },
+    { parameter: 'MPs: Density (Plus)', result: mpsState.densityPlus || blank, unit: '', range: 'Nil' },
+    { parameter: 'MPs: Density (Count)', result: mpsState.densityCount || blank, unit: 'p/µL', range: 'Nil' },
+    { parameter: 'MPs: Species', result: mpsState.species || blank, unit: '', range: '' },
+    { parameter: 'MPs: Stage', result: mpsState.stage || blank, unit: '', range: '' },
     { parameter: 'MPs: Comment', result: mpsState.comment || 'Nil', unit: '', range: '' },
   ];
 };

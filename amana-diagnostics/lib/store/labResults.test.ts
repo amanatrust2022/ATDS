@@ -191,6 +191,21 @@ describe('MPs serialisation', () => {
   it('round-trips', () => {
     expect(deserializeMpsResults(serializeMpsResults(state))).toEqual(state);
   });
+
+  /**
+   * A gap means different things on the two films. On a negative one it is the
+   * finding; on a positive one it is that nobody wrote it down, and "Nil"
+   * there would have the report contradict itself — parasites seen, species
+   * nil — which is what it used to print.
+   */
+  it('reports an unfilled finding on a positive film as not recorded, not Nil', () => {
+    const rows = serializeMpsResults({
+      parasiteSeen: 'Seen', densityPlus: '', densityCount: '', species: '', stage: '', comment: '',
+    });
+    expect(rows.map(r => r.result)).toEqual([
+      'Seen', 'Not recorded', 'Not recorded', 'Not recorded', 'Not recorded', 'Nil',
+    ]);
+  });
 });
 
 describe('Blank workups', () => {

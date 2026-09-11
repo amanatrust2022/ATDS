@@ -163,3 +163,52 @@
   color: var(--text-secondary);
   margin: 0;
 }
+
+/* --- Widal matrix ------------------------------------------------------ */
+
+.widalTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-md);
+}
+
+.widalTable th[scope='col'] {
+  text-align: left;
+  padding: var(--space-2);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.widalTable td,
+.widalTable th[scope='row'] {
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--border-subtle);
+  vertical-align: middle;
+}
+
+.antigen {
+  text-align: left;
+  font-weight: var(--weight-medium);
+  font-style: italic;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.titreCell {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+/* Paired with the titre itself, never standing in for it. */
+.significant {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  color: var(--critical-text);
+  white-space: nowrap;
+}

@@ -1,95 +1,121 @@
 'use client';
+
 import { WidalFormState } from '@/lib/store/labResults';
+import { Card, CardBody, CardHeader, Select } from '@/components/ui';
+
+import styles from './entryForm.module.css';
 
 interface Props {
   value: WidalFormState;
   onChange: (next: WidalFormState) => void;
 }
 
+type Limb = 'O' | 'H';
+
 const antigens = [
   { name: 'S. Typhi', keys: { O: 'typhiO', H: 'typhiH' } },
   { name: 'S. Paratyphi A', keys: { O: 'paratyphiAO', H: 'paratyphiAH' } },
   { name: 'S. Paratyphi B', keys: { O: 'paratyphiBO', H: 'paratyphiBH' } },
-  { name: 'S. Paratyphi C', keys: { O: 'paratyphiCO', H: 'paratyphiCH' } }
+  { name: 'S. Paratyphi C', keys: { O: 'paratyphiCO', H: 'paratyphiCH' } },
 ] as const;
 
 const titerOptions = ['Negative', '1:20', '1:40', '1:80', '1:160', '1:320'];
 
-/** 1:80 and above is the clinically significant titre, so it is called out in red. */
+/** 1:80 and above is the titre this lab reports as significant. */
 const isSignificant = (titer: string) =>
   titer !== 'Negative' && titer !== '1:20' && titer !== '1:40';
 
-function TiterCell({ titer, onSelect }: { titer: string; onSelect: (val: string) => void }) {
+/**
+ * One agglutination titre.
+ *
+ * The cell used to be an unnamed dropdown whose only identity was its position
+ * in the grid — eight of "combo box" in a row by keyboard or screen reader,
+ * where putting 1:160 in the wrong one reports typhoid against the wrong
+ * antigen. It is named by antigen and limb, which have to stay distinct: O
+ * rises in acute infection, H persists long after it and after vaccination.
+ */
+function TiterCell({
+  antigen,
+  limb,
+  titer,
+  onSelect,
+}: {
+  antigen: string;
+  limb: Limb;
+  titer: string;
+  onSelect: (val: string) => void;
+}) {
   const significant = isSignificant(titer);
+
   return (
-    <td style={{ padding: '0.35rem' }}>
-      <select
-        value={titer}
-        onChange={e => onSelect(e.target.value)}
-        style={{
-          width: '100%',
-          padding: '0.4rem 0.6rem',
-          border: '1px solid var(--gray-300)',
-          borderRadius: 'var(--radius)',
-          fontSize: '0.8rem',
-           background: significant ? 'var(--red-light)' : 'white',
-          color: significant ? 'var(--red)' : 'var(--gray-900)',
-          fontWeight: significant ? 'bold' : 'normal'
-        }}
-      >
-        {titerOptions.map(t => (
-          <option key={t} value={t}>{t}</option>
-        ))}
-      </select>
+    <td>
+      <div className={styles['titreCell']}>
+        <Select
+          aria-label={`${antigen} ${limb} titre`}
+          value={titer}
+          onChange={(e) => onSelect(e.target.value)}
+        >
+          {titerOptions.map((t) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
+          ))}
+        </Select>
+
+        {/* The old cell went red and bold and said nothing. Red is not a
+          * reading: it does not survive a monochrome print, it does not read
+          * aloud, and roughly one man in twelve cannot rely on it. */}
+        {significant && <span className={styles['significant']}>Significant</span>}
+      </div>
     </td>
   );
 }
 
 export default function WidalEntryForm({ value, onChange }: Props) {
-  const setTiter = (key: keyof WidalFormState, val: string) => onChange({ ...value, [key]: val });
+  const setTiter = (key: keyof WidalFormState, val: string) =>
+    onChange({ ...value, [key]: val });
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '1rem' }}>
-      <div style={{
-        background: 'white',
-        border: '1px solid var(--teal-200)',
-        borderRadius: 'var(--radius-lg)',
-        overflow: 'hidden',
-        boxShadow: 'var(--shadow-sm)'
-      }}>
-        <h3 style={{
-          background: 'var(--teal-50)',
-          color: 'var(--teal-850)',
-          fontSize: '0.8rem',
-          fontWeight: 700,
-          padding: '0.6rem 1rem',
-          borderBottom: '1px solid var(--teal-200)',
-          textTransform: 'uppercase',
-          letterSpacing: '0.05em'
-        }}>
-          Salmonella Antigen Titers (Widal Reaction Matrix)
-        </h3>
-        <div style={{ padding: '1rem' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
-            <thead>
-              <tr style={{ borderBottom: '2px solid var(--teal-200)' }}>
-                <th style={{ padding: '0.5rem', textAlign: 'left', fontWeight: 700, color: 'var(--teal-800)' }}>Antigen</th>
-                <th style={{ padding: '0.5rem', textAlign: 'center', fontWeight: 700, color: 'var(--teal-800)', width: '40%' }}>O Titer</th>
-                <th style={{ padding: '0.5rem', textAlign: 'center', fontWeight: 700, color: 'var(--teal-800)', width: '40%' }}>H Titer</th>
+    <Card>
+      <CardHeader
+        title="Widal reaction"
+        subtitle="Salmonella agglutination titres. 1:80 and above is reported as significant."
+      />
+      <CardBody>
+        <table className={styles['widalTable']}>
+          <caption className="sr-only">
+            Widal agglutination titres. One row per salmonella antigen, with its O and H titres.
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">Antigen</th>
+              <th scope="col">O titre</th>
+              <th scope="col">H titre</th>
+            </tr>
+          </thead>
+          <tbody>
+            {antigens.map((a) => (
+              <tr key={a.name}>
+                <th scope="row" className={styles['antigen']}>
+                  {a.name}
+                </th>
+                <TiterCell
+                  antigen={a.name}
+                  limb="O"
+                  titer={value[a.keys.O]}
+                  onSelect={(val) => setTiter(a.keys.O, val)}
+                />
+                <TiterCell
+                  antigen={a.name}
+                  limb="H"
+                  titer={value[a.keys.H]}
+                  onSelect={(val) => setTiter(a.keys.H, val)}
+                />
               </tr>
-            </thead>
-            <tbody>
-              {antigens.map(a => (
-                <tr key={a.name} style={{ borderBottom: '1px solid var(--gray-200)' }}>
-                  <td style={{ padding: '0.5rem', fontWeight: 600, color: 'var(--gray-800)' }}>{a.name}</td>
-                  <TiterCell titer={value[a.keys.O]} onSelect={val => setTiter(a.keys.O, val)} />
-                  <TiterCell titer={value[a.keys.H]} onSelect={val => setTiter(a.keys.H, val)} />
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
+            ))}
+          </tbody>
+        </table>
+      </CardBody>
+    </Card>
   );
 }

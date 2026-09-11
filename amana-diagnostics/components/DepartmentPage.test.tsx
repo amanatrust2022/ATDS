@@ -402,17 +402,17 @@ describe('Specialised entry forms', () => {
   it('opens the Widal titre matrix for a Widal test', async () => {
     await openOnly(patientTest({ testId: 'widal', testName: 'Widal Test' }));
 
-    expect(screen.getByText('Salmonella Antigen Titers (Widal Reaction Matrix)')).toBeDefined();
+    expect(screen.getByText('Widal reaction')).toBeDefined();
     expect(screen.getByText('S. Typhi')).toBeDefined();
     expect(screen.getByText('S. Paratyphi C')).toBeDefined();
-    expect(screen.queryByText('Malaria Parasite (MPs) Microscopy Form')).toBeNull();
+    expect(screen.queryByText('Malaria parasites')).toBeNull();
   });
 
   it('opens the MPs form for a malaria test', async () => {
     await openOnly(patientTest({ testId: 'mps', testName: 'Malaria Parasite' }));
 
-    expect(screen.getByText('Malaria Parasite (MPs) Microscopy Form')).toBeDefined();
-    expect(screen.queryByText('Salmonella Antigen Titers (Widal Reaction Matrix)')).toBeNull();
+    expect(screen.getByText('Malaria parasites')).toBeDefined();
+    expect(screen.queryByText('Widal reaction')).toBeNull();
   });
 
   it('saves an untouched MPs form as six negative rows', async () => {
@@ -426,19 +426,26 @@ describe('Specialised entry forms', () => {
       .toEqual(['Not Seen', 'Nil', 'Nil', 'Nil', 'Nil', 'Nil']);
   });
 
-  // Marking parasites seen sets four other fields in the same handler. Extracting
-  // this form naively — one `onChange({...value, field})` per call — would keep
-  // only the last of them.
-  it('fills in a plausible density, species and stage when parasites are marked seen', async () => {
+  // Marking parasites seen clears four other fields in the same handler.
+  // Extracting this form naively — one `onChange({...value, field})` per call —
+  // would keep only the last of them.
+  //
+  // It used to fill them in instead: density "+", species Plasmodium
+  // falciparum, stage ring forms, on the reasoning that they are the
+  // commonest. Falciparum and vivax are not interchangeable — vivax needs
+  // primaquine for the liver stage — so that was the form making a treatment
+  // decision for whoever was at the microscope. A positive film with nothing
+  // read off it now says so.
+  it('does not fill in a species when parasites are marked seen', async () => {
     await openOnly(patientTest({ testId: 'mps', testName: 'Malaria Parasite' }));
     updateTestResult.mockClear();
 
-    fireEvent.change(screen.getByDisplayValue('Not Seen (Negative)'), { target: { value: 'Seen' } });
+    fireEvent.change(screen.getByRole('combobox', { name: /parasites seen/i }), { target: { value: 'Seen' } });
     fireEvent.click(screen.getByText(/Submit & Send to Reception/));
 
     await waitFor(() => expect(updateTestResult).toHaveBeenCalledTimes(1));
     expect(updateTestResult.mock.calls[0][1].results.map((r: any) => r.result)).toEqual([
-      'Seen', '+', 'Nil', 'Plasmodium falciparum', 'Trophozoites (ring forms)', 'Nil',
+      'Seen', 'Not recorded', 'Not recorded', 'Not recorded', 'Not recorded', 'Nil',
     ]);
   });
 
@@ -446,8 +453,8 @@ describe('Specialised entry forms', () => {
     await openOnly(patientTest({ testId: 'mps', testName: 'Malaria Parasite' }));
     updateTestResult.mockClear();
 
-    fireEvent.change(screen.getByDisplayValue('Not Seen (Negative)'), { target: { value: 'Seen' } });
-    fireEvent.change(screen.getByDisplayValue('Seen (Positive)'), { target: { value: 'Not Seen' } });
+    fireEvent.change(screen.getByRole('combobox', { name: /parasites seen/i }), { target: { value: 'Seen' } });
+    fireEvent.change(screen.getByRole('combobox', { name: /parasites seen/i }), { target: { value: 'Not Seen' } });
     fireEvent.click(screen.getByText(/Submit & Send to Reception/));
 
     await waitFor(() => expect(updateTestResult).toHaveBeenCalledTimes(1));
@@ -458,8 +465,8 @@ describe('Specialised entry forms', () => {
   it('stacks both forms for a combined Widal + MPs test', async () => {
     await openOnly(patientTest({ testId: 'widal_mps', testName: 'Widal + MPs' }));
 
-    expect(screen.getByText('Malaria Parasite (MPs) Microscopy Form')).toBeDefined();
-    expect(screen.getByText('Salmonella Antigen Titers (Widal Reaction Matrix)')).toBeDefined();
+    expect(screen.getByText('Malaria parasites')).toBeDefined();
+    expect(screen.getByText('Widal reaction')).toBeDefined();
   });
 
   it('saves a Widal result as the eight antigen rows', async () => {
