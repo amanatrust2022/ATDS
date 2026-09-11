@@ -1,8 +1,14 @@
 'use client';
+
+import { useEffect, useState } from 'react';
 import { RiTestTubeLine, RiRadarLine, RiCheckLine, RiMoreLine, RiTimeLine } from '@remixicon/react';
+
 import type { Department, Patient, PatientTest } from '@/lib/store';
-import type { DepartmentTheme } from './theme';
 import { patientDisplayName } from '@/lib/store/patientName';
+import { Badge, Button, EmptyState } from '@/components/ui';
+
+import type { DepartmentTheme } from './theme';
+import styles from './queue.module.css';
 
 interface Props {
   department: Department;
@@ -14,91 +20,180 @@ interface Props {
   pendingCount: number;
   loading: boolean;
   onOpenTest: (patient: Patient, test: PatientTest) => void;
-  theme: DepartmentTheme;
+  /**
+   * Still accepted so DepartmentPage need not change, but no longer used for
+   * colour: the radiology half of it was a hard-coded violet that is not the
+   * app accent and had no dark-mode counterpart. The queue takes its colours
+   * from the semantic tokens like everything else.
+   */
+  theme?: DepartmentTheme;
 }
 
 const fullName = patientDisplayName;
 
-function timeAgo(iso: string) {
-  const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+/**
+ * How long a patient may wait before the queue says so.
+ *
+ * Ninety minutes is not a clinical limit — it is the point past which nobody
+ * meant for them still to be sitting there, and the bench should be told
+ * rather than left to read timestamps.
+ */
+const LONG_WAIT_MINUTES = 90;
+
+/** How often the waiting times are recalculated. */
+const TICK_MS = 30_000;
+
+const minutesWaiting = (iso: string, now: number) =>
+  Math.floor((now - new Date(iso).getTime()) / 60000);
+
+function waitLabel(mins: number) {
   if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins} min ago`;
-  return `${Math.floor(mins / 60)}h ${mins % 60}m ago`;
+  if (mins < 60) return `${mins} min`;
+  return `${Math.floor(mins / 60)}h ${mins % 60}m`;
 }
 
+/**
+ * The bench queue: who is waiting, what for, and how long they have been
+ * there.
+ *
+ * Two things were wrong with the waiting time, which is the number this screen
+ * exists to show. It was computed during render from `Date.now()` and nothing
+ * re-rendered the queue, so it froze at whatever it said when the page loaded
+ * — a patient twenty minutes in went on reading "5 min ago" until something
+ * else happened to refresh. And nothing sorted the list, so a three-hour wait
+ * sat wherever the store happened to put it, quite possibly below someone who
+ * walked in a minute ago. A queue in no particular order is not a queue.
+ */
 export default function DepartmentQueue({
-  department, pending, completedToday, pendingCount, loading, onOpenTest, theme,
+  department, pending, completedToday, pendingCount, loading, onOpenTest,
 }: Props) {
   const isLab = department === 'lab';
 
+  // One clock for the whole list, so every card agrees and the times keep up
+  // with the wall without the parent having to re-render.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), TICK_MS);
+    return () => clearInterval(id);
+  }, []);
+
+  const queue = [...pending].sort(
+    (a, b) => new Date(a.registeredAt).getTime() - new Date(b.registeredAt).getTime(),
+  );
+
   return (
     <>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
-        <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', fontWeight: 700, color: 'var(--gray-900)' }}>
-          Pending {isLab ? 'Lab' : 'Radiology'} Requests
-        </h2>
-        <span style={{ background: theme.light, color: theme.text, border: `1px solid ${theme.border}`, borderRadius: 0, padding: '0.2rem 0.7rem', fontSize: '0.75rem', fontWeight: 700 }}>
-          {pendingCount} pending
-        </span>
+      <div className={styles['head']}>
+        <h2 className={styles['title']}>Pending {isLab ? 'lab' : 'radiology'} requests</h2>
+        <Badge tone="accent">{pendingCount} pending</Badge>
       </div>
 
       {loading ? (
-        <div style={{ textAlign: 'center', padding: '4rem', color: 'var(--gray-500)' }}>Loading queue...</div>
-      ) : pending.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '4rem', color: 'var(--gray-500)', background: 'white', borderRadius: 'var(--radius-lg)', border: '1px solid var(--gray-300)' }}>
-          <div style={{ marginBottom: '1rem', color: 'var(--gray-300)' }}>{isLab ? <RiTestTubeLine size={56} /> : <RiRadarLine size={56} />}</div>
-          <p style={{ fontWeight: 600 }}>No pending requests</p>
-          <p style={{ fontSize: '0.78rem', marginTop: '0.25rem' }}>New patient tests will appear here automatically.</p>
-        </div>
+        <p className={styles['loading']}>Loading queue…</p>
+      ) : queue.length === 0 ? (
+        <EmptyState
+          icon={isLab ? <RiTestTubeLine size={40} /> : <RiRadarLine size={40} />}
+          title="No pending requests"
+        >
+          New patient tests will appear here automatically.
+        </EmptyState>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          {pending.map(patient => (
-            <div key={patient.id} style={{ background: 'white', border: '1px solid var(--gray-300)', borderRadius: 'var(--radius-lg)', overflow: 'hidden', animation: 'fadeIn 0.3s ease' }}>
-              <div style={{ padding: '0.75rem 1.25rem', borderBottom: '1px solid var(--gray-100)', display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', background: theme.light, color: theme.text, padding: '0.15rem 0.5rem', borderRadius: 0, fontWeight: 700 }}>{patient.slipNumber}</span>
-                <span style={{ fontWeight: 700, fontSize: '0.95rem' }}>{fullName(patient)}</span>
-                <span style={{ fontSize: '0.75rem', color: 'var(--gray-500)' }}>{patient.age} • {patient.sex}</span>
-                <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: 'var(--gray-400)', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
-                  <RiTimeLine size={12} /> {timeAgo(patient.registeredAt)}
-                </span>
-              </div>
-              <div style={{ padding: '0.75rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                {patient.tests.filter(t => t.department === department && t.status !== 'completed').map(test => (
-                  <div key={test.testId} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.5rem 0.75rem', borderRadius: 'var(--radius)', background: test.status === 'in_progress' ? 'var(--amber-light)' : theme.light, border: `1px solid ${test.status === 'in_progress' ? '#f0c97a' : theme.border}` }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <span style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: test.status === 'in_progress' ? 'var(--amber)' : 'var(--gray-400)' }} />
-                      <span style={{ fontSize: '0.82rem', fontWeight: 500 }}>{test.testName}</span>
-                      {test.status === 'in_progress' && <span style={{ fontSize: '0.68rem', background: 'var(--amber)', color: 'white', padding: '0.1rem 0.5rem', borderRadius: 0, fontWeight: 700 }}>In Progress</span>}
-                    </div>
-                    <button onClick={() => onOpenTest(patient, test)} style={{ background: theme.accent, color: 'white', border: 'none', borderRadius: 0, padding: '0.35rem 0.9rem', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s' }}>
-                      {test.status === 'in_progress' ? <span style={{ display: 'flex', alignItems: 'center', gap: '0.15rem' }}><RiMoreLine size={12} /> Continue</span> : 'Enter Results →'}
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
+        <ul className={styles['queue']}>
+          {queue.map((patient) => {
+            const mins = minutesWaiting(patient.registeredAt, now);
+            const longWait = mins >= LONG_WAIT_MINUTES;
+
+            return (
+              <li
+                key={patient.id}
+                data-testid="queue-patient"
+                className={[styles['card'], longWait ? styles['cardWaiting'] : '']
+                  .filter(Boolean)
+                  .join(' ')}
+              >
+                <div className={styles['cardHead']}>
+                  <span className={styles['slip']}>{patient.slipNumber}</span>
+                  <span className={styles['name']}>{fullName(patient)}</span>
+                  <span className={styles['meta']}>
+                    {patient.age} • {patient.sex}
+                  </span>
+
+                  <span className={styles['waited']}>
+                    <RiTimeLine size={12} aria-hidden="true" />
+                    {waitLabel(mins)}
+                  </span>
+
+                  {/* A long wait said nothing at all before — it was the same
+                    * small grey timestamp as every other row, and the bench had
+                    * to read and compare them to notice. */}
+                  {longWait && (
+                    <Badge tone="warning">Waiting over {Math.floor(mins / 60)}h</Badge>
+                  )}
+                </div>
+
+                <ul className={styles['tests']}>
+                  {patient.tests
+                    .filter((t) => t.department === department && t.status !== 'completed')
+                    .map((test) => {
+                      const started = test.status === 'in_progress';
+
+                      return (
+                        <li
+                          key={test.testId}
+                          className={[styles['test'], started ? styles['testStarted'] : '']
+                            .filter(Boolean)
+                            .join(' ')}
+                        >
+                          <span className={styles['testName']}>
+                            {test.testName}
+                            {started && <Badge tone="warning">In progress</Badge>}
+                          </span>
+
+                          {/* Named after the test. A column of buttons all
+                            * reading "Enter Results" gives a keyboard user no
+                            * way to tell which test they are opening. */}
+                          <Button
+                            intent="primary"
+                            size="sm"
+                            aria-label={
+                              started
+                                ? `Continue ${test.testName} for ${fullName(patient)}`
+                                : `Enter results for ${test.testName} for ${fullName(patient)}`
+                            }
+                            icon={started ? <RiMoreLine size={12} /> : undefined}
+                            onClick={() => onOpenTest(patient, test)}
+                          >
+                            {started ? 'Continue' : 'Enter results'}
+                          </Button>
+                        </li>
+                      );
+                    })}
+                </ul>
+              </li>
+            );
+          })}
+        </ul>
       )}
 
       {completedToday.length > 0 && (
-        <div style={{ marginTop: '2rem' }}>
-          <h3 style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--gray-500)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.75rem' }}>
-            Completed Today ({completedToday.length})
-          </h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-            {completedToday.map(p => (
-              <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.6rem 1rem', background: 'var(--green-light)', border: '1px solid #a7d7c5', borderRadius: 'var(--radius)', fontSize: '0.8rem' }}>
-                <RiCheckLine size={14} color="var(--green)" />
-                <span style={{ fontWeight: 700, color: 'var(--gray-800)' }}>{fullName(p)}</span>
-                <span style={{ color: 'var(--gray-500)', fontFamily: 'var(--font-mono)', fontSize: '0.72rem' }}>{p.slipNumber}</span>
-                <span style={{ marginLeft: 'auto', color: 'var(--green)', fontWeight: 600 }}>
-                  {p.tests.filter(t => t.department === department && t.status === 'completed').map(t => t.testName).join(', ')}
+        <section className={styles['done']}>
+          <h3 className={styles['doneTitle']}>Completed today ({completedToday.length})</h3>
+          <ul className={styles['doneList']}>
+            {completedToday.map((p) => (
+              <li key={p.id} className={styles['doneRow']}>
+                <RiCheckLine size={14} aria-hidden="true" className={styles['doneTick']} />
+                <span className={styles['name']}>{fullName(p)}</span>
+                <span className={styles['slip']}>{p.slipNumber}</span>
+                <span className={styles['doneTests']}>
+                  {p.tests
+                    .filter((t) => t.department === department && t.status === 'completed')
+                    .map((t) => t.testName)
+                    .join(', ')}
                 </span>
-              </div>
+              </li>
             ))}
-          </div>
-        </div>
+          </ul>
+        </section>
       )}
     </>
   );

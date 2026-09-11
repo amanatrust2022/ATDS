@@ -191,9 +191,9 @@ describe('Department queue', () => {
     ]);
     await renderPage('lab');
 
-    expect(screen.getByText('Enter Results →')).toBeDefined();
-    expect(screen.getByText('Continue')).toBeDefined();
-    expect(screen.getByText('In Progress')).toBeDefined();
+    expect(screen.getByRole('button', { name: /^Enter results for / })).toBeDefined();
+    expect(screen.getByRole('button', { name: /^Continue / })).toBeDefined();
+    expect(screen.getByText('In progress')).toBeDefined();
   });
 
   // The heading is no longer this component's to render. The shell sits in
@@ -201,14 +201,14 @@ describe('Department queue', () => {
   // here is what the screen itself still says about which department it is.
   it('names the department it is showing, and offers template management only to radiology', async () => {
     const lab = await renderPage('lab');
-    expect(screen.getByText('Pending Lab Requests')).toBeDefined();
+    expect(screen.getByText('Pending lab requests')).toBeDefined();
     expect(screen.queryByText(/Manage Templates/)).toBeNull();
     expect(screen.getByText(/Manage Tests/)).toBeDefined();
     lab.unmount();
 
     fetchPatients.mockResolvedValue([]);
     await renderPage('radiology');
-    expect(screen.getByText('Pending Radiology Requests')).toBeDefined();
+    expect(screen.getByText('Pending radiology requests')).toBeDefined();
     expect(screen.getByText(/Manage Templates/)).toBeDefined();
   });
 
@@ -223,7 +223,7 @@ describe('Department queue', () => {
     ]);
     await renderPage('lab');
 
-    expect(screen.getByText('Completed Today (1)')).toBeDefined();
+    expect(screen.getByText('Completed today (1)')).toBeDefined();
   });
 
   it('does not count a test completed on an earlier day as done today', async () => {
@@ -238,14 +238,14 @@ describe('Department queue', () => {
     ]);
     await renderPage('lab');
 
-    expect(screen.queryByText(/Completed Today/)).toBeNull();
+    expect(screen.queryByText(/Completed today/i)).toBeNull();
   });
 });
 
 describe('Opening a test for result entry', () => {
   it('shows the patient, slip and specimen in the entry panel header', async () => {
     await renderPage('lab');
-    fireEvent.click(screen.getByText('Enter Results →'));
+    fireEvent.click(screen.getByRole('button', { name: /^Enter results for / }));
 
     const panel = (await screen.findByText('Entering Results: Full Blood Count')).parentElement!;
     expect(within(panel).getByText(/John Doe/)).toBeDefined();
@@ -255,7 +255,7 @@ describe('Opening a test for result entry', () => {
 
   it('claims a pending test by marking it in progress', async () => {
     await renderPage('lab');
-    fireEvent.click(screen.getByText('Enter Results →'));
+    fireEvent.click(screen.getByRole('button', { name: /^Enter results for / }));
 
     await waitFor(() =>
       expect(updateTestResult).toHaveBeenCalledWith('pt-1', { status: 'in_progress' }));
@@ -272,7 +272,7 @@ describe('Opening a test for result entry', () => {
 
   it('builds one empty row per catalogue parameter', async () => {
     await renderPage('lab');
-    fireEvent.click(screen.getByText('Enter Results →'));
+    fireEvent.click(screen.getByRole('button', { name: /^Enter results for / }));
 
     await screen.findByText('Entering Results: Full Blood Count');
     expect(screen.getByText('Haemoglobin')).toBeDefined();
@@ -298,7 +298,7 @@ describe('Opening a test for result entry', () => {
 
   it('pre-fills the professional name from the signed-in profile', async () => {
     await renderPage('lab');
-    fireEvent.click(screen.getByText('Enter Results →'));
+    fireEvent.click(screen.getByRole('button', { name: /^Enter results for / }));
 
     await screen.findByText('Entering Results: Full Blood Count');
     expect((screen.getByPlaceholderText('e.g. MLS ABDULLAHI SHEHU') as HTMLInputElement).value)
@@ -307,7 +307,7 @@ describe('Opening a test for result entry', () => {
 
   it('closes the panel on Cancel without saving', async () => {
     await renderPage('lab');
-    fireEvent.click(screen.getByText('Enter Results →'));
+    fireEvent.click(screen.getByRole('button', { name: /^Enter results for / }));
     await screen.findByText('Entering Results: Full Blood Count');
 
     fireEvent.click(screen.getByText('Cancel'));
@@ -318,7 +318,7 @@ describe('Opening a test for result entry', () => {
 describe('Submitting a result', () => {
   const openFbc = async () => {
     await renderPage('lab');
-    fireEvent.click(screen.getByText('Enter Results →'));
+    fireEvent.click(screen.getByRole('button', { name: /^Enter results for / }));
     await screen.findByText('Entering Results: Full Blood Count');
     updateTestResult.mockClear();
   };
@@ -373,7 +373,7 @@ describe('Specialised entry forms', () => {
   const openOnly = async (test: PatientTest) => {
     fetchPatients.mockResolvedValue([patient({ tests: [test] })]);
     await renderPage(test.department);
-    fireEvent.click(screen.getByText('Enter Results →'));
+    fireEvent.click(screen.getByRole('button', { name: /^Enter results for / }));
     await screen.findByText(`Entering Results: ${test.testName}`);
   };
 

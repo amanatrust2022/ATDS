@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Alert, Button, Checkbox, Dialog, ResultFlag } from '@/components/ui';
 import type { criticalRows } from './ParameterTable';
+import styles from './entryForm.module.css';
 
 /**
  * The release interlock.
@@ -69,43 +70,15 @@ export function CriticalValueDialog({
         figure against the analyser, then say who you told.
       </Alert>
 
-      <ul
-        style={{
-          listStyle: 'none',
-          margin: 'var(--space-4) 0',
-          padding: 0,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 'var(--space-2)',
-        }}
-      >
+      <ul className={styles['criticalList']}>
         {rows.map(({ row, flag }) => (
-          <li
-            key={row.parameter}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 'var(--space-3)',
-              padding: 'var(--space-3)',
-              background: 'var(--critical-subtle)',
-              border: '1px solid var(--critical-border)',
-              borderLeft: '3px solid var(--critical-solid)',
-            }}
-          >
+          <li key={row.parameter} className={styles['criticalRow']}>
             <div>
-              <div style={{ fontWeight: 'var(--weight-semibold)' }}>{row.parameter}</div>
-              <div
-                style={{
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: 'var(--text-lg)',
-                  fontVariantNumeric: 'tabular-nums',
-                  color: 'var(--critical-text)',
-                }}
-              >
+              <div className={styles['criticalParam']}>{row.parameter}</div>
+              <div className={styles['criticalValue']}>
                 {row.result} {row.unit}
               </div>
-              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
+              <div className={styles['criticalRange']}>
                 Reference range {row.range || 'not recorded'}
               </div>
             </div>
