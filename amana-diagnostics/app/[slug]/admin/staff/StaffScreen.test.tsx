@@ -5,14 +5,16 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 /**
  * Characterisation tests for the staff admin screen.
  *
- * Written against `app/[slug]/admin/staff/StaffScreen.tsx` BEFORE it is split
- * into components. At 1,690 lines it is the largest screen left, it carries
- * 199 inline style objects, and it computes a whole performance dashboard
- * inside a JSX expression. These describe what an administrator can do, so the
- * split has something to fail against.
+ * Written against the 1,690-line single file BEFORE it was split into
+ * StaffDirectory, StaffPerformance and StaffProfileModal, and kept passing
+ * across the split — which is the point. Three earlier extractions in this
+ * repo copied state instead of moving it and shipped dead buttons behind a
+ * green build.
  *
- * Three earlier extractions in this repo copied state instead of moving it and
- * shipped dead buttons behind a green build. That is what these are for.
+ * The split changed some wording ("Configured" became "On file") and turned
+ * the tab strip from two bare buttons into a real tablist, so a few queries
+ * here moved from role "button" to role "tab". What the screen *does* did not
+ * change, and none of the assertions below did either.
  */
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
@@ -104,6 +106,13 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+/** Radix activates a tab on mousedown, not on a synthetic click. */
+function selectTab(name: RegExp) {
+  const tab = screen.getByRole('tab', { name });
+  fireEvent.mouseDown(tab);
+  return tab;
+}
+
 // ── The directory ────────────────────────────────────────────────────────────
 
 describe('the team directory', () => {
@@ -114,8 +123,8 @@ describe('the team directory', () => {
     expect(screen.getByText('bala@clinic.test')).toBeTruthy();
     // Ada has a signature on file; Bala does not. A report cannot be released
     // without one, so this column is the point of the screen.
-    expect(screen.getByText('Configured')).toBeTruthy();
-    expect(screen.getByText('Not Uploaded')).toBeTruthy();
+    expect(screen.getByText('On file')).toBeTruthy();
+    expect(screen.getByText('Not uploaded')).toBeTruthy();
   });
 
   it('will not let an administrator change their own role', async () => {
@@ -160,7 +169,7 @@ describe('inviting someone', () => {
     fireEvent.change(screen.getByPlaceholderText('staff@example.com'), {
       target: { value: 'New@Clinic.test ' },
     });
-    fireEvent.click(screen.getByRole('button', { name: /Generate Invite Link/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Send the invitation/i }));
 
     await waitFor(() => expect(inserted.length).toBe(1));
     const row = inserted[0].rows[0];
@@ -210,7 +219,7 @@ describe('opening someone profile', () => {
     const row = (await screen.findByText('Dr. Ada Grace Okoye')).closest('tr')!;
     fireEvent.click(row);
 
-    const panel = await screen.findByText('Name Details');
+    const panel = await screen.findByText('Name on file');
     const box = panel.parentElement!;
     // 'Dr. Ada Grace Okoye' — title, first, middle, surname.
     expect(within(box).getByText('Dr.')).toBeTruthy();
@@ -233,7 +242,7 @@ describe('the performance dashboard', () => {
       );
     expect(calls()).toHaveLength(0);
 
-    fireEvent.click(screen.getByRole('button', { name: /Performance Dashboard/i }));
+    selectTab(/Performance/);
     await waitFor(() => expect(calls().length).toBeGreaterThan(0));
     expect(String(calls()[0][0])).toContain('organizationId=org-1');
   });
@@ -249,11 +258,11 @@ describe('the performance dashboard', () => {
 
     render(<StaffScreen />);
     await screen.findByText('Bala Yusuf');
-    fireEvent.click(screen.getByRole('button', { name: /Performance Dashboard/i }));
+    selectTab(/Performance/);
 
     // Still standing: the tab strip is on the page rather than a blank body.
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: /Team Directory/i })).toBeTruthy(),
+      expect(screen.getByRole('tab', { name: /Team directory/ })).toBeTruthy(),
     );
   });
 });

@@ -1,0 +1,338 @@
+/* The staff performance dashboard.
+ *
+ * Replaces roughly a hundred inline style objects and eleven hard-coded
+ * colours, including four KPI tints and three department colours chosen by
+ * name. Everything here is a token, so the dashboard follows the theme — it
+ * used to be white cards with near-black figures whatever the theme said.
+ */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+/* --- Toolbar --- */
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}
+
+.eyebrow {
+  margin: 0;
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--accent-text);
+}
+
+.title {
+  margin: 2px 0 0;
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+}
+
+.toolbarControls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.cardTitle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* --- The four figures --- */
+
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-4);
+}
+
+.kpiHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.kpiLabel {
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.kpiIcon {
+  display: inline-flex;
+  padding: var(--space-1);
+  border-radius: var(--radius-sm);
+}
+
+.kpiIcon[data-tone='success'] {
+  background: var(--success-subtle);
+  color: var(--success-text);
+}
+.kpiIcon[data-tone='info'] {
+  background: var(--info-subtle);
+  color: var(--info-text);
+}
+.kpiIcon[data-tone='accent'] {
+  background: var(--accent-subtle);
+  color: var(--accent-subtle-text);
+}
+.kpiIcon[data-tone='warning'] {
+  background: var(--warning-subtle);
+  color: var(--warning-text);
+}
+
+.kpiValue {
+  margin: var(--space-3) 0 0;
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-bold);
+  line-height: 1;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.kpiNote {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+/* --- The chart --- */
+
+.chart {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.chartSvg {
+  display: block;
+  width: 100%;
+  min-width: 460px;
+  height: auto;
+  overflow: visible;
+}
+
+.gridLine {
+  stroke: var(--border-subtle);
+  stroke-width: 1;
+}
+
+/* SVG text takes its colour from the theme like everything else, so the axis
+ * is still readable on a dark ground. */
+.axisLabel {
+  fill: var(--text-muted);
+  font-size: 8px;
+  font-weight: var(--weight-semibold);
+}
+
+.trendLine {
+  fill: none;
+  stroke: var(--accent-solid);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+}
+
+.node {
+  fill: var(--surface-raised);
+  stroke: var(--accent-solid);
+  stroke-width: 2;
+}
+
+.fillTop {
+  stop-color: var(--accent-solid);
+  stop-opacity: 0.25;
+}
+
+.fillBottom {
+  stop-color: var(--accent-solid);
+  stop-opacity: 0;
+}
+
+/* --- Leaderboard and the side column --- */
+
+.split {
+  display: grid;
+  grid-template-columns: minmax(0, 1.8fr) minmax(0, 1fr);
+  gap: var(--space-6);
+  align-items: start;
+}
+
+@media (max-width: 1100px) {
+  .split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  min-width: 0;
+}
+
+.leaderControls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.rank,
+.rankTop {
+  font-weight: var(--weight-bold);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+
+/* First place, and only first place. */
+.rankTop {
+  color: var(--warning-text);
+}
+
+.person {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  font-weight: var(--weight-medium);
+  color: var(--text-primary);
+}
+
+.avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-full);
+  background: hsl(var(--avatar-hue, 210) 55% 34%);
+  color: #ffffff;
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
+}
+
+/* --- Department split --- */
+
+.depts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.deptHead {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-1);
+  font-size: var(--text-xs);
+}
+
+.deptName {
+  font-weight: var(--weight-semibold);
+  text-transform: capitalize;
+  color: var(--text-secondary);
+}
+
+.deptValue {
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.bar {
+  width: 100%;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: var(--surface-sunken);
+  overflow: hidden;
+}
+
+.barFill {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-full);
+  background: var(--accent-solid);
+}
+
+/* The two clinical departments read as themselves; anything else is accent. */
+.barFill[data-dept='lab'] {
+  background: var(--success-solid);
+}
+
+.barFill[data-dept='radiology'] {
+  background: var(--info-solid);
+}
+
+/* --- Activity log --- */
+
+.log {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.logItem {
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.logItem:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.logMark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-full);
+  background: var(--success-subtle);
+  color: var(--success-text);
+}
+
+.logText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.logTitle {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.logMeta {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}

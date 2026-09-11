@@ -44,3 +44,48 @@
     animation: none;
   }
 }
+
+/* --- The screen itself --- */
+
+.screen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+/* A short-lived confirmation. Still a toast rather than an Alert in the flow,
+ * because it reports something that already succeeded and the page below it
+ * must not move. */
+.toast {
+  position: fixed;
+  top: var(--space-5);
+  right: var(--space-5);
+  z-index: var(--z-toast);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-5);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+}
+
+.toast[data-tone='success'] {
+  background: var(--success-solid);
+  color: var(--success-solid-text);
+}
+
+.toast[data-tone='error'] {
+  background: var(--critical-solid);
+  color: var(--critical-solid-text);
+}
+
+@media (max-width: 640px) {
+  .toast {
+    top: auto;
+    bottom: var(--space-5);
+    left: var(--space-4);
+    right: var(--space-4);
+  }
+}
