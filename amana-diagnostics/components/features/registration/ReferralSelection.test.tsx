@@ -105,9 +105,9 @@ describe('Feature: Choosing a referring doctor', () => {
     useRegistrationStore.getState().setForm({ referredBy: 'Dr. Bello' });
     setup({ selectedDoctorId: 'doc-1' });
 
-    // The clear button is the only one rendered inside the doctor combobox
-    const [clear] = screen.getAllByRole('button', { name: '' });
-    fireEvent.click(clear);
+    // The old X inside the input had no name; the chosen referrer now shows
+    // below with a named button to take it back off.
+    fireEvent.click(screen.getByRole('button', { name: /remove/i }));
 
     expect(useRegistrationStore.getState().form.referredBy).toBe('');
   });
@@ -116,6 +116,58 @@ describe('Feature: Choosing a referring doctor', () => {
     setup({ errors: { referredBy: 'Either Referring doctor or facility is required' } });
 
     expect(screen.getAllByText('Either Referring doctor or facility is required').length).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * Characterisation of the accessibility the old markup did not have. Every one
+ * of these failed against the old screen: its inputs were unnamed text boxes,
+ * its results were <div onClick> with no roles, and its clear control was an
+ * icon button with no name. Written before the rebuild; see decision #28.
+ */
+describe('Feature: Reaching the pickers without a mouse', () => {
+  it('names each search as a combobox', () => {
+    setup();
+
+    expect(screen.getByRole('combobox', { name: /doctor/i })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: /facility/i })).toBeInTheDocument();
+  });
+
+  it('announces the open results as a listbox of options', () => {
+    setup({ showDoctorDrop: true });
+
+    expect(screen.getByRole('listbox', { name: /doctor/i })).toBeInTheDocument();
+    expect(screen.getAllByRole('option').length).toBeGreaterThan(0);
+  });
+
+  it('the combobox says whether it is expanded', () => {
+    setup({ showDoctorDrop: false });
+    expect(screen.getByRole('combobox', { name: /doctor/i })).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('picks the highlighted doctor with the keyboard', () => {
+    const setSelectedDoctorId = vi.fn();
+    setup({ showDoctorDrop: true, setSelectedDoctorId });
+
+    const combo = screen.getByRole('combobox', { name: /doctor/i });
+    // The first row is highlighted on open; Enter takes it.
+    fireEvent.keyDown(combo, { key: 'Enter' });
+
+    expect(setSelectedDoctorId).toHaveBeenCalledWith('doc-1');
+    expect(useRegistrationStore.getState().form.referredBy).toBe('Dr. Bello');
+  });
+
+  it('moves the highlight with the arrow keys', () => {
+    const setSelectedFacilityId = vi.fn();
+    // One facility on file, then the walk-in row: ArrowDown moves off the
+    // facility onto walk-in, and Enter records it.
+    setup({ showFacilityDrop: true, setSelectedFacilityId });
+
+    const combo = screen.getByRole('combobox', { name: /facility/i });
+    fireEvent.keyDown(combo, { key: 'ArrowDown' });
+    fireEvent.keyDown(combo, { key: 'Enter' });
+
+    expect(useRegistrationStore.getState().form.referringFacility).toBe('None / Walk-in');
   });
 });
 

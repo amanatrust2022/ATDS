@@ -1,0 +1,115 @@
+/* The two referral pickers at the head of registration.
+ *
+ * A select is no use here — the doctor and facility lists are everyone the
+ * centre has ever referred through — so each stays a search. What the old
+ * markup owed a keyboard user: its results were <div onClick>, reachable by a
+ * mouse and nothing else, over an input a screen reader could not name. They
+ * are a listbox of buttons now, with arrow keys and Escape, and the input is a
+ * named combobox. Semantic tokens throughout, so both themes and both densities
+ * come for free where the old grey and teal literals reached only light. */
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+}
+
+@media (max-width: 640px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.picker {
+  position: relative;
+}
+
+/* The chosen referrer, shown below the search once one is picked, with a named
+ * button to take it back off — where the old X had no name at all. */
+.chosen {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--accent-subtle);
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+}
+
+.results {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: var(--space-1);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  z-index: var(--z-dropdown);
+  overflow: hidden;
+}
+
+.resultList {
+  max-height: 12.5rem;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.option {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border-subtle);
+  cursor: pointer;
+  font: inherit;
+  color: var(--text-primary);
+}
+
+.option:last-child {
+  border-bottom: none;
+}
+
+.option:hover,
+.optionActive {
+  background: var(--accent-subtle);
+}
+
+.optionName {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+}
+
+.optionMeta {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.optionFree {
+  font-size: var(--text-sm);
+  font-style: italic;
+  color: var(--text-secondary);
+}
+
+/* The trailing walk-in / no-referrer choice, set apart from the searched list. */
+.special {
+  border-top: 1px solid var(--border-default);
+  background: var(--surface-sunken);
+}
+
+.empty {
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}

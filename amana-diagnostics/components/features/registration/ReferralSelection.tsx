@@ -1,9 +1,27 @@
-import React from 'react';
-import { RiAddLine, RiSearchLine, RiCloseLine } from '@remixicon/react';
+import React, { useEffect, useState } from 'react';
+import { RiAddLine, RiSearchLine } from '@remixicon/react';
 import { ReferringDoctor, ReferringFacility } from '@/lib/store';
 import { useRegistrationStore } from '@/lib/store/useRegistrationStore';
-import Field from './Field';
-import { inputStyle, dropItemStyle } from './styles';
+import { Button, Field, Input } from '@/components/ui';
+
+import styles from './referral.module.css';
+
+/**
+ * The two referral pickers at the head of registration: the referring doctor
+ * and the referring facility.
+ *
+ * Both were the same widget the wallet's OwnerPicker used to be — a search
+ * whose results were <div onClick>. A mouse could reach them; a keyboard could
+ * not, the input had no accessible name, and nothing announced the list. Each
+ * is a named combobox over a listbox of buttons now, with arrow keys, Enter and
+ * Escape, and the chosen referrer shows below with a button that has a name
+ * where the old X had none.
+ *
+ * The commission figure is still not shown beside a doctor or facility: the
+ * commission actually paid comes from the test-price catalogue, not the
+ * referrer's record (lib/store/registrationBilling.ts), so a record's own field
+ * is always zero — it used to read "No commission" beside every name.
+ */
 
 interface ReferralSelectionProps {
   doctors: ReferringDoctor[];
@@ -29,10 +47,129 @@ interface ReferralSelectionProps {
   onQuickAddFacility: () => void;
 }
 
-const quickBtnStyle: React.CSSProperties = {
-  background: 'none', border: 'none', color: 'var(--teal-600)', fontSize: '0.7rem',
-  fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.15rem',
-};
+interface Row {
+  key: string;
+  primary: string;
+  secondary?: string;
+  free?: boolean;
+  special?: boolean;
+  onPick: () => void;
+}
+
+const cx = (...names: Array<string | false | undefined>) => names.filter(Boolean).join(' ');
+
+/** One search-and-pick control, shared by the doctor and the facility. */
+function ReferralCombobox({
+  idBase, label, error, onQuickAdd, containerRef,
+  open, setOpen, search, onType, placeholder,
+  selectionLabel, onRemove, rows, emptyMessage,
+}: {
+  idBase: string;
+  label: string;
+  error?: string;
+  onQuickAdd: () => void;
+  containerRef: React.RefObject<HTMLDivElement | null>;
+  open: boolean;
+  setOpen: (show: boolean) => void;
+  search: string;
+  onType: (value: string) => void;
+  placeholder: string;
+  selectionLabel: string | null;
+  onRemove: () => void;
+  rows: Row[];
+  emptyMessage: string | null;
+}) {
+  const [active, setActive] = useState(0);
+  const listId = `${idBase}-results`;
+
+  // The highlight belongs to the list as it stands, not to a stale index.
+  useEffect(() => {
+    setActive(0);
+  }, [search, open]);
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      setOpen(false);
+      return;
+    }
+    if (!open || rows.length === 0) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActive((i) => (i + 1) % rows.length);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActive((i) => (i - 1 + rows.length) % rows.length);
+    } else if (e.key === 'Enter') {
+      // Enter inside the registration form would otherwise submit it.
+      e.preventDefault();
+      rows[active]?.onPick();
+    }
+  };
+
+  return (
+    <Field
+      label={label}
+      required
+      error={error}
+      action={
+        <Button intent="link" size="sm" icon={<RiAddLine size={12} />} onClick={onQuickAdd}>
+          Quick Register
+        </Button>
+      }
+    >
+      <div ref={containerRef} className={styles['picker']}>
+        <Input
+          role="combobox"
+          aria-expanded={open}
+          aria-controls={listId}
+          aria-autocomplete="list"
+          required={false}
+          prefix={<RiSearchLine size={14} />}
+          placeholder={placeholder}
+          value={selectionLabel ?? search}
+          onChange={(e) => onType(e.target.value)}
+          onFocus={() => setOpen(true)}
+          onKeyDown={onKeyDown}
+        />
+
+        {selectionLabel && (
+          <p className={styles['chosen']}>
+            <span>{selectionLabel}</span>
+            <Button size="sm" intent="dangerQuiet" onClick={onRemove}>
+              Remove
+            </Button>
+          </p>
+        )}
+
+        {open && (
+          <div className={styles['results']}>
+            <ul id={listId} role="listbox" aria-label={label} className={styles['resultList']}>
+              {rows.map((r, i) => (
+                <li key={r.key} role="option" aria-selected={i === active}>
+                  <button
+                    type="button"
+                    className={cx(styles['option'], r.special && styles['special'], i === active && styles['optionActive'])}
+                    onClick={r.onPick}
+                  >
+                    {r.free ? (
+                      <span className={styles['optionFree']}>{r.primary}</span>
+                    ) : (
+                      <>
+                        <span className={styles['optionName']}>{r.primary}</span>
+                        {r.secondary && <span className={styles['optionMeta']}>{r.secondary}</span>}
+                      </>
+                    )}
+                  </button>
+                </li>
+              ))}
+              {emptyMessage && <li className={styles['empty']}>{emptyMessage}</li>}
+            </ul>
+          </div>
+        )}
+      </div>
+    </Field>
+  );
+}
 
 export default function ReferralSelection({
   doctors, facilities, errors,
@@ -41,150 +178,136 @@ export default function ReferralSelection({
   selectedFacilityId, setSelectedFacilityId, facilitySearch, setFacilitySearch,
   showFacilityDrop, setShowFacilityDrop, facilityRef, onQuickAddFacility,
 }: ReferralSelectionProps) {
-  const setForm = useRegistrationStore(state => state.setForm);
+  const setForm = useRegistrationStore((state) => state.setForm);
 
-  const matchingDoctors = doctors.filter(d => !doctorSearch || d.name.toLowerCase().includes(doctorSearch.toLowerCase()));
-  const matchingFacilities = facilities.filter(f => !facilitySearch || f.name.toLowerCase().includes(facilitySearch.toLowerCase()));
+  const matchingDoctors = doctors.filter(
+    (d) => !doctorSearch || d.name.toLowerCase().includes(doctorSearch.toLowerCase()),
+  );
+  const matchingFacilities = facilities.filter(
+    (f) => !facilitySearch || f.name.toLowerCase().includes(facilitySearch.toLowerCase()),
+  );
+
+  // ── Doctor rows ──
+  const doctorRows: Row[] = [];
+  if (doctorSearch && !selectedDoctorId) {
+    doctorRows.push({
+      key: '__free',
+      primary: `Use "${doctorSearch}" as typed`,
+      free: true,
+      onPick: () => { setForm({ referredBy: doctorSearch }); setShowDoctorDrop(false); },
+    });
+  }
+  matchingDoctors.forEach((d) => {
+    doctorRows.push({
+      key: d.id,
+      primary: `Dr. ${d.name}`,
+      secondary: d.facility_name || 'Independent',
+      onPick: () => {
+        setSelectedDoctorId(d.id);
+        setDoctorSearch('');
+        setShowDoctorDrop(false);
+        setForm({ referredBy: `Dr. ${d.name}` });
+      },
+    });
+  });
+  doctorRows.push({
+    key: '__none',
+    primary: 'Not referred by anyone',
+    secondary: 'Direct walk-in / self-referral',
+    special: true,
+    onPick: () => {
+      setSelectedDoctorId('none');
+      setDoctorSearch('');
+      setShowDoctorDrop(false);
+      setForm({ referredBy: 'Not referred by anyone', referringFacility: 'None / Walk-in' });
+      setSelectedFacilityId('none');
+      setFacilitySearch('');
+    },
+  });
+
+  const doctorSelectionLabel = selectedDoctorId
+    ? (selectedDoctorId === 'none'
+        ? 'Not referred by anyone'
+        : `Dr. ${doctors.find((d) => d.id === selectedDoctorId)?.name || ''}`)
+    : null;
+
+  // ── Facility rows ──
+  const facilityRows: Row[] = [];
+  if (facilitySearch && !selectedFacilityId) {
+    facilityRows.push({
+      key: '__free',
+      primary: `Use "${facilitySearch}" as typed`,
+      free: true,
+      onPick: () => { setForm({ referringFacility: facilitySearch }); setShowFacilityDrop(false); },
+    });
+  }
+  matchingFacilities.forEach((f) => {
+    facilityRows.push({
+      key: f.id,
+      primary: f.name,
+      secondary: f.address || undefined,
+      onPick: () => {
+        setSelectedFacilityId(f.id);
+        setFacilitySearch('');
+        setShowFacilityDrop(false);
+        setForm({ referringFacility: f.name });
+      },
+    });
+  });
+  facilityRows.push({
+    key: '__none',
+    primary: 'None / Walk-in',
+    secondary: 'Direct walk-in patient',
+    special: true,
+    onPick: () => {
+      setSelectedFacilityId('none');
+      setFacilitySearch('');
+      setShowFacilityDrop(false);
+      setForm({ referringFacility: 'None / Walk-in' });
+    },
+  });
+
+  const facilitySelectionLabel = selectedFacilityId
+    ? (selectedFacilityId === 'none'
+        ? 'None / Walk-in'
+        : facilities.find((f) => f.id === selectedFacilityId)?.name || '')
+    : null;
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-      <Field
-        label="Referred By (Doctor) *"
+    <div className={styles['grid']}>
+      <ReferralCombobox
+        idBase="doctor"
+        label="Referred by (doctor)"
         error={errors.referredBy}
-        actionNode={
-          <button type="button" onClick={onQuickAddDoctor} style={quickBtnStyle}>
-            <RiAddLine size={12} /> Quick Register
-          </button>
-        }
-      >
-        <div ref={doctorRef} style={{ position: 'relative' }}>
-          <div style={{ position: 'relative' }}>
-            <RiSearchLine size={13} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--gray-400)', pointerEvents: 'none' }} />
-            <input
-              style={{ ...inputStyle(!!errors.referredBy), paddingLeft: 26 }}
-              value={selectedDoctorId ? (selectedDoctorId === 'none' ? 'Not referred by anyone' : `Dr. ${doctors.find(d => d.id === selectedDoctorId)?.name || ''}`) : doctorSearch}
-              onChange={e => { setDoctorSearch(e.target.value); setSelectedDoctorId(''); setShowDoctorDrop(true); }}
-              onFocus={() => setShowDoctorDrop(true)}
-              placeholder="Search or type doctor name…"
-            />
-            {selectedDoctorId && (
-              <button onClick={() => { setSelectedDoctorId(''); setDoctorSearch(''); setForm({ referredBy: '' }); }} style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray-400)', display: 'flex' }}>
-                <RiCloseLine size={14} />
-              </button>
-            )}
-          </div>
-          {showDoctorDrop && (
-            <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'white', border: '1px solid var(--gray-300)', zIndex: 50, maxHeight: 200, overflowY: 'auto', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
-              {/* Free-text option */}
-              {doctorSearch && !selectedDoctorId && (
-                <div onClick={() => { setForm({ referredBy: doctorSearch }); setShowDoctorDrop(false); }} style={dropItemStyle}>
-                  <span style={{ fontStyle: 'italic', color: 'var(--gray-500)' }}>Use "{doctorSearch}" as typed</span>
-                </div>
-              )}
-              {matchingDoctors.map(d => (
-                <div key={d.id} onClick={() => { setSelectedDoctorId(d.id); setDoctorSearch(''); setShowDoctorDrop(false); setForm({ referredBy: `Dr. ${d.name}` }); }} style={dropItemStyle}>
-                  <div style={{ fontWeight: 600, fontSize: '0.8rem' }}>Dr. {d.name}</div>
-                  {/* No commission shown. The commission actually paid comes
-                    * from the test price catalogue, not the doctor's record —
-                    * see lib/store/registrationBilling.ts. Nothing can set the
-                    * figure on the record, so it read "No commission" beside
-                    * every doctor on the list, referred visits included. */}
-                  <div style={{ fontSize: '0.68rem', color: 'var(--gray-400)' }}>
-                    {d.facility_name || 'Independent'}
-                  </div>
-                </div>
-              ))}
-              {matchingDoctors.length === 0 && !doctorSearch && (
-                <div style={{ padding: '0.6rem 0.75rem', color: 'var(--gray-400)', fontSize: '0.78rem' }}>No doctors in database. Type to use a custom name.</div>
-              )}
+        onQuickAdd={onQuickAddDoctor}
+        containerRef={doctorRef}
+        open={showDoctorDrop}
+        setOpen={setShowDoctorDrop}
+        search={doctorSearch}
+        onType={(v) => { setDoctorSearch(v); setSelectedDoctorId(''); setShowDoctorDrop(true); }}
+        placeholder="Search or type doctor name…"
+        selectionLabel={doctorSelectionLabel}
+        onRemove={() => { setSelectedDoctorId(''); setDoctorSearch(''); setForm({ referredBy: '' }); }}
+        rows={doctorRows}
+        emptyMessage={matchingDoctors.length === 0 && !doctorSearch ? 'No doctors in database. Type to use a custom name.' : null}
+      />
 
-              {/* Not referred by anyone option */}
-              <div
-                onClick={() => {
-                  setSelectedDoctorId('none');
-                  setDoctorSearch('');
-                  setShowDoctorDrop(false);
-                  setForm({ referredBy: 'Not referred by anyone', referringFacility: 'None / Walk-in' });
-                  setSelectedFacilityId('none');
-                  setFacilitySearch('');
-                }}
-                style={{ ...dropItemStyle, borderTop: '1px solid var(--gray-200)', background: '#f8fafc', display: 'flex', flexDirection: 'column', gap: '0.05rem' }}
-                onMouseEnter={e => e.currentTarget.style.background = 'var(--gray-100)'}
-                onMouseLeave={e => e.currentTarget.style.background = '#f8fafc'}
-              >
-                <div style={{ fontWeight: 600, fontSize: '0.8rem', color: 'var(--gray-700)' }}>Not referred by anyone</div>
-                <div style={{ fontSize: '0.68rem', color: 'var(--gray-400)' }}>Direct walk-in / self-referral</div>
-              </div>
-            </div>
-          )}
-        </div>
-      </Field>
-
-      <Field
-        label="Referring Facility *"
+      <ReferralCombobox
+        idBase="facility"
+        label="Referring facility"
         error={errors.referringFacility}
-        actionNode={
-          <button type="button" onClick={onQuickAddFacility} style={quickBtnStyle}>
-            <RiAddLine size={12} /> Quick Register
-          </button>
-        }
-      >
-        <div ref={facilityRef} style={{ position: 'relative' }}>
-          <div style={{ position: 'relative' }}>
-            <RiSearchLine size={13} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--gray-400)', pointerEvents: 'none' }} />
-            <input
-              style={{ ...inputStyle(!!errors.referringFacility), paddingLeft: 26 }}
-              value={selectedFacilityId ? (selectedFacilityId === 'none' ? 'None / Walk-in' : facilities.find(f => f.id === selectedFacilityId)?.name || '') : facilitySearch}
-              onChange={e => { setFacilitySearch(e.target.value); setSelectedFacilityId(''); setShowFacilityDrop(true); }}
-              onFocus={() => setShowFacilityDrop(true)}
-              placeholder="Search or type facility name…"
-            />
-            {selectedFacilityId && (
-              <button onClick={() => { setSelectedFacilityId(''); setFacilitySearch(''); setForm({ referringFacility: '' }); }} style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray-400)', display: 'flex' }}>
-                <RiCloseLine size={14} />
-              </button>
-            )}
-          </div>
-          {showFacilityDrop && (
-            <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'white', border: '1px solid var(--gray-300)', zIndex: 50, maxHeight: 200, overflowY: 'auto', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
-              {facilitySearch && !selectedFacilityId && (
-                <div onClick={() => { setForm({ referringFacility: facilitySearch }); setShowFacilityDrop(false); }} style={dropItemStyle}>
-                  <span style={{ fontStyle: 'italic', color: 'var(--gray-500)' }}>Use "{facilitySearch}" as typed</span>
-                </div>
-              )}
-              {matchingFacilities.map(f => (
-                <div key={f.id} onClick={() => { setSelectedFacilityId(f.id); setFacilitySearch(''); setShowFacilityDrop(false); setForm({ referringFacility: f.name }); }} style={dropItemStyle}>
-                  <div style={{ fontWeight: 600, fontSize: '0.8rem' }}>{f.name}</div>
-                  {/* Commission dropped here too — same reason as the doctors
-                    * list above. */}
-                  {f.address && (
-                    <div style={{ fontSize: '0.68rem', color: 'var(--gray-400)' }}>{f.address}</div>
-                  )}
-                </div>
-              ))}
-              {matchingFacilities.length === 0 && !facilitySearch && (
-                <div style={{ padding: '0.6rem 0.75rem', color: 'var(--gray-400)', fontSize: '0.78rem' }}>No facilities in database. Type to use a custom name.</div>
-              )}
-
-              {/* None / Walk-in option */}
-              <div
-                onClick={() => {
-                  setSelectedFacilityId('none');
-                  setFacilitySearch('');
-                  setShowFacilityDrop(false);
-                  setForm({ referringFacility: 'None / Walk-in' });
-                }}
-                style={{ ...dropItemStyle, borderTop: '1px solid var(--gray-200)', background: '#f8fafc', display: 'flex', flexDirection: 'column', gap: '0.05rem' }}
-                onMouseEnter={e => e.currentTarget.style.background = 'var(--gray-100)'}
-                onMouseLeave={e => e.currentTarget.style.background = '#f8fafc'}
-              >
-                <div style={{ fontWeight: 600, fontSize: '0.8rem', color: 'var(--gray-700)' }}>None / Walk-in</div>
-                <div style={{ fontSize: '0.68rem', color: 'var(--gray-400)' }}>Direct walk-in patient</div>
-              </div>
-            </div>
-          )}
-        </div>
-      </Field>
+        onQuickAdd={onQuickAddFacility}
+        containerRef={facilityRef}
+        open={showFacilityDrop}
+        setOpen={setShowFacilityDrop}
+        search={facilitySearch}
+        onType={(v) => { setFacilitySearch(v); setSelectedFacilityId(''); setShowFacilityDrop(true); }}
+        placeholder="Search or type facility name…"
+        selectionLabel={facilitySelectionLabel}
+        onRemove={() => { setSelectedFacilityId(''); setFacilitySearch(''); setForm({ referringFacility: '' }); }}
+        rows={facilityRows}
+        emptyMessage={matchingFacilities.length === 0 && !facilitySearch ? 'No facilities in database. Type to use a custom name.' : null}
+      />
     </div>
   );
 }
