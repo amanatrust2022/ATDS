@@ -4,7 +4,12 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/components/AuthProvider';
 import { createClient } from '@/lib/supabase';
 import { AppearanceSettings } from '@/components/features/settings/AppearanceSettings';
-import { RiUserSettingsLine, RiCheckLine, RiSave3Line, RiUploadCloud2Line } from '@remixicon/react';
+import { RiUploadCloud2Line, RiSave3Line } from '@remixicon/react';
+import { Alert, Badge, Button, Field, Input, Select } from '@/components/ui';
+
+import styles from './profile.module.css';
+
+const cx = (...names: Array<string | false | undefined>) => names.filter(Boolean).join(' ');
 
 function UserSettings() {
   const { profile, user, organization } = useAuth();
@@ -14,14 +19,14 @@ function UserSettings() {
     title: 'Mr.',
     firstName: '',
     lastName: '',
-    surname: ''
+    surname: '',
   });
-  
+
   const [signatureFile, setSignatureFile] = useState<File | null>(null);
   const [signaturePreview, setSignaturePreview] = useState<string | null>(null);
 
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState({ text: '', type: '' });
+  const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' | '' }>({ text: '', type: '' });
 
   useEffect(() => {
     if (profile) {
@@ -29,7 +34,7 @@ function UserSettings() {
         title: profile.title || 'Mr.',
         firstName: profile.first_name || '',
         lastName: profile.last_name || '',
-        surname: profile.surname || ''
+        surname: profile.surname || '',
       });
       if (profile.signature_url) {
         setSignaturePreview(profile.signature_url);
@@ -41,14 +46,18 @@ function UserSettings() {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       setSignatureFile(file);
-      setSignaturePreview(URL.createObjectURL(file));
+      setSignaturePreview((prev) => {
+        // Only revoke a URL this component minted; never the stored https one.
+        if (prev && prev.startsWith('blob:')) URL.revokeObjectURL(prev);
+        return URL.createObjectURL(file);
+      });
     }
   };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!profile || !user) return;
-    
+
     setSaving(true);
     setMessage({ text: '', type: '' });
 
@@ -67,7 +76,7 @@ function UserSettings() {
         const { data } = supabase.storage
           .from('signatures')
           .getPublicUrl(fileName);
-        
+
         publicUrl = data.publicUrl;
       }
 
@@ -81,7 +90,7 @@ function UserSettings() {
           last_name: formData.lastName,
           surname: formData.surname,
           full_name: fullName,
-          signature_url: publicUrl
+          signature_url: publicUrl,
         })
         .eq('id', profile.id);
 
@@ -96,78 +105,64 @@ function UserSettings() {
           surname: formData.surname,
           last_name: formData.lastName,
           signature_url: publicUrl,
-        }
+        },
       });
 
       setMessage({ text: 'Profile updated successfully. Refresh to see changes across the app.', type: 'success' });
       setSignatureFile(null); // Reset file input
-    } catch (err: any) {
-      setMessage({ text: err.message || 'Failed to update profile.', type: 'error' });
+    } catch (err) {
+      // Supabase errors are plain objects carrying a `message`, not Error
+      // instances — read it off either so the real cause reaches the user.
+      const text = (err as { message?: string })?.message || 'Failed to update profile.';
+      setMessage({ text, type: 'error' });
     } finally {
       setSaving(false);
     }
   };
 
-  const inpStyle: React.CSSProperties = {
-    width: '100%', padding: '0.75rem 1rem', border: '1px solid var(--gray-300)',
-    borderRadius: '0.5rem', fontSize: '0.9rem',  transition: 'border-color 0.2s',
-    background: 'white'
-  };
-
-  const lblStyle: React.CSSProperties = {
-    display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--gray-700)', marginBottom: '0.4rem'
-  };
+  const initials = profile?.full_name
+    ? profile.full_name.split(' ').map((n) => n[0]).join('').substring(0, 2).toUpperCase()
+    : 'U';
 
   return (
     <>
-
-      <div style={{ padding: '2rem', maxWidth: 800, margin: '0 auto', width: '100%' }}>
-        <div style={{ background: 'white', border: '1px solid var(--gray-200)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
-          
-          <div style={{ padding: '1.5rem 2rem', borderBottom: '1px solid var(--gray-200)', display: 'flex', alignItems: 'center', gap: '1.25rem', background: 'linear-gradient(135deg, var(--teal-50) 0%, #f0fdf4 100%)' }}>
-            {/* Avatar with initials */}
-            <div style={{
-              width: 64, height: 64, borderRadius: '50%', flexShrink: 0,
-              background: 'var(--teal-600)', color: 'white',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: '1.4rem', fontWeight: 800,
-            }}>
-              {profile?.full_name ? profile.full_name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() : 'U'}
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--gray-900)' }}>
-                {profile?.full_name || 'Your Name'}
+      <div className={styles.page}>
+        <div className={styles.card}>
+          <div className={styles.header}>
+            <span className={styles.avatar} aria-hidden="true">{initials}</span>
+            <div className={styles.identity}>
+              <div className={styles.name}>{profile?.full_name || 'Your name'}</div>
+              <div className={styles.meta}>
+                <Badge tone="accent">{profile?.role || 'Staff'}</Badge>
+                <span>{organization?.name}</span>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.25rem' }}>
-                <span style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--teal-700)', background: 'var(--teal-100)', padding: '0.15rem 0.5rem', borderRadius: 999 }}>
-                  {profile?.role || 'Staff'}
+              {profile?.signature_url ? (
+                <span className={cx(styles.sigState, styles.sigOn)}>
+                  <span aria-hidden="true">✓</span> Digital signature on file
                 </span>
-                <span style={{ fontSize: '0.78rem', color: 'var(--gray-500)' }}>{organization?.name}</span>
-              </div>
-              <div style={{ fontSize: '0.78rem', color: profile?.signature_url ? '#059669' : 'var(--gray-400)', marginTop: '0.2rem' }}>
-                {profile?.signature_url ? '✓ Digital signature on file' : '⚠ No signature uploaded yet'}
-              </div>
+              ) : (
+                <span className={cx(styles.sigState, styles.sigOff)}>
+                  <span aria-hidden="true">⚠</span> No signature uploaded yet
+                </span>
+              )}
             </div>
           </div>
 
-          <div style={{ padding: '2rem' }}>
+          <div className={styles.body}>
             {message.text && (
-              <div style={{ 
-                padding: '1rem', marginBottom: '1.5rem', borderRadius: '0.5rem', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.5rem',
-                background: message.type === 'success' ? 'rgba(16,185,129,0.1)' : 'rgba(248,113,113,0.1)',
-                color: message.type === 'success' ? '#059669' : '#dc2626'
-              }}>
-                {message.type === 'success' && <RiCheckLine size={18} />}
+              <Alert tone={message.type === 'success' ? 'success' : 'critical'} live>
                 {message.text}
-              </div>
+              </Alert>
             )}
 
-            <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-              
-              <div style={{ display: 'grid', gridTemplateColumns: '100px 1fr', gap: '1rem' }}>
-                <div>
-                  <label style={lblStyle}>Title *</label>
-                  <select style={inpStyle} value={formData.title} onChange={e => setFormData({ ...formData, title: e.target.value })} required>
+            <form onSubmit={handleSave} className={styles.form} noValidate>
+              <div className={styles.titleRow}>
+                <Field label="Title" required>
+                  <Select
+                    value={formData.title}
+                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                    required
+                  >
                     <option value="Mr.">Mr.</option>
                     <option value="Ms.">Ms.</option>
                     <option value="Mrs.">Mrs.</option>
@@ -175,80 +170,76 @@ function UserSettings() {
                     <option value="Prof.">Prof.</option>
                     <option value="MLS.">MLS.</option>
                     <option value="Pharm.">Pharm.</option>
-                  </select>
-                </div>
-                <div>
-                  <label style={lblStyle}>Surname *</label>
-                  <input style={inpStyle} value={formData.surname} onChange={e => setFormData({ ...formData, surname: e.target.value })} required />
-                </div>
+                  </Select>
+                </Field>
+                <Field label="Surname" required>
+                  <Input
+                    value={formData.surname}
+                    onChange={(e) => setFormData({ ...formData, surname: e.target.value })}
+                    autoComplete="family-name"
+                    required
+                  />
+                </Field>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                <div>
-                  <label style={lblStyle}>First Name *</label>
-                  <input style={inpStyle} value={formData.firstName} onChange={e => setFormData({ ...formData, firstName: e.target.value })} required />
-                </div>
-                <div>
-                  <label style={lblStyle}>Last Name</label>
-                  <input style={inpStyle} value={formData.lastName} onChange={e => setFormData({ ...formData, lastName: e.target.value })} />
-                </div>
+              <div className={styles.pairRow}>
+                <Field label="First name" required>
+                  <Input
+                    value={formData.firstName}
+                    onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
+                    autoComplete="given-name"
+                    required
+                  />
+                </Field>
+                <Field label="Last name">
+                  <Input
+                    value={formData.lastName}
+                    onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
+                    autoComplete="additional-name"
+                  />
+                </Field>
               </div>
 
               <div>
-                <label style={lblStyle}>Digital Signature</label>
-                <div style={{ 
-                  border: '1px dashed var(--gray-300)', borderRadius: 8, padding: '1rem', 
-                  display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.75rem',
-                  background: 'var(--gray-50)'
-                }}>
-                  {signaturePreview ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                      <img src={signaturePreview} alt="Signature Preview" style={{ maxHeight: 60, objectFit: 'contain', background: 'white', padding: '0.5rem', borderRadius: 4, border: '1px solid var(--gray-200)' }} />
-                      <label style={{ color: 'var(--teal-600)', fontSize: '0.8rem', cursor: 'pointer', fontWeight: 600 }}>
-                        Upload New Signature
-                        <input type="file" accept="image/*" onChange={handleFileChange} style={{ display: 'none' }} />
-                      </label>
-                    </div>
-                  ) : (
-                    <label style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer', gap: '0.5rem', width: '100%', padding: '1rem' }}>
-                      <RiUploadCloud2Line size={24} color="var(--gray-400)" />
-                      <span style={{ color: 'var(--gray-500)', fontSize: '0.85rem' }}>Upload Signature Image</span>
-                      <input type="file" accept="image/*" onChange={handleFileChange} style={{ display: 'none' }} />
-                    </label>
+                <span className={styles.sectionLabel}>Digital signature</span>
+                <div className={styles.dropzone}>
+                  {signaturePreview && (
+                    <img src={signaturePreview} alt="Your current signature" className={styles.sigPreview} />
                   )}
-                  <p style={{ fontSize: '0.75rem', color: 'var(--gray-500)', margin: 0 }}>This signature will be stamped on diagnostic reports you authorize.</p>
+                  <input
+                    id="pf-signature"
+                    type="file"
+                    accept="image/*"
+                    className={cx('sr-only', styles.fileInput)}
+                    onChange={handleFileChange}
+                  />
+                  <label htmlFor="pf-signature" className={styles.sigButton}>
+                    <RiUploadCloud2Line size={18} aria-hidden="true" />
+                    {signaturePreview ? 'Upload new signature' : 'Upload signature image'}
+                  </label>
+                  <p className={styles.sigHint}>
+                    This signature will be stamped on diagnostic reports you authorise.
+                  </p>
                 </div>
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1rem' }}>
-                <button 
-                  type="submit" 
-                  disabled={saving}
-                  style={{ 
-                    background: saving ? '#9ca3af' : 'var(--teal-600)', color: 'white', border: 'none', 
-                    padding: '0.75rem 1.5rem', borderRadius: '0.5rem', fontWeight: 600, 
-                    display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: saving ? 'not-allowed' : 'pointer',
-                    transition: 'background 0.2s'
-                  }}
-                >
-                  <RiSave3Line size={18} />
-                  {saving ? 'Saving...' : 'Save Profile'}
-                </button>
+              <div className={styles.actions}>
+                <Button type="submit" intent="primary" loading={saving} icon={<RiSave3Line size={18} />}>
+                  {saving ? 'Saving…' : 'Save profile'}
+                </Button>
               </div>
-
             </form>
           </div>
         </div>
-      </div>
 
-        <div style={{ marginTop: 'var(--space-5)' }}>
-          <AppearanceSettings />
-        </div>
+        <AppearanceSettings />
+      </div>
     </>
   );
 }
 
 /** Only these roles may open this screen — see components/RequireRole.tsx. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export default function GuardedUserSettings(props: any) {
   return (
     <RequireRole allow={['admin', 'reception', 'lab', 'lab_tech', 'radiology']}>
