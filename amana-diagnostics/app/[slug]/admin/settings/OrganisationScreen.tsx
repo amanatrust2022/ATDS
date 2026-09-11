@@ -11,6 +11,7 @@ import {
   Alert, Button, Card, CardBody, CardHeader, Field, Input, SegmentedControl, Textarea,
 } from '@/components/ui';
 
+import { useShellSlot } from '@/components/shell/ShellSlot';
 import styles from './organisation.module.css';
 
 const LetterheadDesigner = dynamic(() => import('@/components/LetterheadDesigner'), { ssr: false });
@@ -84,6 +85,9 @@ function OrganizationSettings() {
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
   const [section, setSection] = useState<Section>('header');
+
+  // The heading is the shell's (decision #30); this is the sentence under it.
+  useShellSlot({ subtitle: 'Facility details, contact information and the printed letterhead.' });
 
   // Pre-fill from live org data, once.
   useEffect(() => {
@@ -190,14 +194,6 @@ function OrganizationSettings() {
 
   return (
     <div className={styles['page']}>
-      <div>
-        <p className={styles['eyebrow']}>Admin</p>
-        <h1 className={styles['title']}>Organisation settings</h1>
-        <p className={styles['lede']}>
-          Update your facility details, contact information, and letterhead.
-        </p>
-      </div>
-
       <Card>
         <CardHeader
           title={

@@ -597,3 +597,46 @@ already fills the window. Every admin page had two headings and two scrollbars.
 That is worth recording as a pattern rather than four bug fixes: it is what
 hoisting a shell does to screens written before it existed, and the remaining
 admin screens will have it too.
+
+## 31. Marketing pages and paper canvases are deliberately single-theme
+
+**Decision.** Three kinds of surface do not follow the viewer's theme, and each
+says so at the top of its stylesheet:
+
+- **The public face** — landing, download, sign-in, sign-up. Brand, not
+  workspace. Every colour is declared once as a scoped custom property on the
+  page root (`app/landing.module.css`, `app/login/login.module.css`) rather
+  than typed into elements, so it is one palette and not 149 literals; but it
+  is one palette on purpose.
+- **Paper** — the report editor's page and the letterhead designer's canvas.
+  What is drawn there is what prints. White ground, black ink, whatever the
+  theme says. The chrome around the paper follows the theme like everything
+  else.
+- **The drawing itself** — an element's x, y, width, height and rotation in the
+  letterhead designer stay inline in the TSX. They are the design, not
+  styling, and they are what gets serialised for print.
+
+**Why.** Decision #20 made this call for the sign-in screen; this extends it to
+everything the same reasoning covers and draws the line at "the design
+system's job is the workspace". The ratchet counts inline styles, and the seven
+that remain in the report editor and nine in the designer are all values — a
+swatch in its own colour, a font preview in its own face, a box at its own
+coordinates. Moving those to a class would be moving a number into CSS to
+satisfy a counter.
+
+The contrast checker does not cover these surfaces; they were checked by hand.
+The landing page's lowest text tier is 47% white on `#07090f`, 4.8:1. The old
+page went to 28%, which is 2.5:1.
+
+## 32. A page that says something about the product must be true
+
+**Decision.** Copy on the public pages is subject to the same review as code.
+Two claims were removed this session because the codebase did not support them:
+"encrypted SQLite database" (there is no at-rest encryption anywhere), and eight
+footer links to documents that do not exist. One was flagged and left for the
+owner: three named testimonials and a "100+ diagnostic centres" figure.
+
+**Why.** A clinic reading "encrypted" believes its patient records are protected
+on the disk. That is not marketing tone; it is a statement about what the
+software does, and the software does not do it. Anyone migrating a marketing
+page should read the copy as carefully as the styles.

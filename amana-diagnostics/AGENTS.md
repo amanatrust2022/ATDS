@@ -10,7 +10,9 @@ The interface is being moved onto a design system. **Read
 [`docs/DESIGN_SYSTEM.md`](docs/DESIGN_SYSTEM.md) before writing any UI**,
 [`docs/UI_DECISIONS.md`](docs/UI_DECISIONS.md) before changing how the system
 itself works, and [`docs/UI_PROGRESS.md`](docs/UI_PROGRESS.md) for what is
-migrated and what is not.
+migrated and what is not. **Continuing the migration? Start with
+[`docs/HANDOFF.md`](docs/HANDOFF.md)** — the queue, the recipe, and the rule
+about never using `git add -A`.
 
 ## The rules
 

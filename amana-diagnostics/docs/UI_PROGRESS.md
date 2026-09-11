@@ -3,7 +3,7 @@
 Measured against the nine-phase plan. Counts come from `npm run check:ui`, not
 from memory.
 
-Last updated: 11 September 2026 (the four biggest admin screens rebuilt).
+Last updated: 11 September 2026, evening (department forms, marketing pages, bench, sign-up, editors and checkout rebuilt). See `docs/HANDOFF.md` for how to continue.
 
 ---
 
@@ -14,7 +14,7 @@ Last updated: 11 September 2026 (the four biggest admin screens rebuilt).
 | P0 | Stop the bleeding | **Done** |
 | P1 | Tokens and the styling layer | **Done** |
 | P2 | Application shell | **Done** |
-| P3 | Component library | **Built. The four biggest screens migrated; entry forms remain.** |
+| P3 | Component library | **Built. 347 inline styles left of 2,100; the remaining screens are listed in `docs/HANDOFF.md`.** |
 | P4 | WCAG 2.1 AA | **Floor in place. Screen-by-screen sweep outstanding.** |
 | P5 | Clinical safety | **Done** |
 | P6 | Responsive, density, dark | **Shipped for shell and new screens. Legacy screens outstanding.** |
@@ -29,16 +29,16 @@ Last updated: 11 September 2026 (the four biggest admin screens rebuilt).
 
 | Metric | Start | Now |
 | --- | --- | --- |
-| Inline `style={{…}}` objects | 2,100 | 1,255 |
-| Hard-coded hex colours | 832 | 541 |
-| Hard-coded `rgb()`/`rgba()` | 470 | 338 |
-| Legacy `--gray-*` / `--teal-*` uses | 1,122 | 527 |
-| JS hover handlers | 42 | 30 |
+| Inline `style={{…}}` objects | 2,100 | 347 |
+| Hard-coded hex colours | 832 | 201 |
+| Hard-coded `rgb()`/`rgba()` | 470 | 79 |
+| Legacy `--gray-*` / `--teal-*` uses | 1,122 | 145 |
+| JS hover handlers | 42 | 12 |
 | Inline `outline: 'none'` | 48 | **0** |
-| `!important` in components | 23 | 13 |
-| Hand-rolled overlays | 18 | 10 |
-| Raw `<table>` | 23 | 9 |
-| Hard-coded numeric `zIndex` | 46 | 34 |
+| `!important` in components | 23 | 6 |
+| Hand-rolled overlays | 18 | 1 |
+| Raw `<table>` | 23 | 5 |
+| Hard-coded numeric `zIndex` | 46 | 8 |
 
 The large numbers move when screens migrate, which is the bulk of P3 and is the
 work that remains. Every one of them can only go down: `npm run check:ui` fails
@@ -99,16 +99,43 @@ tab strips and both unescaped CSV exports.
 with critical values as a separate tier carrying a release interlock. The range
 had always been stored next to every parameter and nothing had ever read it.
 
+**Every department entry form is on the system** — MPS, Widal, MCS, radiology
+(template and scan pickers, obstetric dating), the bench queue, the critical
+value dialog and the bench page itself. Along the way: MPS no longer pre-fills a
+species; obstetric dating follows the CRL-alone-to-84 mm rule instead of
+averaging; the queue sorts by wait and keeps its clock running; Cancel on the
+bench asks before discarding typed results; the toast is announced.
+
+**The public face is on one stylesheet.** Landing page and download page share
+`app/landing.module.css`; sign-up shares the sign-in stylesheet. Fixed on the
+way: a crash for any signed-in user opening the desktop build; no Sign In on a
+phone; a hydration mismatch on every load of `/`; a download link built from a
+hand-typed version; a claim that the local database is encrypted (it is not);
+eight footer links to `#`.
+
+**Both design canvases have named controls.** The report editor and the
+letterhead designer each had toolbars with no roles, toggles that showed their
+state only as a colour, and (in the editor) a table picker made of `<div
+onClick>` that a keyboard could not reach. Their paper stays white on purpose;
+their chrome follows the theme.
+
+**Organisation settings, checkout, sign-up.** Every field labelled, every save
+result announced, the default letterhead escaped, the wallet shortfall an alert.
+
 ---
 
 ## What is not done
 
-**The screen migration.** Around 1,255 inline style objects remain. Reception, the
-staff screen, the commission report, the wallet ledger and the patient database
-are done; the department entry forms and the remaining admin screens carry most
-of what is left.
-They work, they are theme-aware through the legacy bridge, and they do not yet
-use the component library. This is the bulk of the remaining effort.
+**The screen migration.** 347 inline style objects remain, in the screens listed
+in `docs/HANDOFF.md` — the invite, onboarding, profile and password screens, the
+admin overview, and the smaller registration and queue components. The recipe
+that has worked for every screen so far is written down there too.
+
+**Two content decisions the owner has not made.** The landing page carries three
+named testimonials and a "100+ diagnostic centres" figure whose provenance is
+unknown to the code; and Privacy Policy / Terms of Service pages do not exist.
+Neither is a code task, but the landing page cannot honestly link to legal
+pages until someone writes them.
 
 **Server-side data.** The route shells are server components, but they render a
 frame, not content: auth is a Supabase session in the browser, and every screen
@@ -131,14 +158,9 @@ default panic thresholds in code. That belongs with the test catalogue screen.
 
 ## Next three things
 
-1. **Click through the wallet in the running app.** It now has twelve tests
-   over what reaches the database — the deposit arguments, the reversal rules,
-   wallet-versus-cash — but nothing has taken a real deposit through it. Open an
-   account, deposit, log a charge, link and unlink a dependant, reverse a
-   transaction, print a statement.
-2. **Walk every workspace screen once**, now that the shell is above them rather
-   than inside them. No test would notice a screen that lost its padding, gained
-   a second scrollbar, or now sits under a heading it did not choose.
-3. **Sit with the portal on a phone**, signed in as a real patient. The screens
-   are rebuilt but the round trip — code by email, visit list, report, print —
-   has only been exercised by tests and a build.
+1. **Finish the screen migration** from the queue in `docs/HANDOFF.md`, one
+   screen per commit, tests first.
+2. **Walk every workspace screen once** with the mouse unplugged, in dark mode,
+   at 390px. The primitives are clean; the product has not been walked.
+3. **Decide the two content questions above** — testimonials and legal pages —
+   and then push. Nine commits sit unpushed at the time of writing.

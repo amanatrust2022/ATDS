@@ -14,29 +14,6 @@
   max-width: 1180px;
 }
 
-.eyebrow {
-  margin: 0;
-  font-size: var(--text-2xs);
-  font-weight: var(--weight-semibold);
-  letter-spacing: var(--tracking-caps);
-  text-transform: uppercase;
-  color: var(--accent-text);
-}
-
-.title {
-  margin: 2px 0 0;
-  font-family: var(--font-display);
-  font-size: var(--text-xl);
-  font-weight: var(--weight-semibold);
-  color: var(--text-primary);
-}
-
-.lede {
-  margin: var(--space-1) 0 0;
-  font-size: var(--text-sm);
-  color: var(--text-secondary);
-}
-
 .form {
   display: flex;
   flex-direction: column;
