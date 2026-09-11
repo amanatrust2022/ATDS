@@ -1,0 +1,168 @@
+/* The onboarding flow: the bridge between sign-up and the workspace.
+ *
+ * It commits to the same single dark treatment as the rest of the sign-up flow
+ * (decision #31), so its colours are painted explicitly rather than inherited
+ * from the themed token layer. The form controls themselves come from the
+ * shared front-door stylesheet, ../login/login.module.css — this module carries
+ * only what is particular to onboarding: the spinner, the welcome, the steps. */
+
+.page {
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-8);
+  background: #0a0f1e;
+  color: #eef1f8;
+  font-family: var(--font-body);
+}
+
+.centered {
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* globals.css defines @keyframes spin, and its prefers-reduced-motion guard
+ * stills every animation for anyone who has asked their OS to calm things. */
+.spinner {
+  color: #7fa3e0;
+  animation: spin 1s linear infinite;
+}
+
+.status {
+  font-size: var(--text-md);
+  color: #b9c4dd;
+  text-align: center;
+}
+
+/* --- Manual facility form --------------------------------------------- */
+
+.panel {
+  width: 100%;
+  max-width: 480px;
+}
+
+.hero {
+  text-align: center;
+  margin-bottom: var(--space-8);
+}
+
+.mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin: 0 auto var(--space-3);
+  background: #4472c4;
+  color: #ffffff;
+  border-radius: var(--radius-md);
+}
+
+.heading {
+  font-size: var(--text-xl);
+  font-weight: var(--weight-bold);
+  color: #ffffff;
+  margin: 0;
+  line-height: var(--leading-tight);
+}
+
+.sub {
+  font-size: var(--text-md);
+  color: #b9c4dd;
+  margin: var(--space-1) 0 0;
+}
+
+/* --- Welcome (workspace exists) --------------------------------------- */
+
+.welcome {
+  width: 100%;
+  max-width: 560px;
+  text-align: center;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  margin: 0 auto var(--space-6);
+  border-radius: var(--radius-full);
+  background: rgba(68, 114, 196, 0.15);
+  border: 2px solid #4472c4;
+  color: #7fa3e0;
+}
+
+.welcomeHead {
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-bold);
+  color: #ffffff;
+  margin: 0 0 var(--space-2);
+}
+
+.welcomeSub {
+  font-size: var(--text-md);
+  color: #b9c4dd;
+  margin: 0 0 var(--space-8);
+}
+
+.welcomeOrg {
+  color: #9dbcf0;
+  font-weight: var(--weight-semibold);
+}
+
+.steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-bottom: var(--space-8);
+  text-align: left;
+  list-style: none;
+  padding: 0;
+}
+
+.step {
+  display: flex;
+  gap: var(--space-4);
+  align-items: flex-start;
+  padding: var(--space-4) var(--space-5);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-md);
+}
+
+.stepIcon {
+  color: #7fa3e0;
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+
+.stepTitle {
+  color: #ffffff;
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-md);
+  margin: 0 0 var(--space-1);
+}
+
+.stepDesc {
+  color: #b9c4dd;
+  font-size: var(--text-sm);
+  margin: 0;
+}
+
+.workspaceNote {
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-6);
+  background: rgba(68, 114, 196, 0.1);
+  border: 1px solid rgba(68, 114, 196, 0.25);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  color: #a8c4ee;
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
