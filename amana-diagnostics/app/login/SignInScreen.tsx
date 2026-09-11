@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import { RiMicroscopeLine, RiLockPasswordLine, RiMailLine, RiEyeLine, RiEyeOffLine, RiComputerLine } from '@remixicon/react';
 import styles from './login.module.css';
+import pkg from '../../package.json';
 
 async function withTimeout(promise: any, ms: number, onWarning: () => void): Promise<any> {
   const timer = setTimeout(onWarning, ms);
@@ -217,7 +218,7 @@ export default function LoginPage() {
             <RiMicroscopeLine size={19} />
           </span>
           <span className={styles.brandName}>Redian</span>
-          <span className={styles.version}>v1.2.20</span>
+          <span className={styles.version}>v{pkg.version}</span>
         </div>
 
         <div className={styles.pitch}>

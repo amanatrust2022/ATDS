@@ -431,3 +431,117 @@
   border-radius: var(--radius-full);
   color: #8fdcbd;
 }
+
+/* --- Sign-up: what it adds to the same front door ------------------------ */
+
+.wide {
+  max-width: 520px;
+}
+
+.steps {
+  display: flex;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-2);
+  padding: 0;
+  list-style: none;
+}
+
+.step {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: #97a3bd;
+}
+
+.step[aria-current='step'] {
+  color: #a8c4ee;
+}
+
+.stepBar {
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.stepDone .stepBar {
+  background: #4472c4;
+}
+
+/* A plain input, with no icon to leave room for. */
+.inputPlain {
+  padding-left: var(--space-3);
+}
+
+.inputPrefixed {
+  padding-left: 5.4rem;
+}
+
+.prefix {
+  position: absolute;
+  left: 13px;
+  font-size: var(--text-sm);
+  color: #97a3bd;
+  pointer-events: none;
+}
+
+.hint {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-xs);
+  color: #97a3bd;
+}
+
+.pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+}
+
+@media (max-width: 480px) {
+  .pair { grid-template-columns: 1fr; }
+}
+
+.tip {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  background: rgba(68, 114, 196, 0.1);
+  border: 1px solid rgba(68, 114, 196, 0.25);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  color: #a8c4ee;
+}
+
+.ghost {
+  width: 100%;
+  padding: var(--space-3);
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: var(--radius-md);
+  color: #b9c4dd;
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.ghost:hover { color: #ffffff; border-color: rgba(255, 255, 255, 0.3); }
+.ghost:focus-visible { outline: 2px solid #7fa3e0; outline-offset: 1px; }
+
+.centred {
+  text-align: center;
+  justify-content: center;
+}
+
+/* Sign-up has no brand panel: one column, and the brand shown at any width. */
+.single {
+  grid-template-columns: 1fr;
+}
+
+.brandAlways {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+}

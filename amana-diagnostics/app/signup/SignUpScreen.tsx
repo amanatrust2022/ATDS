@@ -3,11 +3,27 @@ import { useState } from 'react';
 import { createClient } from '@/lib/supabase';
 import { createOrganizationWithFallback, upsertProfileForUser } from '@/lib/workspace';
 import { useRouter } from 'next/navigation';
-import { RiMicroscopeLine, RiArrowLeftLine, RiCheckLine, RiMailLine, RiEyeLine, RiEyeOffLine } from '@remixicon/react';
+import { RiMicroscopeLine, RiArrowLeftLine, RiMailLine, RiEyeLine, RiEyeOffLine } from '@remixicon/react';
+
+import styles from '../login/login.module.css';
+
+/**
+ * Sign-up: the facility, then the admin who runs it.
+ *
+ * Shares the sign-in screen's stylesheet — it is the same front door, and
+ * commits to the same single dark treatment for the same reason.
+ *
+ * Nothing here had a label attached to it: nine <label> elements, nine
+ * inputs, no htmlFor. Errors were painted red and never announced. The two
+ * password-reveal buttons had no name at all. And on a slow connection the
+ * ten-second warning went into the same state as a real error, so step two
+ * opened under a red "slow network" message about a check that had passed.
+ */
 
 const slugify = (text: string) =>
   text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function withTimeout(promise: any, ms: number, onWarning: () => void): Promise<any> {
   const timer = setTimeout(onWarning, ms);
   try {
@@ -18,6 +34,8 @@ async function withTimeout(promise: any, ms: number, onWarning: () => void): Pro
 }
 
 type Step = 1 | 2 | 'confirm';
+
+const cx = (...names: Array<string | undefined | false>) => names.filter(Boolean).join(' ');
 
 export default function SignupPage() {
   const router = useRouter();
@@ -40,11 +58,11 @@ export default function SignupPage() {
     e.preventDefault();
     if (!org.name || !org.slug) { setError('Organisation name and workspace ID are required.'); return; }
     if (!/^[a-z0-9-]+$/.test(org.slug)) { setError('Workspace ID can only contain lowercase letters, numbers, and hyphens.'); return; }
-    
+
     setCheckingOrg(true);
     setOrgStatusText('Connecting to registry...');
     setError('');
-    
+
     const statusTimer = setTimeout(() => setOrgStatusText('Verifying workspace ID availability...'), 1000);
 
     try {
@@ -79,6 +97,9 @@ export default function SignupPage() {
         return;
       }
       setAdoptableOrgId(claim.adoptable ? claim.organizationId : null);
+      // The slow-network warning, if it fired, is about a check that has now
+      // passed. It must not follow the admin onto the next step.
+      setError('');
       setStep(2);
     } catch (err: any) {
       clearTimeout(statusTimer);
@@ -96,7 +117,7 @@ export default function SignupPage() {
     setStatusText('Initiating registration...');
 
     let createdOrgId: string | null = null;
-    
+
     // Dynamic progress timers to give instant-feeling visual feedback
     const t1 = setTimeout(() => setStatusText('Reserving Workspace ID...'), 1000);
     const t2 = setTimeout(() => setStatusText('Creating your Clinic profile...'), 2500);
@@ -141,8 +162,8 @@ export default function SignupPage() {
         email: admin.email,
         password: admin.password,
         options: {
-          data: { 
-            full_name: admin.fullName, 
+          data: {
+            full_name: admin.fullName,
             role: 'admin',
             organization_id: orgId,
             pending_org_name: org.name,
@@ -184,6 +205,7 @@ export default function SignupPage() {
         }
       }
 
+      setError('');
       if (data.session) {
         router.push('/onboarding?new=1');
       } else {
@@ -192,7 +214,7 @@ export default function SignupPage() {
     } catch (err: any) {
       clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4);
       setError(err.message || 'An unexpected error occurred during sign up.');
-      
+
       // Rollback organization reservation if signup fails
       if (createdOrgId) {
         try {
@@ -207,180 +229,261 @@ export default function SignupPage() {
     }
   };
 
-  const inp: React.CSSProperties = {
-    width: '100%', padding: '0.7rem 0.9rem',
-    background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)',
-    borderRadius: 8, color: 'white', fontSize: '0.9rem',  };
-  const lbl: React.CSSProperties = {
-    display: 'block', fontSize: '0.75rem', fontWeight: 600,
-    color: 'rgba(255,255,255,0.5)', marginBottom: '0.4rem',
-    textTransform: 'uppercase', letterSpacing: '0.05em',
-  };
+  const errorBox = error && (
+    <p className={styles.error} role="alert">
+      <span className={styles.errorMark} aria-hidden="true">!</span>
+      <span>{error}</span>
+    </p>
+  );
 
   return (
-    <div style={{ minHeight: '100vh', background: '#0a0f1e', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem', fontFamily: 'var(--font-body)' }}>
-      <style>{`input::placeholder { color: rgba(255,255,255,0.2); } input:focus { border-color: #4472c4 !important; box-shadow: 0 0 0 3px rgba(68,114,196,0.15); }`}</style>
-      <div style={{ width: '100%', maxWidth: 520 }}>
-
-        {/* Logo */}
-        <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-          <div style={{ background: '#4472c4', borderRadius: 10, width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 0.75rem' }}>
-            <RiMicroscopeLine size={24} color="white" />
+    <div className={cx(styles.page, styles.single)}>
+      <main className={styles.main}>
+        <div className={cx(styles.form, styles.wide)}>
+          <div className={styles.brandAlways}>
+            <span className={styles.brandMark} aria-hidden="true">
+              <RiMicroscopeLine size={20} />
+            </span>
+            <span className={styles.brandName}>Redian</span>
           </div>
-          <h1 style={{ color: 'white', fontSize: '1.4rem', fontWeight: 700 }}>
-            {step === 'confirm' ? 'Check your email' : 'Create your workspace'}
-          </h1>
-          <p style={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.85rem', marginTop: '0.3rem' }}>
-            {step === 'confirm' ? `We sent a confirmation link to ${admin.email}` : 'Start your free trial — no credit card required'}
-          </p>
-        </div>
 
-        {/* ── Email confirm screen ── */}
-        {step === 'confirm' && (
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ width: 72, height: 72, background: 'rgba(68,114,196,0.1)', border: '2px solid rgba(68,114,196,0.3)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem' }}>
-              <RiMailLine size={32} color="#4472c4" />
-            </div>
-            <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.88rem', lineHeight: 1.7, marginBottom: '2rem' }}>
-              Click the link in your email to confirm your account and set up your workspace. The link will bring you back here automatically.
+          <div className={styles.centred}>
+            <h1 className={styles.heading}>
+              {step === 'confirm' ? 'Check your email' : 'Create your workspace'}
+            </h1>
+            <p className={styles.sub}>
+              {step === 'confirm'
+                ? `We sent a confirmation link to ${admin.email}`
+                : 'Start your free trial — no credit card required'}
             </p>
-            <div style={{ background: 'rgba(68,114,196,0.08)', border: '1px solid rgba(68,114,196,0.2)', borderRadius: 8, padding: '0.75rem 1rem', marginBottom: '1.5rem', fontSize: '0.8rem', color: '#7fa3e0' }}>
-              💡 Tip: Check your spam/junk folder if you don't see it within a minute.
-            </div>
-            <button onClick={() => setStep(2)} style={{ background: 'none', border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.5)', padding: '0.6rem 1.5rem', borderRadius: 8, cursor: 'pointer', fontSize: '0.85rem', width: '100%' }}>
-              ← Resend or use a different email
-            </button>
           </div>
-        )}
 
-        {/* ── Step indicator (steps 1 & 2 only) ── */}
-        {step !== 'confirm' && (
-          <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '2rem' }}>
-            {(['Facility details', 'Admin account'] as const).map((label, i) => (
-              <div key={label} style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-                <div style={{ height: 3, borderRadius: 2, background: i < step ? '#4472c4' : 'rgba(255,255,255,0.1)' }} />
-                <span style={{ fontSize: '0.68rem', color: i + 1 === step ? '#7fa3e0' : 'rgba(255,255,255,0.25)', fontWeight: 600, textTransform: 'uppercase' }}>{label}</span>
-              </div>
-            ))}
-          </div>
-        )}
+          {/* ── Email confirm screen ── */}
+          {step === 'confirm' && (
+            <div className={styles.sent}>
+              <span className={styles.sentMark} aria-hidden="true">
+                <RiMailLine size={22} />
+              </span>
+              <p className={styles.sub}>
+                Click the link in your email to confirm your account and set up your workspace.
+                The link will bring you back here automatically.
+              </p>
+              <p className={styles.tip}>
+                Check your spam or junk folder if you don&apos;t see it within a minute.
+              </p>
+              <button type="button" className={styles.ghost} onClick={() => setStep(2)}>
+                ← Try again or use a different email
+              </button>
+            </div>
+          )}
 
-        {/* ── Step 1: Facility details ── */}
-        {step === 1 && (
-          <form onSubmit={handleOrgNext} style={{ display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
-            <div>
-              <label style={lbl}>Facility / Organisation Name *</label>
-              <input style={inp} value={org.name} onChange={e => setOrg({ ...org, name: e.target.value, slug: slugify(e.target.value) })} placeholder="e.g. Northgate Diagnostic Centre" required />
-            </div>
-            <div>
-              <label style={lbl}>Letterhead Second Line (Optional)</label>
-              <input style={inp} value={org.letterheadLine2} onChange={e => setOrg({ ...org, letterheadLine2: e.target.value })} placeholder="e.g. AND CLINICAL SERVICES LTD" />
-            </div>
-            <div>
-              <label style={lbl}>Workspace ID *</label>
-              <div style={{ position: 'relative' }}>
-                <span style={{ position: 'absolute', left: '0.9rem', top: '50%', transform: 'translateY(-50%)', color: 'rgba(255,255,255,0.25)', fontSize: '0.85rem' }}>app.com/</span>
-                <input style={{ ...inp, paddingLeft: '5.5rem' }} value={org.slug} onChange={e => setOrg({ ...org, slug: slugify(e.target.value) })} placeholder="amana-trust" required />
-              </div>
-              <p style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.3)', marginTop: '0.3rem' }}>Lowercase letters, numbers, hyphens only.</p>
-            </div>
-            <div><label style={lbl}>Address</label><input style={inp} value={org.address} onChange={e => setOrg({ ...org, address: e.target.value })} placeholder="No. 15 C Tudun Wada Bus Stop" /></div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-              <div><label style={lbl}>Phone</label><input style={inp} value={org.phone} onChange={e => setOrg({ ...org, phone: e.target.value })} placeholder="+234..." /></div>
-              <div><label style={lbl}>Facility Email</label><input style={inp} type="email" value={org.email} onChange={e => setOrg({ ...org, email: e.target.value })} placeholder="info@facility.com" /></div>
-            </div>
-            {error && <p style={{ color: '#f87171', fontSize: '0.82rem', background: 'rgba(248,113,113,0.1)', padding: '0.6rem 0.9rem', borderRadius: 6 }}>{error}</p>}
-            <button type="submit" disabled={checkingOrg} style={{ background: checkingOrg ? '#2a4a8a' : '#4472c4', border: 'none', color: 'white', padding: '0.8rem', borderRadius: 8, fontWeight: 700, fontSize: '0.95rem', cursor: checkingOrg ? 'not-allowed' : 'pointer', marginTop: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
-              {checkingOrg ? orgStatusText : 'Continue to Admin Setup →'}
-            </button>
-          </form>
-        )}
-
-        {/* ── Step 2: Admin account ── */}
-        {step === 2 && (
-          <form onSubmit={handleSignup} style={{ display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
-            <div><label style={lbl}>Your Full Name *</label><input style={inp} value={admin.fullName} onChange={e => setAdmin({ ...admin, fullName: e.target.value })} placeholder="e.g. Dr. Aisha Ibrahim" required /></div>
-            <div><label style={lbl}>Email Address *</label><input style={inp} type="email" value={admin.email} onChange={e => setAdmin({ ...admin, email: e.target.value })} placeholder="admin@facility.com" required /></div>
-            <div>
-              <label style={lbl}>Password *</label>
-              <div style={{ position: 'relative' }}>
-                <input 
-                  style={{ ...inp, paddingRight: '2.8rem' }} 
-                  type={showPassword ? "text" : "password"} 
-                  value={admin.password} 
-                  onChange={e => setAdmin({ ...admin, password: e.target.value })} 
-                  placeholder="At least 8 characters" 
-                  required 
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  style={{
-                    position: 'absolute',
-                    right: '0.9rem',
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    background: 'none',
-                    border: 'none',
-                    color: 'rgba(255,255,255,0.25)',
-                    cursor: 'pointer',
-                    padding: 0,
-                    display: 'flex',
-                    alignItems: 'center'
-                  }}
+          {/* ── Step indicator ── */}
+          {step !== 'confirm' && (
+            <ol className={styles.steps} aria-label="Sign-up progress">
+              {(['Facility details', 'Admin account'] as const).map((label, i) => (
+                <li
+                  key={label}
+                  className={cx(styles.step, i < step && styles.stepDone)}
+                  aria-current={i + 1 === step ? 'step' : undefined}
                 >
-                  {showPassword ? <RiEyeOffLine size={16} /> : <RiEyeLine size={16} />}
+                  <span className={styles.stepBar} aria-hidden="true" />
+                  {label}
+                </li>
+              ))}
+            </ol>
+          )}
+
+          {/* ── Step 1: Facility details ── */}
+          {step === 1 && (
+            <form onSubmit={handleOrgNext} className={styles.form} noValidate>
+              {errorBox}
+
+              <div>
+                <label className={styles.label} htmlFor="su-org-name">Facility / organisation name</label>
+                <input
+                  id="su-org-name"
+                  className={cx(styles.input, styles.inputPlain)}
+                  value={org.name}
+                  onChange={(e) => setOrg({ ...org, name: e.target.value, slug: slugify(e.target.value) })}
+                  placeholder="e.g. Northgate Diagnostic Centre"
+                  autoComplete="organization"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className={styles.label} htmlFor="su-line2">Letterhead second line (optional)</label>
+                <input
+                  id="su-line2"
+                  className={cx(styles.input, styles.inputPlain)}
+                  value={org.letterheadLine2}
+                  onChange={(e) => setOrg({ ...org, letterheadLine2: e.target.value })}
+                  placeholder="e.g. AND CLINICAL SERVICES LTD"
+                />
+              </div>
+
+              <div>
+                <label className={styles.label} htmlFor="su-slug">Workspace ID</label>
+                <div className={styles.inputWrap}>
+                  <span className={styles.prefix} aria-hidden="true">app.com/</span>
+                  <input
+                    id="su-slug"
+                    className={cx(styles.input, styles.inputPrefixed)}
+                    value={org.slug}
+                    onChange={(e) => setOrg({ ...org, slug: slugify(e.target.value) })}
+                    placeholder="amana-trust"
+                    aria-describedby="su-slug-hint"
+                    required
+                  />
+                </div>
+                <p id="su-slug-hint" className={styles.hint}>Lowercase letters, numbers and hyphens only.</p>
+              </div>
+
+              <div>
+                <label className={styles.label} htmlFor="su-address">Address</label>
+                <input
+                  id="su-address"
+                  className={cx(styles.input, styles.inputPlain)}
+                  value={org.address}
+                  onChange={(e) => setOrg({ ...org, address: e.target.value })}
+                  placeholder="No. 15 C Tudun Wada Bus Stop"
+                  autoComplete="street-address"
+                />
+              </div>
+
+              <div className={styles.pair}>
+                <div>
+                  <label className={styles.label} htmlFor="su-phone">Phone</label>
+                  <input
+                    id="su-phone"
+                    className={cx(styles.input, styles.inputPlain)}
+                    type="tel"
+                    value={org.phone}
+                    onChange={(e) => setOrg({ ...org, phone: e.target.value })}
+                    placeholder="+234..."
+                    autoComplete="tel"
+                  />
+                </div>
+                <div>
+                  <label className={styles.label} htmlFor="su-org-email">Facility email</label>
+                  <input
+                    id="su-org-email"
+                    className={cx(styles.input, styles.inputPlain)}
+                    type="email"
+                    value={org.email}
+                    onChange={(e) => setOrg({ ...org, email: e.target.value })}
+                    placeholder="info@facility.com"
+                  />
+                </div>
+              </div>
+
+              <button type="submit" className={styles.submit} disabled={checkingOrg} aria-busy={checkingOrg}>
+                {checkingOrg ? orgStatusText : 'Continue to admin setup →'}
+              </button>
+            </form>
+          )}
+
+          {/* ── Step 2: Admin account ── */}
+          {step === 2 && (
+            <form onSubmit={handleSignup} className={styles.form} noValidate>
+              {errorBox}
+
+              <div>
+                <label className={styles.label} htmlFor="su-name">Your full name</label>
+                <input
+                  id="su-name"
+                  className={cx(styles.input, styles.inputPlain)}
+                  value={admin.fullName}
+                  onChange={(e) => setAdmin({ ...admin, fullName: e.target.value })}
+                  placeholder="e.g. Dr. Aisha Ibrahim"
+                  autoComplete="name"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className={styles.label} htmlFor="su-email">Email address</label>
+                <input
+                  id="su-email"
+                  className={cx(styles.input, styles.inputPlain)}
+                  type="email"
+                  value={admin.email}
+                  onChange={(e) => setAdmin({ ...admin, email: e.target.value })}
+                  placeholder="admin@facility.com"
+                  autoComplete="email"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className={styles.label} htmlFor="su-password">Password</label>
+                <div className={styles.inputWrap}>
+                  <input
+                    id="su-password"
+                    className={cx(styles.input, styles.inputPlain)}
+                    type={showPassword ? 'text' : 'password'}
+                    value={admin.password}
+                    onChange={(e) => setAdmin({ ...admin, password: e.target.value })}
+                    placeholder="At least 8 characters"
+                    autoComplete="new-password"
+                    required
+                  />
+                  <button
+                    type="button"
+                    className={styles.reveal}
+                    onClick={() => setShowPassword(!showPassword)}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    aria-pressed={showPassword}
+                  >
+                    {showPassword ? <RiEyeOffLine size={16} /> : <RiEyeLine size={16} />}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className={styles.label} htmlFor="su-confirm">Confirm password</label>
+                <div className={styles.inputWrap}>
+                  <input
+                    id="su-confirm"
+                    className={cx(styles.input, styles.inputPlain)}
+                    type={showConfirm ? 'text' : 'password'}
+                    value={admin.confirm}
+                    onChange={(e) => setAdmin({ ...admin, confirm: e.target.value })}
+                    placeholder="Repeat password"
+                    autoComplete="new-password"
+                    required
+                  />
+                  <button
+                    type="button"
+                    className={styles.reveal}
+                    onClick={() => setShowConfirm(!showConfirm)}
+                    aria-label={showConfirm ? 'Hide password' : 'Show password'}
+                    aria-pressed={showConfirm}
+                  >
+                    {showConfirm ? <RiEyeOffLine size={16} /> : <RiEyeLine size={16} />}
+                  </button>
+                </div>
+              </div>
+
+              <button type="submit" className={styles.submit} disabled={loading} aria-busy={loading}>
+                {loading ? statusText : 'Create workspace'}
+              </button>
+
+              <div className={cx(styles.row, styles.centred)}>
+                <button type="button" className={styles.link} onClick={() => { setStep(1); setError(''); }}>
+                  <RiArrowLeftLine size={14} aria-hidden="true" /> Back to facility details
                 </button>
               </div>
-            </div>
-            <div>
-              <label style={lbl}>Confirm Password *</label>
-              <div style={{ position: 'relative' }}>
-                <input 
-                  style={{ ...inp, paddingRight: '2.8rem' }} 
-                  type={showConfirm ? "text" : "password"} 
-                  value={admin.confirm} 
-                  onChange={e => setAdmin({ ...admin, confirm: e.target.value })} 
-                  placeholder="Repeat password" 
-                  required 
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowConfirm(!showConfirm)}
-                  style={{
-                    position: 'absolute',
-                    right: '0.9rem',
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    background: 'none',
-                    border: 'none',
-                    color: 'rgba(255,255,255,0.25)',
-                    cursor: 'pointer',
-                    padding: 0,
-                    display: 'flex',
-                    alignItems: 'center'
-                  }}
-                >
-                  {showConfirm ? <RiEyeOffLine size={16} /> : <RiEyeLine size={16} />}
-                </button>
-              </div>
-            </div>
-            {error && <p style={{ color: '#f87171', fontSize: '0.82rem', background: 'rgba(248,113,113,0.1)', padding: '0.6rem 0.9rem', borderRadius: 6 }}>{error}</p>}
-            <button type="submit" disabled={loading} style={{ background: loading ? '#2a4a8a' : '#4472c4', border: 'none', color: 'white', padding: '0.8rem', borderRadius: 8, fontWeight: 700, fontSize: '0.95rem', cursor: loading ? 'not-allowed' : 'pointer', marginTop: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
-              {loading ? statusText : <><RiCheckLine size={18} /> Create Workspace</>}
-            </button>
-            <button type="button" onClick={() => { setStep(1); setError(''); }} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.3rem', fontSize: '0.82rem' }}>
-              <RiArrowLeftLine size={14} /> Back to facility details
-            </button>
-          </form>
-        )}
+            </form>
+          )}
 
-        {step !== 'confirm' && (
-          <p style={{ textAlign: 'center', marginTop: '2rem', fontSize: '0.8rem', color: 'rgba(255,255,255,0.3)' }}>
-            Already have a workspace? <a href="/login" style={{ color: '#7fa3e0', textDecoration: 'none', fontWeight: 600 }}>Sign in</a>
-          </p>
-        )}
-      </div>
+          {step !== 'confirm' && (
+            <p className={cx(styles.sub, styles.centred)}>
+              Already have a workspace? <a href="/login" className={styles.link}>Sign in</a>
+            </p>
+          )}
+        </div>
+      </main>
     </div>
   );
 }
