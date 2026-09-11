@@ -1,12 +1,12 @@
 {
-  "inlineStyleObjects": 602,
-  "rawHexColors": 389,
-  "rawRgbaColors": 125,
-  "legacyTokens": 249,
-  "jsHoverHandlers": 28,
+  "inlineStyleObjects": 549,
+  "rawHexColors": 376,
+  "rawRgbaColors": 120,
+  "legacyTokens": 204,
+  "jsHoverHandlers": 24,
   "outlineNone": 0,
   "importantRules": 7,
-  "handRolledOverlays": 5,
+  "handRolledOverlays": 4,
   "rawTables": 5,
-  "rawZIndex": 19
+  "rawZIndex": 17
 }
