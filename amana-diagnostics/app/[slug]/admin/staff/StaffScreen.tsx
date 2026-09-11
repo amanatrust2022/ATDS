@@ -28,6 +28,24 @@ import {
 import { useParams } from 'next/navigation';
 import { printHtml } from '@/lib/templates';
 import { apiBase, reachableOrigin } from '@/lib/cloudOrigin';
+import { useShellSlot } from '@/components/shell';
+import styles from './staff.module.css';
+import { orgName } from '@/lib/branding';
+import {
+  chartGeometry,
+  departmentStats,
+  filterByRange,
+  formatTAT,
+  searchStaff,
+  sortStaff,
+  staffRows,
+  totalsFor,
+  trendSeries,
+  RANGE_LABEL,
+  type DateRange,
+  type PerformanceData,
+  type SortField,
+} from '@/lib/staffPerformance';
 
 async function withTimeout(promise: any, ms: number, onWarning: () => void): Promise<any> {
   const timer = setTimeout(onWarning, ms);
@@ -53,12 +71,28 @@ function StaffManagement() {
   const [selectedStaff, setSelectedStaff] = useState<any | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [activeTab, setActiveTab] = useState<'directory' | 'performance'>('directory');
-  const [perfData, setPerfData] = useState<{ completedTests: any[]; ledgerTransactions: any[]; externalCharges: any[]; patientBilling: any[] } | null>(null);
+  const [perfData, setPerfData] = useState<PerformanceData | null>(null);
   const [loadingPerf, setLoadingPerf] = useState(false);
-  const [dateRange, setDateRange] = useState<'today' | '7days' | '30days' | 'all'>('30days');
+  const [dateRange, setDateRange] = useState<DateRange>('30days');
   const [searchQuery, setSearchQuery] = useState('');
-  const [sortField, setSortField] = useState<'revenue' | 'volume' | 'tat' | 'commission'>('revenue');
+  const [sortField, setSortField] = useState<SortField>('revenue');
   const supabase = createClient();
+
+  // What this screen contributes to the shell's header, now that the shell is
+  // above it rather than inside it. The heading itself comes from the nav
+  // table; this is the line under it, and the quiet mark that a background
+  // refresh is running.
+  useShellSlot(
+    {
+      subtitle: 'Invite users and manage roles for your workspace.',
+      actions: loadingRefresh ? (
+        <span className={styles['refreshing']} role="status">
+          Updating…
+        </span>
+      ) : undefined,
+    },
+    [loadingRefresh],
+  );
 
   const fetchPerformanceData = async () => {
     if (!organization) return;
@@ -86,21 +120,6 @@ function StaffManagement() {
     } finally {
       setLoadingPerf(false);
     }
-  };
-
-  const matchesStaff = (completedBy: string, staffMember: any) => {
-    if (!completedBy) return false;
-    const cb = completedBy.toLowerCase().trim();
-    const fn = (staffMember.full_name || '').toLowerCase().trim();
-    const id = (staffMember.id || '').toLowerCase().trim();
-    const sn = (staffMember.surname || '').toLowerCase().trim();
-    const first = (staffMember.first_name || '').toLowerCase().trim();
-    
-    return cb === fn || 
-           cb === id || 
-           (sn && cb.includes(sn)) || 
-           (first && cb.includes(first)) ||
-           fn.includes(cb);
   };
 
   const isLocalMode = typeof window !== 'undefined'
@@ -469,7 +488,11 @@ function StaffManagement() {
   const lbl: React.CSSProperties = { display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--gray-700)', marginBottom: '0.35rem', textTransform: 'uppercase' as const, letterSpacing: '0.05em' };
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--gray-50)' }}>
+    // No minHeight:100vh here any more. The shell owns the page's height and
+    // its background; forcing a full viewport inside the shell's <main> made
+    // this screen taller than the window it sits in and gave the admin area a
+    // second scrollbar.
+    <div>
       <style>{`
         @keyframes fadeIn {
           from { opacity: 0; }
@@ -539,23 +562,13 @@ function StaffManagement() {
         </div>
       )}
 
-      {/* Inline Header for Admin Page */}
-      <div style={{ background: 'white', borderBottom: '1px solid var(--gray-200)', padding: '1.5rem 2rem', marginBottom: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <h1 style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--gray-900)', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', letterSpacing: '-0.02em' }}>
-            <RiTeamLine size={24} color="var(--teal-700)" /> Staff Management
-          </h1>
-          <p style={{ color: 'var(--gray-500)', fontSize: '0.85rem', marginTop: '0.3rem' }}>
-            Invite users and manage roles for your workspace.
-          </p>
-        </div>
-        {loadingRefresh && (
-          <div className="loading-pulse" style={{ fontSize: '0.75rem', background: 'var(--teal-50)', color: 'var(--teal-800)', padding: '0.3rem 0.6rem', borderRadius: '100px', fontWeight: 600, border: '1px solid var(--teal-100)', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-            <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--teal-700)', display: 'inline-block' }}></span>
-            Updating...
-          </div>
-        )}
-      </div>
+      {/* The page header used to be drawn here: an <h1> reading "Staff
+        * Management" with its own border and its own white band. Since the
+        * shell moved into app/[slug]/layout.tsx it already puts "Staff" at the
+        * top of this screen, so the two stacked — two headings, two rules, one
+        * above the other. What was worth keeping went to the shell's slot
+        * above: the sentence under the title, and the quiet "Updating…" mark
+        * while a background refresh runs. */}
 
       {/* Tab Navigation */}
       <div style={{ padding: '0 2rem', maxWidth: 1200, margin: '0 auto 1.5rem auto' }}>
@@ -794,228 +807,32 @@ function StaffManagement() {
                 No performance metrics could be loaded.
               </p>
             ) : (() => {
-              // Helper to format TAT minutes to human readable hours/minutes
-              const formatTAT = (mins: number) => {
-                if (!mins || isNaN(mins) || mins <= 0) return '—';
-                if (mins < 60) return `${Math.round(mins)}m`;
-                const hrs = Math.floor(mins / 60);
-                const remMins = Math.round(mins % 60);
-                return remMins > 0 ? `${hrs}h ${remMins}m` : `${hrs}h`;
-              };
+              // The arithmetic below this screen lives in lib/staffPerformance.ts,
+              // where it can be tested. It used to be written out here, inside
+              // this JSX expression, and nothing in it could be reached.
+              const now = new Date();
+              const filtered = filterByRange(perfData, dateRange, now);
+              const filteredTests = filtered.tests;
+              const {
+                totalTestsCount,
+                totalClinicalRevenue,
+                totalCommissions,
+                avgTAT,
+                totalBilledNet,
+                totalReceptionCollections,
+                collectionRate,
+                outstandingReceivables,
+              } = totalsFor(filtered);
 
-              // Helper to determine if item matches current date range filter
-              const filterByDateRange = (dateStr: string) => {
-                if (!dateStr) return false;
-                const date = new Date(dateStr);
-                const now = new Date();
-                
-                if (dateRange === 'today') {
-                  return date.toDateString() === now.toDateString();
-                }
-                if (dateRange === '7days') {
-                  const sevenDaysAgo = new Date();
-                  sevenDaysAgo.setDate(now.getDate() - 7);
-                  return date >= sevenDaysAgo;
-                }
-                if (dateRange === '30days') {
-                  const thirtyDaysAgo = new Date();
-                  thirtyDaysAgo.setDate(now.getDate() - 30);
-                  return date >= thirtyDaysAgo;
-                }
-                return true; // 'all'
-              };
+              const sortedStaffPerf = sortStaff(searchStaff(staffRows(staff, filtered), searchQuery), sortField);
+              const deptStats = departmentStats(filteredTests);
 
-              // Filter datasets
-              const filteredTests = perfData.completedTests.filter(t => filterByDateRange(t.completed_at));
-              const filteredLedgerTx = perfData.ledgerTransactions.filter(t => filterByDateRange(t.created_at));
-              const filteredExtCharges = perfData.externalCharges.filter(t => filterByDateRange(t.created_at));
-              const filteredBilling = perfData.patientBilling.filter(p => filterByDateRange(p.created_at));
+              const trendData = trendSeries(filteredTests, dateRange, now);
+              const {
+                width, height, paddingLeft, paddingRight, paddingTop,
+                chartWidth, chartHeight, maxRev, points, linePath, areaPath,
+              } = chartGeometry(trendData);
 
-              // 1. Core KPIs
-              const totalTestsCount = filteredTests.length;
-              const totalClinicalRevenue = filteredTests.reduce((sum, t) => sum + (t.price || 0), 0);
-              
-              // 2. Commissions Calculations
-              const totalCommissions = filteredTests.reduce((sum, t) => {
-                if (t.commission_amount) return sum + t.commission_amount;
-                if (t.commission_type === 'percentage') {
-                  return sum + ((t.price || 0) * (t.commission_value || 0)) / 100;
-                }
-                if (t.commission_type === 'fixed') {
-                  return sum + (t.commission_value || 0);
-                }
-                return sum;
-              }, 0);
-
-              // 3. Operational TAT metrics (minutes)
-              const tatDiffs = filteredTests
-                .map(t => {
-                  if (!t.completed_at || !t.patient_created_at) return null;
-                  const comp = new Date(t.completed_at).getTime();
-                  const start = new Date(t.patient_created_at).getTime();
-                  const diffMins = (comp - start) / (1000 * 60);
-                  return diffMins > 0 ? diffMins : null;
-                })
-                .filter((d): d is number => d !== null);
-              const avgTAT = tatDiffs.length > 0 ? (tatDiffs.reduce((s, v) => s + v, 0) / tatDiffs.length) : 0;
-
-              // 4. Financial Health: billing collection rate
-              const totalBilledNet = filteredBilling.reduce((sum, p) => sum + (p.net_amount || p.total_amount || 0), 0);
-              const ledgerCollections = filteredLedgerTx.filter(t => t.type === 'deposit').reduce((sum, t) => sum + (t.amount || 0), 0);
-              const externalCollections = filteredExtCharges.reduce((sum, c) => sum + (c.amount || 0), 0);
-              const totalReceptionCollections = ledgerCollections + externalCollections;
-              const collectionRate = totalBilledNet > 0 ? Math.min((totalReceptionCollections / totalBilledNet) * 100, 100) : 100;
-              const outstandingReceivables = Math.max(totalBilledNet - totalReceptionCollections, 0);
-
-              // 5. Build individual staff productivity metrics
-              const staffPerformanceList = staff.map(member => {
-                const staffTests = filteredTests.filter(t => matchesStaff(t.completed_by, member));
-                const testCount = staffTests.length;
-                const testRev = staffTests.reduce((sum, t) => sum + (t.price || 0), 0);
-                
-                const commissionSum = staffTests.reduce((sum, t) => {
-                  if (t.commission_amount) return sum + t.commission_amount;
-                  if (t.commission_type === 'percentage') {
-                    return sum + ((t.price || 0) * (t.commission_value || 0)) / 100;
-                  }
-                  if (t.commission_type === 'fixed') {
-                    return sum + (t.commission_value || 0);
-                  }
-                  return sum;
-                }, 0);
-
-                const ledgerTx = filteredLedgerTx.filter(t => matchesStaff(t.created_by, member));
-                const extTx = filteredExtCharges.filter(c => matchesStaff(c.created_by, member));
-                
-                const receiptCount = ledgerTx.filter(t => t.type === 'deposit').length + extTx.length;
-                const collectionSum = ledgerTx.filter(t => t.type === 'deposit').reduce((sum, t) => sum + (t.amount || 0), 0) +
-                                      extTx.reduce((sum, c) => sum + (c.amount || 0), 0);
-
-                // Staff-specific Turnaround Time
-                const staffTatDiffs = staffTests
-                  .map(t => {
-                    if (!t.completed_at || !t.patient_created_at) return null;
-                    const comp = new Date(t.completed_at).getTime();
-                    const start = new Date(t.patient_created_at).getTime();
-                    const diffMins = (comp - start) / (1000 * 60);
-                    return diffMins > 0 ? diffMins : null;
-                  })
-                  .filter((d): d is number => d !== null);
-                const avgTat = staffTatDiffs.length > 0 ? (staffTatDiffs.reduce((s, v) => s + v, 0) / staffTatDiffs.length) : 0;
-
-                return {
-                  member,
-                  testCount,
-                  testRev,
-                  commissionSum,
-                  receiptCount,
-                  collectionSum,
-                  avgTat
-                };
-              });
-
-              // Search Filter
-              const searchedStaffPerf = staffPerformanceList.filter(p => 
-                (p.member.full_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-                (p.member.role || '').toLowerCase().includes(searchQuery.toLowerCase())
-              );
-
-              // Sort calculations
-              const sortedStaffPerf = [...searchedStaffPerf].sort((a, b) => {
-                if (sortField === 'volume') {
-                  const valA = a.member.role === 'reception' ? a.receiptCount : a.testCount;
-                  const valB = b.member.role === 'reception' ? b.receiptCount : b.testCount;
-                  return valB - valA;
-                }
-                if (sortField === 'tat') {
-                  // Faster TAT is better (ascending), but place 0/nulls at the end
-                  const tatA = a.avgTat || 999999;
-                  const tatB = b.avgTat || 999999;
-                  return tatA - tatB;
-                }
-                if (sortField === 'commission') {
-                  return b.commissionSum - a.commissionSum;
-                }
-                // Default sort: Revenue generated
-                const revA = a.member.role === 'reception' ? a.collectionSum : a.testRev;
-                const revB = b.member.role === 'reception' ? b.collectionSum : b.testRev;
-                return revB - revA;
-              });
-
-              // Calculate Department Breakdown
-              const deptStats: Record<string, { count: number; rev: number }> = {};
-              filteredTests.forEach(t => {
-                const dept = t.department || 'Other';
-                if (!deptStats[dept]) deptStats[dept] = { count: 0, rev: 0 };
-                deptStats[dept].count += 1;
-                deptStats[dept].rev += (t.price || 0);
-              });
-
-              // Trend charts builder
-              const getTrendData = () => {
-                const days: { dateLabel: string; count: number; rev: number }[] = [];
-                const daysToCount = dateRange === 'today' ? 1 : dateRange === '7days' ? 7 : dateRange === '30days' ? 15 : 12;
-                
-                const now = new Date();
-                for (let i = daysToCount - 1; i >= 0; i--) {
-                  const d = new Date();
-                  if (dateRange === 'all') {
-                    d.setMonth(now.getMonth() - i);
-                    const monthLabel = d.toLocaleString('en-US', { month: 'short' });
-                    days.push({ dateLabel: monthLabel, count: 0, rev: 0 });
-                  } else {
-                    d.setDate(now.getDate() - i);
-                    const dateLabel = d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
-                    days.push({ dateLabel, count: 0, rev: 0 });
-                  }
-                }
-
-                // Populate counts
-                filteredTests.forEach(t => {
-                  const testDate = new Date(t.completed_at);
-                  days.forEach(day => {
-                    let match = false;
-                    if (dateRange === 'all') {
-                      match = testDate.toLocaleString('en-US', { month: 'short' }) === day.dateLabel;
-                    } else {
-                      match = testDate.toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) === day.dateLabel;
-                    }
-                    if (match) {
-                      day.count += 1;
-                      day.rev += (t.price || 0);
-                    }
-                  });
-                });
-
-                return days;
-              };
-
-              const trendData = getTrendData();
-              const maxRev = Math.max(...trendData.map(d => d.rev), 1000);
-
-              // SVG Area chart points generator
-              const width = 580;
-              const height = 130;
-              const paddingLeft = 45;
-              const paddingRight = 15;
-              const paddingTop = 10;
-              const paddingBottom = 25;
-              const chartWidth = width - paddingLeft - paddingRight;
-              const chartHeight = height - paddingTop - paddingBottom;
-
-              const points = trendData.map((d, idx) => {
-                const x = paddingLeft + (idx / (trendData.length - 1 || 1)) * chartWidth;
-                const y = paddingTop + chartHeight - (d.rev / maxRev) * chartHeight;
-                return { x, y, val: d.rev, label: d.dateLabel };
-              });
-
-              const linePath = points.length > 0
-                ? `M ${points.map(p => `${p.x} ${p.y}`).join(' L ')}`
-                : '';
-
-              const areaPath = points.length > 0
-                ? `${linePath} L ${points[points.length - 1].x} ${paddingTop + chartHeight} L ${points[0].x} ${paddingTop + chartHeight} Z`
-                : '';
 
               // Export print frame
               const handleExportReport = () => {
@@ -1039,12 +856,12 @@ function StaffManagement() {
                       </style>
                     </head>
                     <body>
-                      <h1>AMANA CLINICAL DIAGNOSTICS</h1>
+                      <h1>${orgName(organization).toUpperCase()}</h1>
                       <h2>Hospital Workload Audit & Financial Performance Report</h2>
                       
                       <div class="meta-info">
                         <div><strong>Report Context:</strong> Administrative Staff Performance Metrics</div>
-                        <div><strong>Scope:</strong> ${dateRange === 'today' ? 'Today' : dateRange === '7days' ? 'Last 7 Days' : dateRange === '30days' ? 'Last 30 Days' : 'All Time'}</div>
+                        <div><strong>Scope:</strong> ${RANGE_LABEL[dateRange]}</div>
                         <div><strong>Export Time:</strong> ${new Date().toLocaleString()}</div>
                       </div>
 
@@ -1085,7 +902,7 @@ function StaffManagement() {
                             <tr>
                               <td style="font-weight: 700; color: #0f172a;">#${idx + 1}</td>
                               <td style="font-weight: 600; color: #0f172a;">${p.member.full_name}</td>
-                              <td><span style="font-size:0.75rem; font-weight:700;">${p.member.role.toUpperCase()}</span></td>
+                              <td><span style="font-size:0.75rem; font-weight:700;">${(p.member.role || '').toUpperCase()}</span></td>
                               <td>${p.member.role === 'reception' ? p.receiptCount + ' Receipts' : p.testCount + ' Tests Completed'}</td>
                               <td style="font-weight: 700;">₦${(p.member.role === 'reception' ? p.collectionSum : p.testRev).toLocaleString('en-NG')}</td>
                               <td style="color:#0d9488; font-weight: 700;">₦${p.commissionSum.toLocaleString('en-NG')}</td>
@@ -1361,7 +1178,7 @@ function StaffManagement() {
                                       width: 28, height: 28, borderRadius: '50%', background: getAvatarColor(p.member.full_name || 'Staff'),
                                       display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: '0.72rem'
                                     }}>
-                                      {getInitials(p.member.full_name)}
+                                      {getInitials(p.member.full_name || '')}
                                     </div>
                                     <div style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--gray-800)' }}>{p.member.full_name}</div>
                                   </div>
@@ -1369,7 +1186,7 @@ function StaffManagement() {
                                 <td style={{ padding: '0.9rem 1.25rem' }}>
                                   <span style={{
                                     padding: '0.1rem 0.45rem', borderRadius: '4px', fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase',
-                                    background: roleColors[p.member.role]?.bg, color: roleColors[p.member.role]?.color
+                                    background: roleColors[p.member.role || '']?.bg, color: roleColors[p.member.role || '']?.color
                                   }}>
                                     {p.member.role}
                                   </span>

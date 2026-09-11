@@ -9,3 +9,5 @@ export type { Command } from './CommandPalette';
 export { NAV, navFor, homePathFor, activeEntry, crumbsFor } from './navigation';
 export type { NavEntry, Role } from './navigation';
 export { SyncStatus } from './SyncStatus';
+export { ShellSlotProvider, useShellSlot, useShellSlotValue } from './ShellSlot';
+export type { ShellSlotValue } from './ShellSlot';

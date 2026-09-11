@@ -1,0 +1,46 @@
+/* The staff admin screen.
+ *
+ * The first piece of this screen to come off inline styles. What is here is
+ * what the shell hoist and the extraction left behind; the rest of the screen
+ * is still inline and is the next pass.
+ */
+
+/* A background refresh, shown in the shell's header rather than as a banner
+ * that pushes the page down every time the list re-reads itself. */
+.refreshing {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px var(--space-2);
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-full);
+  background: var(--accent-subtle);
+  color: var(--accent-subtle-text);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+}
+
+.refreshing::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: currentColor;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .refreshing::before {
+    animation: none;
+  }
+}
