@@ -58,41 +58,57 @@ describe('The obstetric calculator', () => {
   });
 
   /**
-   * The estimate is the mean of whichever of BPD, FL and CRL were typed. That
-   * is fine while they agree, and they should: they are three views of one
-   * fetus.
-   *
-   * CRL is a first-trimester measurement — it is taken up to about 14 weeks
-   * and is meaningless after it — while BPD and FL are second and third
-   * trimester. They do not overlap in a real pregnancy, so a CRL sitting in
-   * the box beside a third-trimester BPD is a stale field, not a reading, and
-   * averaging the two produces a gestational age belonging to no pregnancy at
-   * all. With BPD 85 and FL 65 against a leftover CRL of 50 the mean lands
-   * near 27 weeks when the fetus is near 34 — about two months off on an EDD
-   * that gets used to time a delivery.
-   *
-   * The mean is unchanged here. What it must stop doing is hiding the
-   * disagreement.
+   * The dating rule is in lib/store/obstetrics: CRL alone up to 84 mm, a
+   * composite of the later biometry after it, never the two blended. The
+   * screen's job is to show which of those happened.
    */
-  it('shows what each measurement gave, not only the average', () => {
+  it('shows what dated the pregnancy, not only the answer', () => {
     withMeasurements({ bpd: '85', fl: '65' });
 
     const breakdown = screen.getByTestId('ga-breakdown');
+    expect(breakdown).toHaveTextContent(/composite/i);
     expect(breakdown).toHaveTextContent(/BPD/);
     expect(breakdown).toHaveTextContent(/FL/);
   });
 
-  // role=status rather than role=alert: the warning appears while the
-  // sonographer is still typing, and an assertive live region would cut across
-  // them mid-measurement.
-  it('warns when the measurements disagree about the gestation', () => {
-    withMeasurements({ bpd: '85', fl: '65', crl: '50' });
-    expect(screen.getByRole('status')).toHaveTextContent(/disagree|do not agree/i);
+  it('says when a first-trimester CRL dated it on its own', () => {
+    withMeasurements({ crl: '50' });
+    expect(screen.getByTestId('ga-breakdown')).toHaveTextContent(/dated by CRL alone/i);
   });
 
-  it('does not warn when they agree', () => {
+  it('names a measurement that was taken but not used for dating', () => {
+    withMeasurements({ crl: '90', bpd: '85', fl: '65' });
+
+    // Past 84 mm the CRL no longer dates anything, so the later biometry does.
+    expect(screen.getByTestId('ga-breakdown')).toHaveTextContent(/composite/i);
+    const notices = screen.getAllByRole('status').map((el) => el.textContent).join(' ');
+    expect(notices).toMatch(/CRL 90 mm/i);
+    expect(notices).toMatch(/not used for dating/i);
+  });
+
+  /**
+   * A CRL of 50 mm beside a BPD of 85 is two real measurements of pregnancies
+   * five months apart, so one box is a typing slip — and which one is not
+   * something any rule can know. The form must not pick: it says so and stops
+   * the estimate reaching the report until a human resolves it.
+   */
+  it('calls out measurements that cannot be of one fetus', () => {
+    withMeasurements({ bpd: '85', fl: '65', crl: '50' });
+
+    expect(screen.getByRole('alert')).toHaveTextContent(/cannot be of one fetus/i);
+  });
+
+  it('will not insert a contradictory estimate into the report', () => {
+    withMeasurements({ bpd: '85', fl: '65', crl: '50' });
+
+    expect(screen.getByRole('button', { name: /insert/i })).toBeDisabled();
+  });
+
+  it('inserts freely when the measurements agree', () => {
     withMeasurements({ bpd: '85', fl: '65' });
-    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /insert/i })).toBeEnabled();
   });
 
   it('writes the estimate into the report when asked', () => {

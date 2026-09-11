@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   estimateGestationalAge,
   applyObstetricEstimate,
+  dateByBiometry,
+  CRL_DATING_LIMIT_MM,
   gestationalAgeByMeasurement,
   spreadInDays,
   SPREAD_WARNING_DAYS,
@@ -38,7 +40,7 @@ describe('estimateGestationalAge', () => {
     expect(estimateGestationalAge({ crl: '50' }, TODAY)).toMatchObject({ weeks: 11, days: 5 });
   });
 
-  it('averages whichever measurements are present, ignoring the blanks', () => {
+  it('averages the second- and third-trimester measurements, ignoring blanks', () => {
     const both = estimateGestationalAge({ bpd: '35', fl: '24' }, TODAY);
     expect(both).toMatchObject({ weeks: 16, days: 6 }); // (16.67 + 17.30) / 2 = 16.98
     expect(estimateGestationalAge({ bpd: '35', fl: '', crl: '' }, TODAY))
@@ -51,6 +53,89 @@ describe('estimateGestationalAge', () => {
     expected.setDate(expected.getDate() + 163);
     expect(estimateGestationalAge({ bpd: '35' }, TODAY)!.edd)
       .toBe(expected.toLocaleDateString('en-NG'));
+  });
+});
+
+describe('dateByBiometry', () => {
+  /**
+   * The standard rule (ACOG Committee Opinion 700, ISUOG): up to a CRL of
+   * 84 mm the crown-rump length dates the pregnancy on its own, being accurate
+   * to about five days and better than anything else that early. Past 84 mm it
+   * stops measuring age at all, and the pregnancy is dated on a composite of
+   * the later biometry. The two are never blended — they describe different
+   * halves of a pregnancy.
+   */
+  it('dates the first trimester by CRL alone, setting the rest aside', () => {
+    const dating = dateByBiometry({ crl: '50', bpd: '20', fl: '10' }, TODAY)!;
+
+    expect(dating.method).toBe('CRL');
+    expect(dating.used.map(p => p.source)).toEqual(['CRL']);
+    expect(dating.ignored.map(p => p.source)).toEqual(['BPD', 'FL']);
+    // -0.0006·50² + 0.15·50 + 5.8 = 11.80 weeks, as CRL alone always gave.
+    expect(dating).toMatchObject({ weeks: 11, days: 5 });
+  });
+
+  it('takes 84 mm as the last CRL that can date a pregnancy', () => {
+    expect(dateByBiometry({ crl: String(CRL_DATING_LIMIT_MM), bpd: '85' }, TODAY)!.method)
+      .toBe('CRL');
+    expect(dateByBiometry({ crl: String(CRL_DATING_LIMIT_MM + 1), bpd: '85' }, TODAY)!.method)
+      .toBe('composite');
+  });
+
+  /**
+   * The case that made this worth changing: a CRL of 50 mm beside a BPD of 85.
+   * Both are real measurements — of pregnancies about five months apart — so
+   * one of the boxes is a typing slip, and which one is not something any rule
+   * can know.
+   *
+   * The old code averaged them and reported 26 weeks, a gestation belonging to
+   * neither reading, with nothing on the screen to show why. The rule now
+   * applies as written — CRL is within range, so CRL dates it — and sets the
+   * contradicting biometry aside where the screen can name it. The screen then
+   * refuses to insert the estimate at all while the two are this far apart,
+   * because picking one would be a guess printed as a finding.
+   */
+  it('dates by CRL within range and sets contradicting biometry aside', () => {
+    const dating = dateByBiometry({ bpd: '85', fl: '65', crl: '50' }, TODAY)!;
+
+    expect(dating.method).toBe('CRL');
+    expect(dating.used.map(p => p.source)).toEqual(['CRL']);
+    expect(dating.ignored.map(p => p.source)).toEqual(['BPD', 'FL']);
+
+    // Never the blend of the two that the old mean produced.
+    expect(dating.weeks).not.toBe(26);
+    expect(spreadInDays(gestationalAgeByMeasurement({ bpd: '85', fl: '65', crl: '50' })))
+      .toBeGreaterThan(SPREAD_WARNING_DAYS);
+  });
+
+  it('composites the later biometry once the CRL is past dating range', () => {
+    const dating = dateByBiometry({ bpd: '85', fl: '65', crl: '90' }, TODAY)!;
+
+    expect(dating.method).toBe('composite');
+    expect(dating.used.map(p => p.source)).toEqual(['BPD', 'FL']);
+    expect(dating.ignored.map(p => p.source)).toEqual(['CRL']);
+    expect(dating.weeks).toBe(34);
+  });
+
+  it('uses an over-range CRL when it is all there is, and says so', () => {
+    const dating = dateByBiometry({ crl: '100' }, TODAY)!;
+
+    expect(dating.method).toBe('CRL (beyond dating range)');
+    expect(dating.used.map(p => p.source)).toEqual(['CRL']);
+    expect(dating.ignored).toEqual([]);
+  });
+
+  it('composites BPD and FL when there is no CRL at all', () => {
+    const dating = dateByBiometry({ bpd: '35', fl: '24' }, TODAY)!;
+
+    expect(dating.method).toBe('composite');
+    expect(dating).toMatchObject({ weeks: 16, days: 6 });
+    expect(dating.ignored).toEqual([]);
+  });
+
+  it('returns nothing when there is nothing usable', () => {
+    expect(dateByBiometry({}, TODAY)).toBeNull();
+    expect(dateByBiometry({ bpd: 'abc', crl: '0' }, TODAY)).toBeNull();
   });
 });
 
@@ -74,16 +159,20 @@ describe('gestationalAgeByMeasurement', () => {
    * left in the box beside a third-trimester BPD is a stale field, and the
    * average of the two belongs to no gestation at all.
    */
-  it('measures how far apart a stale CRL puts them', () => {
+  /**
+   * The spread is measured across everything that was typed, which is what
+   * lets the screen catch a contradiction the dating rule has already resolved
+   * by setting one measurement aside.
+   */
+  it('measures how far apart a contradictory set of boxes is', () => {
     const measurements = { bpd: '85', fl: '65', crl: '50' };
 
     expect(spreadInDays(gestationalAgeByMeasurement(measurements)))
       .toBeGreaterThan(SPREAD_WARNING_DAYS);
 
-    // Near 34 weeks on the biometry that belongs to this trimester, and under
-    // 27 once the leftover CRL is averaged in: about two months on the EDD.
-    expect(estimateGestationalAge({ bpd: '85', fl: '65' })!.weeks).toBe(34);
-    expect(estimateGestationalAge(measurements)!.weeks).toBe(26);
+    // Biometry of one fetus scatters by days, not months.
+    expect(spreadInDays(gestationalAgeByMeasurement({ bpd: '85', fl: '65' })))
+      .toBeLessThan(SPREAD_WARNING_DAYS);
   });
 
   it('reports no spread for a single measurement', () => {

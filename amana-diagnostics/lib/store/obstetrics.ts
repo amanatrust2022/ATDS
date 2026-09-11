@@ -15,40 +15,84 @@ export interface GestationalAge {
 }
 
 /**
- * Averages whichever of BPD, FL and CRL were measured. Each is a quadratic fit
- * of weeks against the measurement in millimetres; a measurement left blank,
- * zero or non-numeric is skipped rather than counted as zero.
+ * How a gestational age was arrived at.
+ *
+ * The measurement used to be a detail the screen threw away. It is the first
+ * thing a second reader needs: dating by CRL and dating by BPD are different
+ * claims of different reliability, and which one produced the EDD decides how
+ * much weight it carries.
+ */
+export type DatingMethod = 'CRL' | 'composite' | 'CRL (beyond dating range)';
+
+export interface Dating extends GestationalAge {
+  method: DatingMethod;
+  /** The measurements the estimate was taken from. */
+  used: BiometryEstimate[];
+  /** Measured, but not eligible to date this pregnancy. */
+  ignored: BiometryEstimate[];
+}
+
+/**
+ * The crown-rump length beyond which CRL stops being a dating measurement.
+ *
+ * 84 mm is the standard cut-off (ACOG Committee Opinion 700, ISUOG) and lands
+ * at 14+1 on the fit used here, which is the boundary it is meant to mark: up
+ * to it the embryo grows at a rate that varies little between pregnancies, and
+ * after it CRL flexes with fetal position and stops measuring age.
+ */
+export const CRL_DATING_LIMIT_MM = 84;
+
+/**
+ * Gestational age from ultrasound biometry, by the standard rule.
+ *
+ * Up to a CRL of 84 mm, CRL dates the pregnancy on its own — it is the most
+ * accurate measurement obstetrics has, to about ±5 days, and adding anything
+ * to it makes the estimate worse. After that CRL is no longer a dating
+ * measurement at all, and the pregnancy is dated on a composite of the
+ * second- and third-trimester biometry, which beats any one of them alone.
+ *
+ * The two are never blended. They describe different halves of a pregnancy
+ * and do not overlap, so a CRL sitting in the box beside a third-trimester BPD
+ * is a stale field, not a reading.
+ *
+ * This used to be the plain mean of whichever boxes had numbers in them. With
+ * BPD 85 and FL 65 — a fetus near 34 weeks — a leftover CRL of 50 pulled the
+ * mean under 27, and the EDD that went into the report, and got used to time a
+ * delivery, was two months out.
  *
  * Returns null when nothing usable was entered, which is what tells the UI to
  * show its "enter a measurement" hint instead of a result.
  */
-export const estimateGestationalAge = (
+export const dateByBiometry = (
   measurements: RadiologyFormState['measurements'],
   today: Date = new Date(),
-): GestationalAge | null => {
-  const bpdVal = parseFloat(measurements.bpd || '');
-  const flVal = parseFloat(measurements.fl || '');
-  const crlVal = parseFloat(measurements.crl || '');
+): Dating | null => {
+  const parts = gestationalAgeByMeasurement(measurements);
+  if (parts.length === 0) return null;
 
-  let totalWeeks = 0;
-  let count = 0;
+  const crl = parts.find((p) => p.source === 'CRL');
+  const others = parts.filter((p) => p.source !== 'CRL');
 
-  if (!isNaN(bpdVal) && bpdVal > 0) {
-    totalWeeks += 0.0012 * (bpdVal * bpdVal) + 0.22 * bpdVal + 7.5;
-    count++;
+  let used: BiometryEstimate[];
+  let method: DatingMethod;
+
+  if (crl && crl.mm <= CRL_DATING_LIMIT_MM) {
+    // First trimester. CRL alone, and the others are set aside rather than
+    // averaged in: BPD and FL are no better than CRL this early, and mixing
+    // them only widens the error.
+    used = [crl];
+    method = 'CRL';
+  } else if (others.length > 0) {
+    used = others;
+    method = 'composite';
+  } else {
+    // An over-range CRL and nothing else. It is all there is, so it is used,
+    // but it is named for what it is so nobody treats it as a dating scan.
+    used = [crl!];
+    method = 'CRL (beyond dating range)';
   }
-  if (!isNaN(flVal) && flVal > 0) {
-    totalWeeks += 0.0015 * (flVal * flVal) + 0.26 * flVal + 10.2;
-    count++;
-  }
-  if (!isNaN(crlVal) && crlVal > 0) {
-    totalWeeks += -0.0006 * (crlVal * crlVal) + 0.15 * crlVal + 5.8;
-    count++;
-  }
 
-  if (count === 0) return null;
-
-  const avgWeeks = totalWeeks / count;
+  const avgWeeks = used.reduce((total, p) => total + p.weeks, 0) / used.length;
   const weeksInt = Math.floor(avgWeeks);
   const daysInt = Math.floor((avgWeeks - weeksInt) * 7);
 
@@ -60,7 +104,20 @@ export const estimateGestationalAge = (
     weeks: weeksInt,
     days: daysInt,
     edd: eddDate.toLocaleDateString('en-NG'),
+    method,
+    used,
+    ignored: parts.filter((p) => !used.includes(p)),
   };
+};
+
+/** The age and date on their own, for callers that need nothing else. */
+export const estimateGestationalAge = (
+  measurements: RadiologyFormState['measurements'],
+  today: Date = new Date(),
+): GestationalAge | null => {
+  const dating = dateByBiometry(measurements, today);
+  if (!dating) return null;
+  return { weeks: dating.weeks, days: dating.days, edd: dating.edd };
 };
 
 /** One measurement's own answer, before they are averaged together. */

@@ -2,11 +2,12 @@
 
 import type { RadiologyFormState } from '@/lib/radiology-templates';
 import {
-  estimateGestationalAge,
+  dateByBiometry,
   applyObstetricEstimate,
   gestationalAgeByMeasurement,
   spreadInDays,
   SPREAD_WARNING_DAYS,
+  CRL_DATING_LIMIT_MM,
 } from '@/lib/store/obstetrics';
 import { Alert, Button, Card, CardBody, CardHeader, Field, Input, Select } from '@/components/ui';
 
@@ -42,24 +43,24 @@ const asWeeks = (weeks: number) =>
 /**
  * Gestational age and delivery date from ultrasound biometry.
  *
- * The estimate is the mean of whichever of BPD, FL and CRL were typed, and
- * that stays as it is. What changed is that the mean no longer stands alone:
- * each measurement's own answer is shown beside it, and a disagreement wide
- * enough that they cannot be describing one fetus is called out.
- *
- * The case that matters is a CRL left in the box next to a third-trimester
- * BPD — first-trimester and third-trimester measurements averaged together.
- * With BPD 85 and FL 65 the fetus is near 34 weeks; a stale CRL of 50 pulls
- * the mean to under 27, and the EDD that goes into the report, and gets used
- * to time a delivery, is two months out. Nothing on the old screen showed it.
+ * The dating rule lives in lib/store/obstetrics: CRL alone up to 84 mm, a
+ * composite of the second- and third-trimester biometry after it, and never
+ * the two blended. What this screen adds is the working — which measurement
+ * dated the pregnancy, what each one said on its own, and anything measured
+ * but set aside — so a second reader can see where the EDD came from instead
+ * of being handed a number.
  */
 export default function ObstetricsCalculator({ value, onChange }: Props) {
   const setMeasurement = (field: string, val: string) =>
     onChange({ ...value, measurements: { ...value.measurements, [field]: val } });
 
-  const estimate = estimateGestationalAge(value.measurements);
-  const parts = gestationalAgeByMeasurement(value.measurements);
-  const spread = spreadInDays(parts);
+  const dating = dateByBiometry(value.measurements);
+  // Across every measurement taken, not only the ones that dated the
+  // pregnancy. A CRL of 50 beside a BPD of 85 is the case worth catching, and
+  // the rule has already set one of them aside by the time it gets here — so
+  // measuring the spread of what was used would report no disagreement at all.
+  const spread = spreadInDays(gestationalAgeByMeasurement(value.measurements));
+  const contradictory = spread > SPREAD_WARNING_DAYS;
 
   const numberField = (
     field: 'bpd' | 'fl' | 'crl' | 'fhr',
@@ -114,33 +115,58 @@ export default function ObstetricsCalculator({ value, onChange }: Props) {
           {selectField('afi')}
         </div>
 
-        {spread > SPREAD_WARNING_DAYS && (
+        {/* Set aside, not silently dropped. A CRL that is out of dating range
+          * beside a third-trimester BPD is usually a box left filled in from
+          * the last scan, and the sonographer is the only one who can say. */}
+        {dating && dating.ignored.length > 0 && (
           <Alert tone="warning" live>
-            These measurements disagree by {spread} days, so they cannot all be of one fetus.
-            Check whether a measurement has been left in from another scan — CRL is a
-            first-trimester measurement and does not belong beside a BPD or FL.
+            {dating.ignored.map((p) => `${p.source} ${p.mm} mm`).join(' and ')}{' '}
+            {dating.ignored.length === 1 ? 'was' : 'were'} not used for dating.
+            {dating.method === 'CRL'
+              ? ` Up to ${CRL_DATING_LIMIT_MM} mm the CRL dates the pregnancy on its own — it is
+                 more accurate this early than BPD or FL, and averaging them in would only widen
+                 the estimate.`
+              : ` CRL is a first-trimester measurement and stops measuring age beyond
+                 ${CRL_DATING_LIMIT_MM} mm. Check whether it was left in from an earlier scan.`}
           </Alert>
         )}
 
-        {estimate ? (
+        {/* Irreconcilable, so the form does not pick for them. Which box is
+          * stale is not something the rule can know — a CRL of 50 mm and a BPD
+          * of 85 mm are both real measurements, of pregnancies five months
+          * apart — and one of them is a typing slip. Inserting either into the
+          * report would be a guess printed as a finding. */}
+        {contradictory && (
+          <Alert tone="critical" live>
+            These measurements are {spread} days apart, so they cannot be of one fetus — one of
+            the boxes is wrong. Correct or clear it before this goes into the report.
+          </Alert>
+        )}
+
+        {dating ? (
           <div className={styles['obsResult']}>
             <div>
               <p className={styles['obsHeadline']}>
-                {estimate.weeks} weeks {estimate.days} day(s)
-                <span className={styles['obsEdd']}>EDD {estimate.edd}</span>
+                {dating.weeks} weeks {dating.days} day(s)
+                <span className={styles['obsEdd']}>EDD {dating.edd}</span>
               </p>
 
-              {/* The working, not just the answer. Three views of one fetus
-                * should agree within a few days; seeing them side by side is
-                * what makes a stale box obvious. */}
+              {/* The working, not just the answer: which measurement dated it,
+                * and what each one said on its own. */}
               <p className={styles['obsBreakdown']} data-testid="ga-breakdown">
-                {parts.length === 1
-                  ? `From ${parts[0]!.source} alone.`
-                  : `Mean of ${parts.map((p) => `${p.source} ${asWeeks(p.weeks)}`).join(', ')}.`}
+                {dating.used.length === 1
+                  ? `Dated by ${dating.used[0]!.source} alone (${dating.used[0]!.mm} mm).`
+                  : `Composite of ${dating.used
+                      .map((p) => `${p.source} ${asWeeks(p.weeks)}`)
+                      .join(', ')}.`}
               </p>
             </div>
 
-            <Button intent="primary" onClick={() => onChange(applyObstetricEstimate(value, estimate))}>
+            <Button
+              intent="primary"
+              disabled={contradictory}
+              onClick={() => onChange(applyObstetricEstimate(value, dating))}
+            >
               Insert into report
             </Button>
           </div>
