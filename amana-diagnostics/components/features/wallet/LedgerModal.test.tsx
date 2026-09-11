@@ -118,6 +118,11 @@ beforeEach(() => {
   seed();
 });
 
+/** Radix activates a tab on mousedown, not on a synthetic click. */
+function selectTab(name: RegExp) {
+  fireEvent.mouseDown(screen.getByRole('tab', { name }));
+}
+
 // ── Deposits ─────────────────────────────────────────────────────────────────
 
 describe('taking a deposit', () => {
@@ -184,7 +189,7 @@ describe('reversing a charge', () => {
   const openLedger = async () => {
     seed([CHARGE, DEPOSIT]);
     renderModal();
-    fireEvent.click(screen.getByRole('button', { name: /Transaction Statement/i }));
+    selectTab(/Transaction Statement/i);
     await screen.findByText('Pharmacy — amoxicillin');
   };
 
@@ -233,7 +238,7 @@ describe('reversing a charge', () => {
       { ...DEPOSIT, id: 'tx-3', type: 'reversal', amount: 3000, reference_id: 'tx-1' },
     ]);
     renderModal();
-    fireEvent.click(screen.getByRole('button', { name: /Transaction Statement/i }));
+    selectTab(/Transaction Statement/i);
     await screen.findByText('Pharmacy — amoxicillin');
 
     expect(screen.queryByRole('button', { name: 'Reverse' })).toBeNull();
