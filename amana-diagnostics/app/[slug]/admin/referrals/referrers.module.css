@@ -1,0 +1,104 @@
+/**
+ * The two referrer directories — doctors and facilities.
+ *
+ * Shared, because the screens are twins: same stat row, same filter bar, same
+ * table, same form. They had drifted apart in small ways (the doctors search
+ * matched facility names, the facilities search did not; one showed contact
+ * icons the other did not) purely because they were two copies.
+ *
+ * Both also drew their own page header under the shell's and set
+ * `minHeight: 100vh` inside the shell's own scroll container — two headings and
+ * two scrollbars. See decision #30.
+ */
+
+.screen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: flex-end;
+}
+
+.searchField {
+  flex: 1 1 14rem;
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: var(--space-3);
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.statValue {
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-bold);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.statLabel {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+}
+
+.loading {
+  padding: var(--space-4);
+}
+
+.name {
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+}
+
+/* Contact details stack: a phone over an email, each with its mark. */
+.contact {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.contactLine {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.facility {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--accent-text);
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+.rowActions {
+  display: flex;
+  gap: var(--space-1);
+  justify-content: flex-end;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
