@@ -181,3 +181,35 @@ describe('Feature: Referral commission', () => {
     expect(screen.queryByText('Referral Commission')).not.toBeInTheDocument();
   });
 });
+
+/**
+ * Added before the styling rebuild. Each failed on the old panel.
+ */
+describe('Feature: Checkout, rebuilt', () => {
+  it('names every field', () => {
+    setup();
+    fireEvent.change(screen.getByRole('combobox', { name: /discount type/i }), { target: { value: 'percentage' } });
+    fireEvent.change(screen.getByRole('combobox', { name: /payment method/i }), { target: { value: 'wallet' } });
+
+    expect(screen.getByRole('spinbutton', { name: /discount value/i })).toBeInTheDocument();
+    expect(screen.getByRole('spinbutton', { name: /amount paid/i })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: /wallet account/i })).toBeInTheDocument();
+  });
+
+  /**
+   * The shortfall warning was a line of red text. The cashier who cannot see
+   * red — or is not looking — found out at submit, after the patient had
+   * been told the wallet would cover it.
+   */
+  it('announces a wallet shortfall as it appears', () => {
+    useRegistrationStore.getState().setPaymentMethod('wallet');
+    setup({ checkoutBillingAccountId: 'acc-2' });
+
+    expect(screen.getByRole('alert')).toHaveTextContent(/insufficient/i);
+  });
+
+  it('reads the balance line as a status, not as decoration', () => {
+    setup({ balance: 7000 });
+    expect(screen.getByRole('status')).toHaveTextContent(/balance due/i);
+  });
+});

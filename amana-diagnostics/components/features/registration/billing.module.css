@@ -1,0 +1,174 @@
+/* The checkout panel at the foot of registration.
+ *
+ * Replaces 32 inline styles and eleven hand-typed colours — reds, greens and
+ * ambers chosen by eye for the discount, balance and commission lines, none
+ * of which the theme could reach. The money is the point of this panel, so
+ * every figure is tabular.
+ */
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+  background: var(--surface-sunken);
+}
+
+.title {
+  margin: 0 0 var(--space-1);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--accent-text);
+}
+
+/* --- Linked wallet -------------------------------------------------------- */
+
+.wallet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-md);
+  background: var(--accent-subtle);
+}
+
+.walletHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.walletTitle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+  color: var(--accent-text);
+}
+
+.walletRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.walletName {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.walletBalance {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
+  color: var(--accent-text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Lines --------------------------------------------------------------- */
+
+.line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.lineLabel {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  color: var(--text-secondary);
+}
+
+.lineValue {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-bold);
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.net {
+  padding-top: var(--space-2);
+  border-top: 1px dashed var(--border-default);
+}
+.net .lineLabel {
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  font-weight: var(--weight-bold);
+}
+.net .lineValue {
+  font-size: var(--text-lg);
+  color: var(--accent-text);
+}
+
+/* A line with a tone: discount, balance, commission. */
+.note {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid;
+  border-radius: var(--radius-sm);
+}
+.note .lineLabel,
+.note .lineValue { color: inherit; }
+
+.noteDiscount {
+  background: var(--critical-subtle);
+  border-color: var(--critical-border);
+  color: var(--critical-text);
+}
+.noteDue {
+  background: var(--warning-subtle);
+  border-color: var(--warning-border);
+  color: var(--warning-text);
+}
+.noteCleared {
+  background: var(--success-subtle);
+  border-color: var(--success-border);
+  color: var(--success-text);
+}
+.noteCommission {
+  background: var(--warning-subtle);
+  border-color: var(--warning-border);
+  color: var(--warning-text);
+}
+
+/* --- Fields -------------------------------------------------------------- */
+
+.pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+  align-items: start;
+}
+
+.pairWide {
+  grid-template-columns: 1.2fr 1fr;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.cover {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin: 0;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+}
+.coverOk { color: var(--success-text); }
+.coverShort { color: var(--critical-text); }
+
+.submit {
+  margin-top: var(--space-1);
+}
