@@ -530,3 +530,70 @@ commits to one dark treatment because it is the product's front door, the portal
 is read on a patient's own phone, often at night. It takes the theme that phone
 asked for, which it can now do because every colour on it comes from the
 semantic token layer.
+
+---
+
+## 28. Characterisation tests before every screen extraction
+
+**Decision.** No screen in this sweep was rebuilt until tests existed describing
+what it already did. Four screens, four test files written first.
+
+**Why it stopped being optional.** It caught a real regression within the hour.
+Extracting the staff dashboard's arithmetic, `matchesStaff` lost one of its five
+clauses — `fn.includes(cb)`, which credits work when the bench typed less than
+the roster holds, "Bala" against "Bala Yusuf". Nothing would have failed. The
+screen would have rendered, the build would have passed, and staff would quietly
+have stopped being credited for their own tests on the screen an administrator
+pays them from.
+
+**What the tests assert.** What reaches the database, not what the page looks
+like. The wallet's twelve check the deposit's amount, method, note and author;
+that a reversal is offered on a charge but not a deposit, needs a reason,
+refuses a blank one and cannot be applied twice; and that a department charge
+only carries a `billingAccountId` when the wallet is paying — because a cash
+payment that also debited the wallet would charge the patient twice.
+
+**What changes across a split, legitimately.** Wording, and roles. "Configured"
+became "On file"; two bare `<button>`s became a real tablist, so queries moved
+from role `button` to role `tab`. Those edits to the tests are the record of a
+deliberate change. An assertion about behaviour changing is not.
+
+---
+
+## 29. One CSV rule, and it assumes the file will be opened in Excel
+
+**Decision.** `lib/csv.ts` writes every export. Cells are quoted with doubled
+quotes, prefixed with an apostrophe when they begin `=`, `+`, `-` or `@`, joined
+with CRLF, and the document opens with a UTF-8 BOM.
+
+**Why.** Both exports in the product — the commission report and the patient
+database — were built as `"${value}"` with nothing escaped. Two separate faults
+followed. A patient recorded as O"Brien ended the field early and shifted every
+column after it on that row. And a cell beginning `=` is read as a *formula* by
+Excel, Sheets and LibreOffice, and runs when the accountant opens the file:
+patient names, referrer names and settlement notes are all typed by staff, so
+that is reachable rather than theoretical.
+
+The BOM is not decoration either. Without it Excel on a Nigerian Windows machine
+opens Adéọlá as Adeolá.
+
+**Also.** Neither export revoked its object URL, so every download leaked a blob
+for the lifetime of the tab.
+
+---
+
+## 30. Every admin screen was fighting the shell
+
+**Decision.** No screen renders a page header or sets its own height. The
+heading comes from the nav table; a sentence under it goes through
+`useShellSlot`.
+
+**Why.** Decision #23 moved the shell into `app/[slug]/layout.tsx` and #27's
+progress note said no test would notice a screen that "sits under a heading it
+did not choose". All four screens in this sweep had exactly that, and all four
+had `minHeight: '100vh'` on their root — inside the shell's `<main>`, which
+already fills the window. Every admin page had two headings and two scrollbars.
+
+That is worth recording as a pattern rather than four bug fixes: it is what
+hoisting a shell does to screens written before it existed, and the remaining
+admin screens will have it too.

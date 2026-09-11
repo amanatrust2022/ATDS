@@ -3,7 +3,7 @@
 Measured against the nine-phase plan. Counts come from `npm run check:ui`, not
 from memory.
 
-Last updated: 10 September 2026 (patient portal rebuilt on the design system).
+Last updated: 11 September 2026 (the four biggest admin screens rebuilt).
 
 ---
 
@@ -14,7 +14,7 @@ Last updated: 10 September 2026 (patient portal rebuilt on the design system).
 | P0 | Stop the bleeding | **Done** |
 | P1 | Tokens and the styling layer | **Done** |
 | P2 | Application shell | **Done** |
-| P3 | Component library | **Built. Migration of screens ongoing.** |
+| P3 | Component library | **Built. The four biggest screens migrated; entry forms remain.** |
 | P4 | WCAG 2.1 AA | **Floor in place. Screen-by-screen sweep outstanding.** |
 | P5 | Clinical safety | **Done** |
 | P6 | Responsive, density, dark | **Shipped for shell and new screens. Legacy screens outstanding.** |
@@ -29,16 +29,16 @@ Last updated: 10 September 2026 (patient portal rebuilt on the design system).
 
 | Metric | Start | Now |
 | --- | --- | --- |
-| Inline `style={{…}}` objects | 2,100 | 1,735 |
-| Hard-coded hex colours | 832 | 621 |
-| Hard-coded `rgb()`/`rgba()` | 470 | 383 |
-| Legacy `--gray-*` / `--teal-*` uses | 1,122 | 902 |
-| JS hover handlers | 42 | 34 |
+| Inline `style={{…}}` objects | 2,100 | 1,255 |
+| Hard-coded hex colours | 832 | 541 |
+| Hard-coded `rgb()`/`rgba()` | 470 | 338 |
+| Legacy `--gray-*` / `--teal-*` uses | 1,122 | 527 |
+| JS hover handlers | 42 | 30 |
 | Inline `outline: 'none'` | 48 | **0** |
-| `!important` in components | 23 | 21 |
-| Hand-rolled overlays | 18 | 15 |
-| Raw `<table>` | 23 | 18 |
-| Hard-coded numeric `zIndex` | 46 | 39 |
+| `!important` in components | 23 | 13 |
+| Hand-rolled overlays | 18 | 10 |
+| Raw `<table>` | 23 | 9 |
+| Hard-coded numeric `zIndex` | 46 | 34 |
 
 The large numbers move when screens migrate, which is the bulk of P3 and is the
 work that remains. Every one of them can only go down: `npm run check:ui` fails
@@ -87,6 +87,14 @@ report itself is the clinic's real letterhead, because it is rendered by the
 same template the bench prints from. A visit now opens from a button with
 `aria-expanded` rather than a `<div onClick>` a keyboard could not reach.
 
+**The four biggest screens are on the system.** Staff (1,699 lines), the
+commission report (641), the wallet ledger (890) and the patient database (442)
+were the four heaviest files left. Each is now a container plus components on
+CSS modules, each has its arithmetic in a tested module rather than inside a
+JSX expression, and each had a characterisation test written before it was
+touched. Between them that removed nine hand-rolled overlays, four hand-rolled
+tab strips and both unescaped CSV exports.
+
 **Results are flagged against their own reference range** as they are typed,
 with critical values as a separate tier carrying a release interlock. The range
 had always been stored next to every parameter and nothing had ever read it.
@@ -95,8 +103,10 @@ had always been stored next to every parameter and nothing had ever read it.
 
 ## What is not done
 
-**The screen migration.** Around 1,735 inline style objects remain. Reception is
-done; the admin screens and the department entry forms carry most of the rest.
+**The screen migration.** Around 1,255 inline style objects remain. Reception, the
+staff screen, the commission report, the wallet ledger and the patient database
+are done; the department entry forms and the remaining admin screens carry most
+of what is left.
 They work, they are theme-aware through the legacy bridge, and they do not yet
 use the component library. This is the bulk of the remaining effort.
 
@@ -121,10 +131,11 @@ default panic thresholds in code. That belongs with the test catalogue screen.
 
 ## Next three things
 
-1. **Click through the wallet in the running app.** The extraction it now uses
-   was never exercised; the tests assert the wiring, not the round trip to the
-   database. Open an account, deposit, log a charge, link and unlink a
-   dependant, reverse a transaction, print a statement.
+1. **Click through the wallet in the running app.** It now has twelve tests
+   over what reaches the database — the deposit arguments, the reversal rules,
+   wallet-versus-cash — but nothing has taken a real deposit through it. Open an
+   account, deposit, log a charge, link and unlink a dependant, reverse a
+   transaction, print a statement.
 2. **Walk every workspace screen once**, now that the shell is above them rather
    than inside them. No test would notice a screen that lost its padding, gained
    a second scrollbar, or now sits under a heading it did not choose.
