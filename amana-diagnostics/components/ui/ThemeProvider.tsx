@@ -16,6 +16,17 @@ import type { ReactNode } from 'react';
 export type ThemeChoice = 'light' | 'dark' | 'system';
 export type Density = 'compact' | 'standard' | 'comfortable';
 
+/**
+ * These keep the old product name on purpose.
+ *
+ * A localStorage key is not branding, it is an address: rename it and every
+ * user who had chosen dark, or compact, silently reverts to the default on
+ * their next visit with no way to tell why. The same goes for
+ * `diagnosticos_rail_collapsed`, `amana_local_mode` and
+ * `amana_offline_session` — the last of which would sign every offline user
+ * out. They are spelled the way the data on people's machines is already
+ * spelled.
+ */
 const THEME_KEY = 'diagnosticos_theme';
 const DENSITY_KEY = 'diagnosticos_density';
 

@@ -216,7 +216,7 @@ export default function LoginPage() {
           <span className={styles.brandMark} aria-hidden="true">
             <RiMicroscopeLine size={19} />
           </span>
-          <span className={styles.brandName}>DiagnosticOS</span>
+          <span className={styles.brandName}>Redian</span>
           <span className={styles.version}>v1.2.20</span>
         </div>
 
@@ -278,7 +278,7 @@ export default function LoginPage() {
               <span className={styles.brandMark} aria-hidden="true">
                 <RiMicroscopeLine size={17} />
               </span>
-              <span className={styles.brandName}>DiagnosticOS</span>
+              <span className={styles.brandName}>Redian</span>
             </div>
 
             <div>
@@ -394,7 +394,7 @@ export default function LoginPage() {
                       <li>Bookmark it, so tomorrow is one tap.</li>
                     </ol>
                     <p className={styles.lanNote}>
-                      This computer has to stay on and running DiagnosticOS for the others to reach it.
+                      This computer has to stay on and running Redian for the others to reach it.
                     </p>
                   </div>
                 )}

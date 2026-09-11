@@ -53,6 +53,34 @@ function recordSchemaVersion(db: any): void {
   }
 }
 
+/**
+ * Which file this installation's database actually lives in.
+ *
+ * The product was renamed, and with it the folder and filename this database
+ * is kept under: %APPDATA%/AmanaDiagnostics/amana_clinic.db became
+ * %APPDATA%/RedianApp/redian_clinic.db. On its own that rename is silent data
+ * loss. `getDb()` would open the new path, find nothing there, and `initDb()`
+ * would create every table fresh — no error, no warning, and a clinic that had
+ * been running offline for months would open the app to an empty register.
+ *
+ * So an installation that already has a database keeps using it, wherever it
+ * is. The old file is deliberately not copied or moved: a SQLite database in
+ * use has -wal and -shm sidecars beside it, and a half-copied set is worse than
+ * an oddly-named folder. Only a machine with no database at all gets the new
+ * path.
+ */
+function resolveDbPath(fs: any, current: string, legacy: string): string {
+  if (fs.existsSync(current)) return current;
+  if (fs.existsSync(legacy)) {
+    console.warn(
+      `[Redian] Using the database from before the rename: ${legacy}. ` +
+        'It is still the live database — do not delete it.',
+    );
+    return legacy;
+  }
+  return current;
+}
+
 export function getDb(): any {
   if (typeof window !== 'undefined') {
     throw new Error('DatabaseSync can only be used on the server side.');
@@ -72,19 +100,29 @@ export function getDb(): any {
     // Dynamically load node:sqlite using eval('require') to bypass Turbopack's static analysis
     const { DatabaseSync } = eval('require')('node:sqlite');
     
+    const fs = require('fs');
+
     let dbPath = '';
     if (process.env.IS_LOCAL_HUB === 'true') {
-      const appData = process.env.APPDATA || (process.platform === 'darwin' 
-        ? path.join(process.env.HOME || '', 'Library', 'Application Support') 
+      const appData = process.env.APPDATA || (process.platform === 'darwin'
+        ? path.join(process.env.HOME || '', 'Library', 'Application Support')
         : path.join(process.env.HOME || '', '.config'));
-      const appFolder = path.join(appData, 'AmanaDiagnostics');
-      const fs = require('fs');
-      if (!fs.existsSync(appFolder)) {
+      const appFolder = path.join(appData, 'RedianApp');
+      dbPath = resolveDbPath(
+        fs,
+        path.join(appFolder, 'redian_clinic.db'),
+        path.join(appData, 'AmanaDiagnostics', 'amana_clinic.db'),
+      );
+      // Only create the new folder if that is in fact where we landed.
+      if (dbPath.startsWith(appFolder) && !fs.existsSync(appFolder)) {
         fs.mkdirSync(appFolder, { recursive: true });
       }
-      dbPath = path.join(appFolder, 'amana_clinic.db');
     } else {
-      dbPath = path.join(process.cwd(), 'amana_clinic.db');
+      dbPath = resolveDbPath(
+        fs,
+        path.join(process.cwd(), 'redian_clinic.db'),
+        path.join(process.cwd(), 'amana_clinic.db'),
+      );
     }
 
     dbInstance = new DatabaseSync(dbPath);

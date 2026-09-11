@@ -1,5 +1,5 @@
 /**
- * The DiagnosticOS component library.
+ * The Redian component library.
  *
  * Everything a screen needs, so no screen has to type a colour, a size or an
  * ARIA attribute by hand. Import from here, not from the files directly:

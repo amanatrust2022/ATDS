@@ -1,8 +1,8 @@
 {
-  "name": "amana-diagnostics",
+  "name": "redian",
   "version": "1.2.20",
-  "description": "Amana Diagnostics Hub — offline-first LIS for African diagnostic centres",
-  "author": "Amana Diagnostics",
+  "description": "Redian — offline-first LIS for African diagnostic centres by Voltex Technologies",
+  "author": "Voltex Technologies",
   "scripts": {
     "postinstall": "node scripts/copy-pdf-worker.js",
     "dev": "next dev",

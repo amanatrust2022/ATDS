@@ -22,11 +22,11 @@ const newSlipTemplate = `
         .footer { margin-top: 20px; border-top: 1px solid #ccc; padding-top: 8px; font-size: 9pt; color: #888; text-align: center; border-color: #4472c4; }
       </style></head><body>
       <div class="header">
-        <div class="org-name-1">AMANA TRUST DIAGNOSTICS</div>
+        <div class="org-name-1">Redian Diagnostics</div>
         <div class="org-name-2">AND CLINICAL SERVICES LIMITED</div>
         <div class="org-addr">No 15, C Tudun Wada Bus Stop, Nasarawa LGA, Kano State.</div>
         <div class="org-contact"><b>Phone;</b> +2348033390574, +2347032663898</div>
-        <div class="org-email"><b>Email;</b> <span style="color:#0563c1">amanatrust2022@gmail.com</span></div>
+        <div class="org-email"><b>Email;</b> <span style="color:#0563c1">info@redian.app</span></div>
       </div>
       <div class="slip-title">PATIENT INVESTIGATION REQUEST SLIP</div>
       <div class="patient-info">
@@ -42,7 +42,7 @@ const newSlipTemplate = `
         <div><span class="pi-label">Specimen;</span> —</div>
       </div>
       <table><thead><tr><th>Test Name</th><th>Department</th></tr></thead><tbody>\${testRows}</tbody></table>
-      <div class="footer">Please proceed to the respective department with this slip &bull; Amana Trust Diagnostics &copy; \${new Date().getFullYear()}</div>
+      <div class="footer">Please proceed to the respective department with this slip &bull; Redian Diagnostics &copy; \${new Date().getFullYear()}</div>
       </body></html>\`;
 
 const newResultTemplate = `
@@ -77,11 +77,11 @@ const newResultTemplate = `
         .sig-line { border-top: 1px solid #333; padding-top: 4px; font-size: 10pt; color: #333; }
       </style></head><body>
       <div class="header">
-        <div class="org-name-1">AMANA TRUST DIAGNOSTICS</div>
+        <div class="org-name-1">Redian Diagnostics</div>
         <div class="org-name-2">AND CLINICAL SERVICES LIMITED</div>
         <div class="org-addr">No 15, C Tudun Wada Bus Stop, Nasarawa LGA, Kano State.</div>
         <div class="org-contact"><b>Phone;</b> +2348033390574, +2347032663898</div>
-        <div class="org-email"><b>Email;</b> <span style="color:#0563c1">amanatrust2022@gmail.com</span></div>
+        <div class="org-email"><b>Email;</b> <span style="color:#0563c1">info@redian.app</span></div>
       </div>
       <div class="report-title">
         \${completedTests.every(t => t.department === 'lab') ? 'LABORATORY RESULT REPORT' : 

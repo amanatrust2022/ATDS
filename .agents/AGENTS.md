@@ -42,7 +42,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - **RLS Infinite Recursion Prevention**: When writing PostgreSQL Row-Level Security (RLS) policies, NEVER query the exact same table that the policy protects (e.g., querying `profiles` to check if someone is an admin to allow updating `profiles`). Instead, extract claims directly from `auth.jwt()` or use `SECURITY DEFINER` functions that bypass RLS to perform the check.
 - **Routing for New Roles**: When introducing a new role (e.g., `lab_tech`), ensure the role is explicitly handled in frontend routing logic (such as `getDashboardUrl` in `app/page.tsx` and `getRolePath` in `components/RootWrapper.tsx`) to prevent users from falling back to default UI paths like reception.
 <!-- END:supabase-auth-rls-rules -->
-## 4. Definition of Done (DoD) for DiagnosticOS
+## 4. Definition of Done (DoD) for Redian
 A feature is ONLY considered done when it meets the following criteria:
 - TypeScript compiles with zero errors (\
 px tsc --noEmit\).

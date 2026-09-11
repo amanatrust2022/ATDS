@@ -199,7 +199,7 @@ export default function OnboardingPage() {
               <label style={lbl}>Workspace ID *</label>
               <div style={{ position: 'relative' }}>
                 <span style={{ position: 'absolute', left: '0.9rem', top: '50%', transform: 'translateY(-50%)', color: 'rgba(255,255,255,0.25)', fontSize: '0.82rem' }}>app.com/</span>
-                <input style={{ ...inp, paddingLeft: '5.2rem' }} value={org.slug} onChange={e => setOrg({ ...org, slug: slugify(e.target.value) })} placeholder="amana-trust" required />
+                <input style={{ ...inp, paddingLeft: '5.2rem' }} value={org.slug} onChange={e => setOrg({ ...org, slug: slugify(e.target.value) })} placeholder="your-centre" required />
               </div>
             </div>
             <div><label style={lbl}>Address</label><input style={inp} value={org.address} onChange={e => setOrg({ ...org, address: e.target.value })} placeholder="No. 15 C Tudun Wada Bus Stop" /></div>
@@ -220,7 +220,7 @@ export default function OnboardingPage() {
   if (!organization) return null;
 
   const steps = [
-    { icon: <RiMicroscopeLine size={22} />, title: 'Workspace created', desc: 'Your facility is registered on DiagnosticOS.' },
+    { icon: <RiMicroscopeLine size={22} />, title: 'Workspace created', desc: 'Your facility is registered on Redian.' },
     { icon: <RiTeamLine size={22} />, title: 'Invite your staff', desc: 'Add Lab Scientists, Radiologists, and Receptionists from the Admin panel.' },
     { icon: <RiRocketLine size={22} />, title: 'Go live', desc: 'Start registering patients and managing test results in real time.' },
   ];

@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "DiagnosticOS",
+  "productName": "Redian",
   "version": "1.2.20",
-  "identifier": "com.amanatrust.diagnosticos",
+  "identifier": "com.voltex.redian",
 
   "build": {
     "beforeDevCommand": "",
@@ -14,7 +14,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "DiagnosticOS",
+        "title": "Redian",
         "width": 1280,
         "height": 800,
         "minWidth": 1024,
@@ -49,16 +49,16 @@
     ],
     "externalBin": ["node"],
     "resources": ["nextjs/**/*"],
-    "publisher": "Amana Trust",
-    "copyright": "© 2024 Amana Trust",
+    "publisher": "Voltex Technologies",
+    "copyright": "© 2024 Voltex Technologies",
     "category": "Healthcare and Fitness",
     "shortDescription": "Diagnostic Centre Management",
-    "longDescription": "DiagnosticOS Local Hub — offline-first diagnostic centre management system for clinic LANs.",
+    "longDescription": "Redian Local Hub — offline-first diagnostic centre management system for clinic LANs.",
     "windows": {
       "nsis": {
         "displayLanguageSelector": false,
         "installMode": "perMachine",
-        "startMenuFolder": "DiagnosticOS"
+        "startMenuFolder": "Redian"
       },
       "wix": {
         "language": "en-US"
@@ -70,7 +70,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDU2MDM1RTM2MEE3MzY5MTkKUldRWmFYTUtObDREVmhvMVFnSkViUnpUUzl4Y0FTRk5EcUxSWWtQN3dFTkpWdERnYjFEMEc5YzAK",
       "endpoints": [
-        "https://github.com/amanatrust2022/amana-releases/releases/latest/download/latest.json"
+        "https://github.com/voltex-technologies/redian-releases/releases/latest/download/latest.json"
       ]
     },
     "shell": {}

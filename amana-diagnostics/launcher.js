@@ -1,6 +1,6 @@
 /**
  * =============================================================================
- * AMANA DIAGNOSTICS — LOCAL LAN HUB LAUNCHER
+ * Redian — LOCAL LAN HUB LAUNCHER
  * =============================================================================
  *
  * PURPOSE:
@@ -37,7 +37,7 @@
  *   detects the new buildHash and auto-updates itself silently.
  *
  * TO BUILD A NEW amana-server.exe:
- *   cd amana-diagnostics && npm run dist:package
+ *   cd redian && npm run dist:package
  *   (This runs package-dist.js which builds Next.js in standalone mode,
  *    compiles this file with `pkg`, and zips everything for distribution.)
  * =============================================================================
@@ -62,21 +62,21 @@ const baseDir = isCompiled ? path.dirname(process.execPath) : process.cwd();
 // SERVER PATH RESOLUTION
 // The Next.js standalone server.js may be at:
 //   server/server.js               (flat structure — normal)
-//   server/amana-diagnostics/server.js  (nested — happens with some build configs)
+//   server/redian/server.js  (nested — happens with some build configs)
 // resolveServerPath() checks both and updates `serverPath` accordingly.
 // ─────────────────────────────────────────────────────────────────────────────
 let serverPath = path.join(baseDir, 'server', 'server.js');
 function resolveServerPath() {
   serverPath = path.join(baseDir, 'server', 'server.js');
   if (!fs.existsSync(serverPath)) {
-    serverPath = path.join(baseDir, 'server', 'amana-diagnostics', 'server.js');
+    serverPath = path.join(baseDir, 'server', 'redian', 'server.js');
   }
   return serverPath;
 }
 resolveServerPath();
 
 console.log('=====================================================================');
-console.log('                 AMANA DIAGNOSTICS LOCAL LAN HUB                     ');
+console.log('                 Redian LOCAL LAN HUB                     ');
 console.log('=====================================================================');
 console.log('');
 
@@ -144,7 +144,7 @@ function getAllEnvVars() {
    */
   const bundledEnvPaths = [
     path.join(baseDir, 'server', '.env.local'),
-    path.join(baseDir, 'server', 'amana-diagnostics', '.env.local')
+    path.join(baseDir, 'server', 'redian', '.env.local')
   ];
   const adminEnvPath = path.join(baseDir, '.env.local'); // next to amana-server.exe
 
@@ -503,7 +503,7 @@ async function startServer() {
       console.error('=====================================================================');
       console.error('  ⚠️  CRITICAL: RUNNING FROM ZIP FILE DETECTED');
       console.error('=====================================================================');
-      console.error('  It looks like you are running Amana Diagnostics directly from');
+      console.error('  It looks like you are running Redian directly from');
       console.error('  inside the ZIP file without extracting it first.');
       console.error('');
       console.error('  This will cause the server to fail and crash on startup.');
@@ -611,7 +611,7 @@ async function startServer() {
       console.error('');
       console.error('=====================================================================');
       console.error(`  ⚠️  SERVER CRASHED (exit code: ${code})`);
-      console.error('  The Amana Local Hub server stopped unexpectedly.');
+      console.error('  The Redian Local Hub server stopped unexpectedly.');
       console.error('');
       console.error('  WHAT TO TRY:');
       console.error('    1. Read the error messages above for the specific cause.');
@@ -650,7 +650,7 @@ async function startServer() {
 
   // Graceful shutdown: kill the server when this window is closed or Ctrl+C is pressed
   function cleanup() {
-    console.log('\n[Shutting down Amana Local Hub server...]');
+    console.log('\n[Shutting down Redian Local Hub server...]');
     if (serverProcess) {
       serverProcess.kill('SIGINT');
     }

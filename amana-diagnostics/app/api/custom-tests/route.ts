@@ -243,7 +243,7 @@ export async function POST(request: Request) {
               <a href="${pricingLink}" style="display: inline-block; padding: 12px 24px; background-color: #0563c1; color: #ffffff !important; text-decoration: none; font-weight: bold; font-size: 14px;">Configure Price & Commission →</a>
             </div>
             <p style="margin: 0; font-size: 15px; color: #000000; margin-top: 20px;">Thank you,</p>
-            <p style="margin: 0; font-size: 15px; color: #000000;"><strong>DiagnosticOS Mailer</strong></p>
+            <p style="margin: 0; font-size: 15px; color: #000000;"><strong>Redian Mailer</strong></p>
           </div>
           <div style="padding: 16px; text-align: center; font-size: 12px; color: #666; border: 1px solid #ddd; border-top: none;">
             &copy; ${new Date().getFullYear()} ${orgName}. All rights reserved.

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'amana-diagnostics-v2';
+const CACHE_NAME = 'redian-v1';
 const ASSETS_TO_CACHE = [
   '/',
   '/login',

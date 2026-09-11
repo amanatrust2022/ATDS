@@ -5,7 +5,11 @@ const path = require('path');
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
-const dbPath = path.join(process.cwd(), 'amana_clinic.db');
+// Whichever name this machine's database has — see resolveDbPath in lib/localDb.ts.
+const fs = require('fs');
+const dbPath = [ 'redian_clinic.db', 'amana_clinic.db' ]
+  .map((name) => path.join(process.cwd(), name))
+  .find((candidate) => fs.existsSync(candidate)) || path.join(process.cwd(), 'redian_clinic.db');
 const db = new DatabaseSync(dbPath);
 
 async function fix() {

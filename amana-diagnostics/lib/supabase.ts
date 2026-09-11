@@ -22,7 +22,7 @@ export function createClient() {
     (supabaseUrl.includes('placeholder') || supabaseAnonKey.includes('placeholder'))
   ) {
     console.error(
-      '🚨 [DiagnosticOS Configuration Warning] Supabase credentials have fallback/placeholder values! ' +
+      '🚨 [Redian Configuration Warning] Supabase credentials have fallback/placeholder values! ' +
       'Please make sure NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY are set in your environment configuration ' +
       '(Vercel or Github secrets) and redeploy.'
     );

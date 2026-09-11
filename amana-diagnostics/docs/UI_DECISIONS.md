@@ -422,7 +422,7 @@ keeps its history.
 **Why.** All 29 routes were `'use client'`, so nothing in the product had HTML
 before its JavaScript arrived, and no route could export `metadata`. Thirty
 routes shared one browser-tab title — the back button and a row of pinned tabs
-were unreadable. Each route names itself now, against a `'%s · DiagnosticOS'`
+were unreadable. Each route names itself now, against a `'%s · Redian'`
 template on the root layout.
 
 **What it does not buy.** Not server-side data fetching. Auth is a Supabase

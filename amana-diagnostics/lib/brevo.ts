@@ -5,8 +5,8 @@
  * left under one particular clinic's name.
  */
 const MAIL_SENDER = {
-  name: process.env['MAIL_FROM_NAME'] || 'DiagnosticOS',
-  email: process.env['MAIL_FROM_ADDRESS'] || 'no-reply@diagnosticos.app',
+  name: process.env['MAIL_FROM_NAME'] || 'Redian',
+  email: process.env['MAIL_FROM_ADDRESS'] || 'no-reply@redian.app',
 };
 
 interface EmailOptions {

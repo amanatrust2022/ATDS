@@ -1,4 +1,4 @@
-# Amana Trust Diagnostics & Clinical Services — Internal Management System
+# Redian by Voltex Technologies — Internal Management System
 
 ## Overview
 A full-stack diagnostic center workflow system connecting:
@@ -69,7 +69,7 @@ The application operates in a hybrid environment with a robust database and sync
 
 ### 1. Hybrid Storage & Offline Sync
 - **Cloud Mode**: Connected to Supabase (PostgreSQL) for all remote storage, multi-tenancy, and real-time operations.
-- **Local Mode / Hub Mode**: Utilizes a local SQLite database (`amana_clinic.db` via `node:sqlite`) on-premise to ensure zero-downtime offline operations.
+- **Local Mode / Hub Mode**: Utilizes a local SQLite database (`redian_clinic.db` via `node:sqlite`, falling back to a pre-rename `amana_clinic.db` where one exists) on-premise to ensure zero-downtime offline operations.
 - **Synchronization**: Local changes are recorded in a `sync_outbox` table and periodically synced via `/api/sync` to the Supabase database.
 
 ### 2. Authentication & Authorization
@@ -85,7 +85,7 @@ The application operates in a hybrid environment with a robust database and sync
 ## File Structure
 
 ```
-amana-diagnostics/
+redian/
 ├── app/
 │   ├── layout.tsx          # Root layout
 │   ├── globals.css         # Design system (CSS variables, fonts)
@@ -109,4 +109,4 @@ amana-diagnostics/
 - **Staff management**: Add a `professionals` localStorage key and populate the "Professional" dropdown in `DepartmentPage.tsx`
 
 ---
-Built for Amana Trust Diagnostics & Clinical Services Limited, Kano, Nigeria
+Built for Redian by Voltex Technologies Limited, Kano, Nigeria

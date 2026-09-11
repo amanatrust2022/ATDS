@@ -1,7 +1,7 @@
 {
-  "name": "Amana Diagnostics",
-  "short_name": "AmanaDiag",
-  "description": "Offline-Resilient Laboratory & Radiology Management System",
+  "name": "Redian",
+  "short_name": "Redian",
+  "description": "Offline-Resilient Laboratory & Radiology Management System by Voltex Technologies",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0a0f1e",

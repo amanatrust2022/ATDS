@@ -6,8 +6,8 @@ const CURRENT_VERSION = '1.2.20';
 
 // Retrieve Supabase URL dynamically from environment (fallback to Kano project URL)
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://okjwqvdvrqqhvvmvkikc.supabase.co';
-const DOWNLOAD_URL = `https://github.com/amanatrust2022/amana-releases/releases/download/v${CURRENT_VERSION}/DiagnosticOS_${CURRENT_VERSION}_x64-setup.exe`;
-const DOWNLOAD_URL_MSI = `https://github.com/amanatrust2022/amana-releases/releases/download/v${CURRENT_VERSION}/DiagnosticOS_${CURRENT_VERSION}_x64_en-US.msi`;
+const DOWNLOAD_URL = `https://github.com/voltex-technologies/redian-releases/releases/download/v${CURRENT_VERSION}/Redian_${CURRENT_VERSION}_x64-setup.exe`;
+const DOWNLOAD_URL_MSI = `https://github.com/voltex-technologies/redian-releases/releases/download/v${CURRENT_VERSION}/Redian_${CURRENT_VERSION}_x64_en-US.msi`;
 const RELEASE_LIVE = true;
 
 export default function DownloadPage() {
@@ -90,7 +90,7 @@ export default function DownloadPage() {
             <div style={{ background: 'linear-gradient(135deg,#4472c4,#6b97e4)', borderRadius: 10, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 14px rgba(68,114,196,.45)' }}>
               <RiMicroscopeLine size={17} color="white" />
             </div>
-            <span style={{ fontWeight: 800, fontSize: '.97rem', letterSpacing: '-.03em' }}>DiagnosticOS</span>
+            <span style={{ fontWeight: 800, fontSize: '.97rem', letterSpacing: '-.03em' }}>Redian</span>
           </div>
           <button onClick={() => router.push('/')} className="btn-g" style={{ padding: '.35rem .85rem', fontSize: '.8rem' }}>
             <RiArrowLeftLine size={14} /> Back to Home
@@ -128,7 +128,7 @@ export default function DownloadPage() {
           )}
 
           <h1 className="a3 gt" style={{ fontSize: 'clamp(2.2rem,5vw,3.5rem)', fontWeight: 800, letterSpacing: '-.045em', lineHeight: 1.1, marginBottom: '1.25rem' }}>
-            Amana Diagnostics<br />Local Hub
+            Redian<br />Local Hub
           </h1>
 
           <p className="a4" style={{ fontSize: 'clamp(.95rem,1.8vw,1.1rem)', color: 'rgba(255,255,255,.42)', maxWidth: 560, margin: '0 auto 2.5rem', lineHeight: 1.8 }}>
@@ -309,7 +309,7 @@ export default function DownloadPage() {
 
       {/* FOOTER */}
       <footer style={{ borderTop: '1px solid rgba(255,255,255,.05)', padding: '1.5rem 2rem', textAlign: 'center' }}>
-        <span style={{ fontSize: '.72rem', color: 'rgba(255,255,255,.18)' }}>© {new Date().getFullYear()} DiagnosticOS · <a href="/" className="nl" style={{ fontSize: '.72rem' }}>Home</a> · <a href="/signup" className="nl" style={{ fontSize: '.72rem' }}>Cloud Trial</a></span>
+        <span style={{ fontSize: '.72rem', color: 'rgba(255,255,255,.18)' }}>© {new Date().getFullYear()} Redian · <a href="/" className="nl" style={{ fontSize: '.72rem' }}>Home</a> · <a href="/signup" className="nl" style={{ fontSize: '.72rem' }}>Cloud Trial</a></span>
       </footer>
     </div>
   );

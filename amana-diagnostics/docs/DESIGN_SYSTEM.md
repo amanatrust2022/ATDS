@@ -1,4 +1,4 @@
-# The DiagnosticOS design system
+# The Redian design system
 
 How to build a screen. Read this before writing UI.
 

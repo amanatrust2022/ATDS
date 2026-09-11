@@ -467,7 +467,7 @@ export default function Header({ title, subtitle, icon = <RiMicroscopeLine size=
               ×
             </button>
             <h3 style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '1.1rem', marginBottom: '1rem', color: 'var(--gray-900)' }}>
-              {isTauri ? "Clinic LAN Server Setup" : "Install DiagnosticOS App"}
+              {isTauri ? "Clinic LAN Server Setup" : "Install Redian App"}
             </h3>
             
             <p style={{ fontSize: '0.82rem', color: 'var(--gray-600)', marginBottom: '1rem', lineHeight: '1.4' }}>

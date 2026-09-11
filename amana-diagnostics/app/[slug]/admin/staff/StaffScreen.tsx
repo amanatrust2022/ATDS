@@ -1094,7 +1094,7 @@ function StaffManagement() {
                       </table>
 
                       <div class="footer">
-                        Amana EHR Compliance and Auditing Service • Confidential Record • System Generated Document
+                        Redian EHR Compliance and Auditing Service • Confidential Record • System Generated Document
                       </div>
                     </body>
                   </html>

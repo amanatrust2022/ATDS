@@ -229,7 +229,7 @@ export function AppShell({
           {!collapsed && (
             <span className={styles['brandText']}>
               <span className={styles['brandName']}>
-                {organization?.name ?? 'DiagnosticOS'}
+                {organization?.name ?? 'Redian'}
               </span>
               <span className={styles['brandMeta']}>
                 {role ? role.replace('_', ' ') : 'Signed in'}

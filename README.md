@@ -1,4 +1,4 @@
-# Amana Trust Diagnostics & Clinical Services — Internal Management System
+# Redian by Voltex Technologies — Internal Management System
 
 ## Overview
 A full-stack diagnostic center workflow system connecting:
@@ -76,7 +76,7 @@ Open http://localhost:3000 and select your workstation.
 ## File Structure
 
 ```
-amana-diagnostics/
+redian/
 ├── app/
 │   ├── layout.tsx          # Root layout
 │   ├── globals.css         # Design system (CSS variables, fonts)
@@ -100,4 +100,4 @@ amana-diagnostics/
 - **Staff management**: Add a `professionals` localStorage key and populate the "Professional" dropdown in `DepartmentPage.tsx`
 
 ---
-Built for Amana Trust Diagnostics & Clinical Services Limited, Kano, Nigeria
+Built for Redian by Voltex Technologies Limited, Kano, Nigeria

@@ -270,7 +270,7 @@ export default function LandingPage() {
             <div style={{ background: 'linear-gradient(135deg,#4472c4,#6b97e4)', borderRadius: 10, width: 34, height: 34, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 14px rgba(68,114,196,.45)' }}>
               <RiMicroscopeLine size={18} color="white" />
             </div>
-            <span style={{ fontWeight: 800, fontSize: '1rem', letterSpacing: '-.03em' }}>DiagnosticOS</span>
+            <span style={{ fontWeight: 800, fontSize: '1rem', letterSpacing: '-.03em' }}>Redian</span>
           </div>
           <div className="mhide" style={{ display: 'flex', gap: '1.5rem' }}>
             <a href="#features" className="nl">Features</a>
@@ -316,7 +316,7 @@ export default function LandingPage() {
 
           {/* Subheadline */}
           <p className="hero-s3" style={{ fontSize: 'clamp(1rem,1.8vw,1.2rem)', color: 'rgba(255,255,255,.45)', maxWidth: 640, margin: '0 auto 2.5rem', lineHeight: 1.8 }}>
-            DiagnosticOS connects Reception, Lab, and Radiology in real time — on cloud or completely offline. Built for African diagnostics where reliable internet is a privilege, not a guarantee.
+            Redian connects Reception, Lab, and Radiology in real time — on cloud or completely offline. Built for African diagnostics where reliable internet is a privilege, not a guarantee.
           </p>
 
           {/* CTAs */}
@@ -411,7 +411,7 @@ export default function LandingPage() {
             Every department. <span className="gt-blue">One system.</span>
           </h2>
           <p style={{ color: 'rgba(255,255,255,.38)', marginTop: '1rem', fontSize: '.95rem', maxWidth: 520, margin: '1rem auto 0', lineHeight: 1.8 }}>
-            No more scattered spreadsheets or paper forms. DiagnosticOS unifies your entire facility in a single, beautiful workspace.
+            No more scattered spreadsheets or paper forms. Redian unifies your entire facility in a single, beautiful workspace.
           </p>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(300px,1fr))', gap: '1.15rem' }}>
@@ -486,7 +486,7 @@ export default function LandingPage() {
                 <div style={{ background: 'rgba(68,114,196,.18)', border: '2px solid rgba(68,114,196,.5)', borderRadius: 16, padding: '1.25rem', textAlign: 'center', marginBottom: '1.5rem' }}>
                   <div style={{ fontSize: '2.25rem', marginBottom: '.3rem' }}>🖥️</div>
                   <div style={{ fontSize: '.75rem', fontWeight: 700, color: '#7fa3e0' }}>Local Hub PC</div>
-                  <div style={{ fontSize: '.63rem', color: 'rgba(255,255,255,.3)', marginTop: '.15rem' }}>DiagnosticOS · Port 3000+</div>
+                  <div style={{ fontSize: '.63rem', color: 'rgba(255,255,255,.3)', marginTop: '.15rem' }}>Redian · Port 3000+</div>
                 </div>
                 {/* Devices */}
                 {[{ emoji: '📱', label: 'Reception Tablet' }, { emoji: '💻', label: 'Lab Laptop' }, { emoji: '🖥️', label: 'Radiology PC' }].map((d, i) => (
@@ -541,7 +541,7 @@ export default function LandingPage() {
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(300px,1fr))', gap: '1.15rem' }}>
           {[
-            { quote: '"Before DiagnosticOS, lab results were scribbled on paper and handed across the corridor. Now reception, lab, and radiology all see updates live. Even when NEPA takes light, we keep working on the Local Hub."', name: 'Dr. Aminu Bello', title: 'Medical Director', org: 'Kano Diagnostic Centre, Nigeria' },
+            { quote: '"Before Redian, lab results were scribbled on paper and handed across the corridor. Now reception, lab, and radiology all see updates live. Even when NEPA takes light, we keep working on the Local Hub."', name: 'Dr. Aminu Bello', title: 'Medical Director', org: 'Kano Diagnostic Centre, Nigeria' },
             { quote: '"The offline Local Hub is a lifesaver. Our internet goes down three times a week. We installed it on one laptop and now the whole clinic runs off it. Auto-updates happen on their own."', name: 'Rejoice Adjei', title: 'Lab Manager', org: 'Accra MedLab, Ghana' },
             { quote: '"Setup was shockingly simple — we were live in 10 minutes. The thermal printing works perfectly with our 80mm printer. Slips look professional and patients now trust us more."', name: 'Fatima Waweru', title: 'Operations Lead', org: 'Nairobi Diagnostic Hub, Kenya' },
           ].map(t => (
@@ -651,7 +651,7 @@ export default function LandingPage() {
               <div style={{ background: 'linear-gradient(135deg,#4472c4,#6b97e4)', borderRadius: 8, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <RiMicroscopeLine size={15} color="white" />
               </div>
-              <span style={{ fontWeight: 800, fontSize: '.9rem', color: 'rgba(255,255,255,.75)' }}>DiagnosticOS</span>
+              <span style={{ fontWeight: 800, fontSize: '.9rem', color: 'rgba(255,255,255,.75)' }}>Redian</span>
             </div>
             <p style={{ fontSize: '.76rem', color: 'rgba(255,255,255,.22)', maxWidth: 230, lineHeight: 1.65 }}>
               Built for African diagnostic centres that run on resilience, not just reliable power.
@@ -673,7 +673,7 @@ export default function LandingPage() {
           </div>
         </div>
         <div style={{ borderTop: '1px solid rgba(255,255,255,.05)', marginTop: '2.5rem', paddingTop: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '.5rem' }}>
-          <span style={{ fontSize: '.73rem', color: 'rgba(255,255,255,.18)' }}>© {new Date().getFullYear()} DiagnosticOS · Built for Africa</span>
+          <span style={{ fontSize: '.73rem', color: 'rgba(255,255,255,.18)' }}>© {new Date().getFullYear()} Redian · Built for Africa</span>
           <span style={{ fontSize: '.73rem', color: 'rgba(255,255,255,.13)' }}>All rights reserved</span>
         </div>
       </footer>

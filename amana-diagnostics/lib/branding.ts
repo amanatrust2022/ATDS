@@ -1,22 +1,23 @@
 /**
  * Every place the product has to name a clinic when it does not know one.
  *
- * "Amana Trust Diagnostics" was written into eighteen places across the portal
- * pages and the outgoing emails — a single tenant's name hard-coded into a
- * multi-tenant product, so every clinic's patients received another clinic's
- * branding. These constants are the interim fix: one edit instead of eighteen.
+ * These constants are the single source of truth for Redian product branding.
+ * One edit here propagates to every portal page, email, and print template
+ * instead of hunting through dozens of scattered strings.
  *
- * The real fix is Phase 8. The portal pages below the login screen have no
- * organisation in scope at all — /api/portal/history returns patients and
- * tests but no org — so the tenant's name, logo and accent have to be threaded
- * through the portal session before the fallbacks below can stop being used.
+ * The portal no longer relies on these. /api/portal/history and
+ * /api/portal/results both answer with the organisation, so every screen below
+ * the portal's sign-in names the clinic the patient actually attended, and the
+ * report carries that clinic's own letterhead. FALLBACK_ORG_NAME is now what
+ * it says on the tin — the name for a tenant that genuinely cannot be
+ * identified — rather than a stand-in for work not yet done.
  */
 
 /** Shown when the tenant is genuinely unknown. Never a real clinic's name. */
 export const FALLBACK_ORG_NAME = 'Your Diagnostic Centre';
 
 /** The software itself, not the clinic running it. */
-export const PRODUCT_NAME = 'DiagnosticOS';
+export const PRODUCT_NAME = 'Redian';
 
 /** `orgName(org)` reads better at the call site than `org?.name || FALLBACK`. */
 export const orgName = (org?: { name?: string | null } | null): string =>
@@ -29,4 +30,4 @@ export const orgName = (org?: { name?: string | null } | null): string =>
  * own address from the organisations table.
  */
 export const SUPPORT_EMAIL =
-  process.env['NEXT_PUBLIC_SUPPORT_EMAIL'] || 'support@diagnosticos.app';
+  process.env['NEXT_PUBLIC_SUPPORT_EMAIL'] || 'support@redian.app';
