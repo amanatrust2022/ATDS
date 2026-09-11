@@ -1,0 +1,282 @@
+/* The commission report.
+ *
+ * Replaces roughly 113 inline style objects, a hand-rolled modal, two
+ * hand-rolled tab strips and a filter bar of toggle buttons that carried their
+ * own selected-state colours. The screen also drew its own page header under
+ * the shell's, inside a minHeight:100vh that gave the admin area a second
+ * scrollbar.
+ */
+
+.screen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+/* --- The four figures --- */
+
+.summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-3);
+}
+
+.figure,
+.figureOwed {
+  margin: 0;
+  font-size: var(--text-xl);
+  font-weight: var(--weight-bold);
+  line-height: 1.1;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* What the clinic still has to pay out. The one figure on this screen that
+ * should catch the eye. */
+.figureOwed {
+  color: var(--warning-text);
+}
+
+.figureLabel {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* --- Filters --- */
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3);
+}
+
+.searchField {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.dates {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+
+.dateField {
+  width: 150px;
+}
+
+.exports {
+  display: flex;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+/* --- Shared cell bits --- */
+
+.loading {
+  padding: var(--space-5);
+}
+
+.nowrap {
+  white-space: nowrap;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.strong {
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+}
+
+.muted {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  text-transform: capitalize;
+}
+
+.slip {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--text-secondary);
+}
+
+.referrer {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-muted);
+  min-width: 0;
+}
+
+.tests {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  max-width: 240px;
+}
+
+.commission {
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Grouped by referrer --- */
+
+.groups {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.groupCard {
+  overflow: hidden;
+}
+
+.groupHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+  flex-wrap: wrap;
+}
+
+.groupToggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex: 1 1 220px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.chevron {
+  display: inline-flex;
+  color: var(--text-muted);
+}
+
+.groupName {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+}
+
+.groupFigures {
+  display: flex;
+  gap: var(--space-6);
+  margin: 0;
+  text-align: right;
+}
+
+.groupFigures dt {
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.groupFigures dd {
+  margin: 2px 0 0;
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.settled {
+  color: var(--success-text);
+}
+
+.owed {
+  color: var(--warning-text);
+}
+
+@media (max-width: 860px) {
+  .groupFigures {
+    flex-basis: 100%;
+    justify-content: space-between;
+    gap: var(--space-3);
+    text-align: left;
+  }
+}
+
+/* --- The settle dialog --- */
+
+.settle {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.settleFacts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+}
+
+.settleFacts dt {
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.settleFacts dd {
+  margin: 2px 0 0;
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium);
+  color: var(--text-primary);
+}
+
+.settleAmount {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  margin: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-md);
+  background: var(--accent-subtle);
+  text-align: center;
+}
+
+.settleAmountLabel {
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--accent-subtle-text);
+}
+
+.settleAmountValue {
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-bold);
+  color: var(--accent-subtle-text);
+  font-variant-numeric: tabular-nums;
+}
