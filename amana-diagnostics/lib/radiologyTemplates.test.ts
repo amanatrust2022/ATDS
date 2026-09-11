@@ -45,6 +45,21 @@ describe('Canned radiology templates', () => {
     }
   });
 
+  /**
+   * Sections read "URINARY BLADDER:", never ":URINARY BLADDER:". 183 of them
+   * carried a colon in front of the heading — the same transcription residue as
+   * the letterhead, just spread wider.
+   */
+  it('opens no line with a stray colon', () => {
+    for (const [key, t] of entries) {
+      for (const text of [t.findings, t.impression]) {
+        for (const line of text.split('\n')) {
+          expect(line.trimStart().startsWith(':'), `${key}: line opens with a colon — "${line.slice(0, 40)}"`).toBe(false);
+        }
+      }
+    }
+  });
+
   it('gives every template a name', () => {
     for (const [key, t] of entries) {
       expect(t.name?.trim(), `${key} has no name`).toBeTruthy();
