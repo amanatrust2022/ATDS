@@ -26,6 +26,8 @@ import {
   RiUploadCloud2Line,
 } from '@remixicon/react';
 
+import styles from './LetterheadDesigner.module.css';
+
 // ── Canvas geometry ──────────────────────────────────────────────────────────
 // Kept within the printable width of the A4 report (≈753px inside its @page
 // margins) so the design never overflows the page.
@@ -653,62 +655,69 @@ export default function LetterheadDesigner({ value, onChange, defaultHeight = DE
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div style={S.wrap}>
-      <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={onImagePick} />
-      <input ref={importRef} type="file" accept="image/*,application/pdf" style={{ display: 'none' }} onChange={onLetterheadImport} />
+    <div className={styles['wrap']}>
+      <input ref={fileRef} type="file" accept="image/*" className={styles['fileInput']} onChange={onImagePick} />
+      <input ref={importRef} type="file" accept="image/*,application/pdf" className={styles['fileInput']} onChange={onLetterheadImport} />
 
       {/* Toolbar */}
-      <div style={S.toolbar}>
-        <button type="button" title="Import an existing letterhead (PNG, JPG or PDF) — fills the page, exact copy"
+      <div className={styles['toolbar']} role="toolbar" aria-label="Letterhead tools">
+        <button
+          type="button"
+          className={cx(styles['tbtn'], styles['tbtnPrimary'])}
+          title="Import an existing letterhead (PNG, JPG or PDF) — fills the page, exact copy"
           onClick={() => importRef.current?.click()}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 10px', fontSize: '0.74rem', fontWeight: 700,
-            border: '1px solid #2563eb', borderRadius: 5, background: '#2563eb', color: '#fff', cursor: 'pointer' }}>
-          <RiUploadCloud2Line size={16} /> Import letterhead
+        >
+          <RiUploadCloud2Line size={16} aria-hidden="true" /> Import letterhead
         </button>
-        <div style={{ width: 1, height: 22, background: '#e2e8f0', margin: '0 2px' }} />
-        <span style={S.tGroupLabel}>Add</span>
-        <TBtn title="Text box" onClick={() => addEl('text')}><RiText size={16} /> Text</TBtn>
-        <TBtn title="Image / logo" onClick={() => fileRef.current?.click()}><RiImageAddLine size={16} /> Image</TBtn>
-        <TBtn title="Line" onClick={() => addEl('line')}><RiSeparator size={16} /> Line</TBtn>
-        <TBtn title="Rectangle" onClick={() => addEl('rect')}><RiSquareLine size={16} /> Rect</TBtn>
-        <TBtn title="Circle / ellipse" onClick={() => addEl('circle')}><RiCircleLine size={16} /> Circle</TBtn>
-        <div style={{ position: 'relative' }}>
-          <TBtn title="More shapes" onClick={() => setShapeMenu((v) => !v)}><RiShapesLine size={16} /> Shapes ▾</TBtn>
+        <div className={styles['divider']} role="separator" aria-orientation="vertical" />
+        <span className={styles['groupLabel']} aria-hidden="true">Add</span>
+        <TBtn label="Text box" onClick={() => addEl('text')}><RiText size={16} aria-hidden="true" /> Text</TBtn>
+        <TBtn label="Image or logo" onClick={() => fileRef.current?.click()}><RiImageAddLine size={16} aria-hidden="true" /> Image</TBtn>
+        <TBtn label="Line" onClick={() => addEl('line')}><RiSeparator size={16} aria-hidden="true" /> Line</TBtn>
+        <TBtn label="Rectangle" onClick={() => addEl('rect')}><RiSquareLine size={16} aria-hidden="true" /> Rect</TBtn>
+        <TBtn label="Circle or ellipse" onClick={() => addEl('circle')}><RiCircleLine size={16} aria-hidden="true" /> Circle</TBtn>
+        <div className={styles['menuWrap']}>
+          <TBtn label="More shapes" expanded={shapeMenu} onClick={() => setShapeMenu((v) => !v)}>
+            <RiShapesLine size={16} aria-hidden="true" /> Shapes ▾
+          </TBtn>
           {shapeMenu && (
             <>
-              <div style={S.menuBackdrop} onClick={() => setShapeMenu(false)} />
-              <div style={S.menu}>
-                <MenuItem onClick={() => { addEl('triangle'); setShapeMenu(false); }}><RiTriangleLine size={15} /> Triangle</MenuItem>
-                <MenuItem onClick={() => { addEl('diamond'); setShapeMenu(false); }}><RiVipDiamondLine size={15} /> Diamond</MenuItem>
-                <MenuItem onClick={() => { addEl('pentagon'); setShapeMenu(false); }}><RiPentagonLine size={15} /> Pentagon</MenuItem>
-                <MenuItem onClick={() => { addEl('hexagon'); setShapeMenu(false); }}><RiHexagonLine size={15} /> Hexagon</MenuItem>
-                <MenuItem onClick={() => { addEl('star'); setShapeMenu(false); }}><RiStarLine size={15} /> Star</MenuItem>
+              <div className={styles['menuBackdrop']} onClick={() => setShapeMenu(false)} />
+              <div className={styles['menu']} role="menu" aria-label="More shapes">
+                <MenuItem onClick={() => { addEl('triangle'); setShapeMenu(false); }}><RiTriangleLine size={15} aria-hidden="true" /> Triangle</MenuItem>
+                <MenuItem onClick={() => { addEl('diamond'); setShapeMenu(false); }}><RiVipDiamondLine size={15} aria-hidden="true" /> Diamond</MenuItem>
+                <MenuItem onClick={() => { addEl('pentagon'); setShapeMenu(false); }}><RiPentagonLine size={15} aria-hidden="true" /> Pentagon</MenuItem>
+                <MenuItem onClick={() => { addEl('hexagon'); setShapeMenu(false); }}><RiHexagonLine size={15} aria-hidden="true" /> Hexagon</MenuItem>
+                <MenuItem onClick={() => { addEl('star'); setShapeMenu(false); }}><RiStarLine size={15} aria-hidden="true" /> Star</MenuItem>
               </div>
             </>
           )}
         </div>
-        <div style={{ width: 1, height: 22, background: '#e2e8f0', margin: '0 2px' }} />
-        <TBtn title="Undo (Ctrl+Z)" onClick={undo} disabled={!canUndo}><RiArrowGoBackLine size={16} /></TBtn>
-        <TBtn title="Redo (Ctrl+Shift+Z)" onClick={redo} disabled={!canRedo}><RiArrowGoForwardLine size={16} /></TBtn>
-        <button type="button" title="Snap to other elements and the page edges while dragging"
+        <div className={styles['divider']} role="separator" aria-orientation="vertical" />
+        <TBtn label="Undo (Ctrl+Z)" onClick={undo} disabled={!canUndo}><RiArrowGoBackLine size={16} aria-hidden="true" /></TBtn>
+        <TBtn label="Redo (Ctrl+Shift+Z)" onClick={redo} disabled={!canRedo}><RiArrowGoForwardLine size={16} aria-hidden="true" /></TBtn>
+        <TBtn
+          label="Snap to other elements and the page edges while dragging"
+          pressed={snapOn}
           onClick={() => setSnapOn((v) => !v)}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 9px', fontSize: '0.74rem', fontWeight: 600,
-            border: '1px solid ' + (snapOn ? '#2563eb' : '#e2e8f0'), borderRadius: 5,
-            background: snapOn ? '#e0f2fe' : '#fff', color: snapOn ? '#0369a1' : '#334155', cursor: 'pointer' }}>
-          <RiFocus3Line size={16} /> Snap {snapOn ? 'on' : 'off'}
-        </button>
-        <div style={{ flex: 1 }} />
-        <span style={{ fontSize: '0.72rem', color: '#64748b' }}>Height</span>
-        <NumInput value={height} onCommit={setHeightSafe} style={S.numSm} />
-        <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>px</span>
+        >
+          <RiFocus3Line size={16} aria-hidden="true" /> Snap {snapOn ? 'on' : 'off'}
+        </TBtn>
+        <div className={styles['spacer']} />
+        <label className={styles['heightField']}>
+          Height
+          <NumInput value={height} onCommit={setHeightSafe} className={cx(styles['num'], styles['numSm'])} />
+          px
+        </label>
       </div>
 
-      <div style={S.body}>
+      <div className={styles['body']}>
         {/* Canvas */}
-        <div style={S.canvasScroll}>
+        <div className={styles['canvasScroll']}>
           <div
             ref={canvasRef}
-            style={{ ...S.canvas, width: CANVAS_W, height }}
+            className={styles['canvas']}
+            style={{ width: CANVAS_W, height }}
             onMouseDown={() => { setSelId(null); setEditingId(null); }}
           >
             {[...els].sort((a, b) => a.z - b.z).map((e) => (
@@ -721,19 +730,36 @@ export default function LetterheadDesigner({ value, onChange, defaultHeight = DE
               />
             ))}
             {guides.x.map((gx, i) => (
-              <div key={`gx${i}`} style={{ position: 'absolute', left: gx, top: 0, width: 1, height: '100%', background: '#ec4899', zIndex: 10000, pointerEvents: 'none' }} />
+              <div key={`gx${i}`} className={styles['guideX']} style={{ left: gx }} />
             ))}
             {guides.y.map((gy, i) => (
-              <div key={`gy${i}`} style={{ position: 'absolute', top: gy, left: 0, height: 1, width: '100%', background: '#ec4899', zIndex: 10000, pointerEvents: 'none' }} />
+              <div key={`gy${i}`} className={styles['guideY']} style={{ top: gy }} />
             ))}
           </div>
         </div>
 
         {/* Inspector */}
-        <div style={S.inspector}>
-          {!sel && <div style={S.hint}>Select an element to edit its properties, or add one from the toolbar. Double-click a text box to type.<br /><br />Undo/redo with the toolbar buttons or Ctrl+Z / Ctrl+Shift+Z. Arrow keys nudge (Shift = 10px), Ctrl+D duplicates, Delete removes, Esc deselects.<br /><br />Snapping is a toolbar toggle; you can also hold Alt to switch it off for a single drag.</div>}
-          {sel && <Inspector e={sel} onChange={(patch) => { checkpoint('insp:' + Object.keys(patch)[0]); update(sel.id, patch); }} onDelete={() => removeEl(sel.id)}
-            onFront={() => bringFront(sel.id)} onBack={() => sendBack(sel.id)} onDuplicate={() => duplicate(sel.id)} onAlign={alignEl} />}
+        <div className={styles['inspector']} role="region" aria-label="Element properties">
+          {!sel && (
+            <div className={styles['hint']}>
+              Select an element to edit its properties, or add one from the toolbar. Double-click a text box to type.
+              <br /><br />
+              Undo/redo with the toolbar buttons or Ctrl+Z / Ctrl+Shift+Z. Arrow keys nudge (Shift = 10px), Ctrl+D duplicates, Delete removes, Esc deselects.
+              <br /><br />
+              Snapping is a toolbar toggle; you can also hold Alt to switch it off for a single drag.
+            </div>
+          )}
+          {sel && (
+            <Inspector
+              e={sel}
+              onChange={(patch) => { checkpoint('insp:' + Object.keys(patch)[0]); update(sel.id, patch); }}
+              onDelete={() => removeEl(sel.id)}
+              onFront={() => bringFront(sel.id)}
+              onBack={() => sendBack(sel.id)}
+              onDuplicate={() => duplicate(sel.id)}
+              onAlign={alignEl}
+            />
+          )}
         </div>
       </div>
     </div>
@@ -741,6 +767,8 @@ export default function LetterheadDesigner({ value, onChange, defaultHeight = DE
 }
 
 // ── Element view + handles ───────────────────────────────────────────────────
+// Everything positioned here is inline on purpose: x, y, w, h and rotation are
+// the design itself, not styling, and they are what gets serialised for print.
 function ElementView({ e, selected, editing, onMouseDown, onDoubleClick, onResizeStart, onRotateStart, onTextInput }: {
   e: El; selected: boolean; editing: boolean;
   onMouseDown: (ev: React.MouseEvent) => void; onDoubleClick: () => void;
@@ -791,8 +819,9 @@ function ElementView({ e, selected, editing, onMouseDown, onDoubleClick, onResiz
     inner = (
       <div
         ref={editRef} contentEditable={editing} suppressContentEditableWarning
+        className={styles['textEdit']}
         onInput={(ev) => { const el = ev.target as HTMLElement; onTextInput(el.innerHTML, el.scrollHeight); }}
-        style={{ width: '100%', height: '100%',  cursor: editing ? 'text' : 'move' }}
+        style={{ cursor: editing ? 'text' : 'move' }}
       />
     );
   } else if (e.type === 'image') {
@@ -803,8 +832,8 @@ function ElementView({ e, selected, editing, onMouseDown, onDoubleClick, onResiz
     });
     const { iw, ih, ox, oy } = imgDisplay(e);
     inner = (
-      <img src={e.src} alt="" draggable={false}
-        style={{ position: 'absolute', left: -ox, top: -oy, width: iw, height: ih, maxWidth: 'none', display: 'block', pointerEvents: 'none' }} />
+      <img src={e.src} alt="" draggable={false} className={styles['image']}
+        style={{ left: -ox, top: -oy, width: iw, height: ih }} />
     );
   } else if (e.type === 'line') {
     Object.assign(shapeStyle, { background: e.fill });
@@ -831,20 +860,18 @@ function ElementView({ e, selected, editing, onMouseDown, onDoubleClick, onResiz
     <>
       {el}
       {selected && !editing && (
-        <div style={{ position: 'absolute', left: e.x, top: e.y, width: e.w, height: e.h,
-          transform: e.rot ? `rotate(${e.rot}deg)` : undefined, zIndex: 9999, pointerEvents: 'none',
-          outline: '1px solid #2563eb' }}>
+        <div
+          className={styles['selection']}
+          style={{ left: e.x, top: e.y, width: e.w, height: e.h, transform: e.rot ? `rotate(${e.rot}deg)` : undefined }}
+        >
           {handles.map(([sx, sy, cursor], i) => (
             <div key={i} onMouseDown={(ev) => onResizeStart(ev, e, sx, sy)}
-              style={{ position: 'absolute', width: 10, height: 10, background: '#fff', border: '1.5px solid #2563eb',
-                borderRadius: 2, pointerEvents: 'auto', cursor,
-                left: hpos(sx, e.w), top: hpos(sy, e.h) }} />
+              className={styles['handle']}
+              style={{ cursor, left: hpos(sx, e.w), top: hpos(sy, e.h) }} />
           ))}
           {/* rotate handle */}
-          <div onMouseDown={(ev) => onRotateStart(ev, e)}
-            style={{ position: 'absolute', left: e.w / 2 - 6, top: -28, width: 12, height: 12, borderRadius: '50%',
-              background: '#2563eb', border: '2px solid #fff', pointerEvents: 'auto', cursor: 'grab' }} />
-          <div style={{ position: 'absolute', left: e.w / 2, top: -18, width: 1, height: 18, background: '#2563eb' }} />
+          <div onMouseDown={(ev) => onRotateStart(ev, e)} className={styles['rotateHandle']} style={{ left: e.w / 2 - 6 }} />
+          <div className={styles['rotateStem']} style={{ left: e.w / 2 }} />
         </div>
       )}
     </>
@@ -858,113 +885,129 @@ function Inspector({ e, onChange, onDelete, onFront, onBack, onDuplicate, onAlig
   onAlign: (how: 'left' | 'hcenter' | 'right' | 'top' | 'vcenter' | 'bottom') => void;
 }) {
   const num = (label: string, key: keyof El, step = 1) => (
-    <label style={S.field}><span style={S.fLabel}>{label}</span>
-      <NumInput value={e[key] as number} step={step} style={S.num}
+    <label className={styles['field']}><span className={styles['fLabel']}>{label}</span>
+      <NumInput value={e[key] as number} step={step} className={styles['num']}
         onCommit={(n) => onChange({ [key]: n } as any)} />
     </label>
   );
   const color = (label: string, key: keyof El) => (
-    <label style={S.field}><span style={S.fLabel}>{label}</span>
-      <input type="color" value={(e[key] as string) || '#000000'} onChange={(ev) => onChange({ [key]: ev.target.value } as any)} style={S.color} />
+    <label className={styles['field']}><span className={styles['fLabel']}>{label}</span>
+      <input type="color" value={(e[key] as string) || '#000000'} onChange={(ev) => onChange({ [key]: ev.target.value } as any)} className={styles['color']} />
     </label>
   );
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <div style={S.inspTitle}>{e.type} properties</div>
+    <div className={styles['inspBody']}>
+      <h3 className={styles['inspTitle']}>{e.type} properties</h3>
 
-      <div style={S.row}>{num('X', 'x')}{num('Y', 'y')}</div>
-      <div style={S.row}>{num('W', 'w')}{num('H', 'h')}</div>
-      <div style={S.row}>{num('Angle°', 'rot')}
-        <label style={S.field}><span style={S.fLabel}>Opacity</span>
+      <div className={styles['row']}>{num('X', 'x')}{num('Y', 'y')}</div>
+      <div className={styles['row']}>{num('W', 'w')}{num('H', 'h')}</div>
+      <div className={styles['row']}>{num('Angle°', 'rot')}
+        <label className={styles['field']}><span className={styles['fLabel']}>Opacity</span>
           <input type="range" min={0.1} max={1} step={0.05} value={e.opacity}
-            onChange={(ev) => onChange({ opacity: parseFloat(ev.target.value) })} style={{ width: '100%' }} />
+            onChange={(ev) => onChange({ opacity: parseFloat(ev.target.value) })} className={styles['range']} />
         </label>
       </div>
 
       <div>
-        <span style={S.fLabel}>Align to page</span>
-        <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
-          <IconBtn title="Left edge" onClick={() => onAlign('left')}><RiAlignItemLeftLine size={15} /></IconBtn>
-          <IconBtn title="Centre horizontally" onClick={() => onAlign('hcenter')}><RiAlignItemHorizontalCenterLine size={15} /></IconBtn>
-          <IconBtn title="Right edge" onClick={() => onAlign('right')}><RiAlignItemRightLine size={15} /></IconBtn>
-          <span style={{ width: 1, background: '#e2e8f0', margin: '0 2px' }} />
-          <IconBtn title="Top edge" onClick={() => onAlign('top')}><RiAlignItemTopLine size={15} /></IconBtn>
-          <IconBtn title="Centre vertically" onClick={() => onAlign('vcenter')}><RiAlignItemVerticalCenterLine size={15} /></IconBtn>
-          <IconBtn title="Bottom edge" onClick={() => onAlign('bottom')}><RiAlignItemBottomLine size={15} /></IconBtn>
+        <span className={styles['fLabel']} id="align-label">Align to page</span>
+        <div className={styles['btnRow']} role="group" aria-labelledby="align-label">
+          <IconBtn label="Left edge" onClick={() => onAlign('left')}><RiAlignItemLeftLine size={15} /></IconBtn>
+          <IconBtn label="Centre horizontally" onClick={() => onAlign('hcenter')}><RiAlignItemHorizontalCenterLine size={15} /></IconBtn>
+          <IconBtn label="Right edge" onClick={() => onAlign('right')}><RiAlignItemRightLine size={15} /></IconBtn>
+          <span className={styles['vDivider']} />
+          <IconBtn label="Top edge" onClick={() => onAlign('top')}><RiAlignItemTopLine size={15} /></IconBtn>
+          <IconBtn label="Centre vertically" onClick={() => onAlign('vcenter')}><RiAlignItemVerticalCenterLine size={15} /></IconBtn>
+          <IconBtn label="Bottom edge" onClick={() => onAlign('bottom')}><RiAlignItemBottomLine size={15} /></IconBtn>
         </div>
       </div>
 
       {e.type === 'text' && (
         <>
-          <div style={S.row}>
-            <label style={S.field}><span style={S.fLabel}>Font</span>
-              <select value={e.fontFamily} onChange={(ev) => onChange({ fontFamily: ev.target.value })} style={S.select}>
-                {FONTS.map((f) => <option key={f} value={f}>{f.split(',')[0].replace(/'/g, '')}</option>)}
+          <div className={styles['row']}>
+            <label className={styles['field']}><span className={styles['fLabel']}>Font</span>
+              <select value={e.fontFamily} onChange={(ev) => onChange({ fontFamily: ev.target.value })} className={styles['select']}>
+                {FONTS.map((f) => <option key={f} value={f}>{f.split(',')[0]!.replace(/'/g, '')}</option>)}
               </select>
             </label>
             {num('Size', 'fontSize')}
           </div>
-          <div style={S.row}>
+          <div className={styles['row']}>
             {color('Text', 'color')}
-            <div style={{ display: 'flex', gap: 4, alignItems: 'flex-end' }}>
-              <Toggle on={e.bold} onClick={() => onChange({ bold: !e.bold })}><RiBold size={15} /></Toggle>
-              <Toggle on={e.italic} onClick={() => onChange({ italic: !e.italic })}><RiItalic size={15} /></Toggle>
-              <Toggle on={e.underline} onClick={() => onChange({ underline: !e.underline })}><RiUnderline size={15} /></Toggle>
+            <div className={styles['rowEnd']} role="group" aria-label="Text style">
+              <Toggle label="Bold" on={e.bold} onClick={() => onChange({ bold: !e.bold })}><RiBold size={15} /></Toggle>
+              <Toggle label="Italic" on={e.italic} onClick={() => onChange({ italic: !e.italic })}><RiItalic size={15} /></Toggle>
+              <Toggle label="Underline" on={e.underline} onClick={() => onChange({ underline: !e.underline })}><RiUnderline size={15} /></Toggle>
             </div>
           </div>
-          <div style={{ display: 'flex', gap: 4 }}>
-            <Toggle on={e.align === 'left'} onClick={() => onChange({ align: 'left' })}><RiAlignLeft size={15} /></Toggle>
-            <Toggle on={e.align === 'center'} onClick={() => onChange({ align: 'center' })}><RiAlignCenter size={15} /></Toggle>
-            <Toggle on={e.align === 'right'} onClick={() => onChange({ align: 'right' })}><RiAlignRight size={15} /></Toggle>
+          <div className={styles['btnRow']} role="group" aria-label="Text alignment">
+            <Toggle label="Align left" on={e.align === 'left'} onClick={() => onChange({ align: 'left' })}><RiAlignLeft size={15} /></Toggle>
+            <Toggle label="Align centre" on={e.align === 'center'} onClick={() => onChange({ align: 'center' })}><RiAlignCenter size={15} /></Toggle>
+            <Toggle label="Align right" on={e.align === 'right'} onClick={() => onChange({ align: 'right' })}><RiAlignRight size={15} /></Toggle>
           </div>
         </>
       )}
 
       {FILLED.has(e.type) && color('Fill', 'fill')}
       {BORDERABLE.has(e.type) && (
-        <div style={S.row}>{num('Border', 'borderWidth')}{color('Bd. color', 'borderColor')}</div>
+        <div className={styles['row']}>{num('Border', 'borderWidth')}{color('Border colour', 'borderColor')}</div>
       )}
-      {(e.type === 'rect' || e.type === 'image') && <div style={S.row}>{num('Radius', 'radius')}<span style={{ flex: 1 }} /></div>}
+      {(e.type === 'rect' || e.type === 'image') && <div className={styles['row']}>{num('Radius', 'radius')}<span className={styles['spacer']} /></div>}
 
       {e.type === 'image' && (() => {
         const iw = e.iw || e.w, nar = e.nar || (e.ih || e.h) / (e.iw || e.w);
         const zoom = Math.round((iw / e.w) * 100);
         return (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, borderTop: '1px solid #f1f5f9', paddingTop: 8 }}>
-            <span style={S.fLabel}>Picture — resize the box to crop</span>
-            <label style={S.field}><span style={S.fLabel}>Zoom {zoom}%</span>
+          <div className={styles['picture']}>
+            <span className={styles['fLabel']}>Picture — resize the box to crop</span>
+            <label className={styles['field']}><span className={styles['fLabel']}>Zoom {zoom}%</span>
               <input type="range" min={100} max={400} step={1} value={Math.max(100, Math.min(400, zoom))}
-                onChange={(ev) => { const f = parseInt(ev.target.value) / 100; onChange({ iw: e.w * f, ih: e.w * f * nar }); }} style={{ width: '100%' }} />
+                onChange={(ev) => { const f = parseInt(ev.target.value) / 100; onChange({ iw: e.w * f, ih: e.w * f * nar }); }} className={styles['range']} />
             </label>
-            <div style={S.row}>{num('Crop X', 'ox')}{num('Crop Y', 'oy')}</div>
-            <div style={{ display: 'flex', gap: 6 }}>
-              <TBtn title="Fit the picture to the box width" onClick={() => onChange({ iw: e.w, ih: e.w * nar, ox: 0, oy: 0 })}>Fit width</TBtn>
-              <TBtn title="Fill the whole box, cropping the overflow" onClick={() => { const s = Math.max(e.w, e.h / nar); onChange({ iw: s, ih: s * nar, ox: (s - e.w) / 2, oy: (s * nar - e.h) / 2 }); }}>Fill box</TBtn>
+            <div className={styles['row']}>{num('Crop X', 'ox')}{num('Crop Y', 'oy')}</div>
+            <div className={styles['pictureBtns']}>
+              <TBtn label="Fit the picture to the box width" onClick={() => onChange({ iw: e.w, ih: e.w * nar, ox: 0, oy: 0 })}>Fit width</TBtn>
+              <TBtn label="Fill the whole box, cropping the overflow" onClick={() => { const s = Math.max(e.w, e.h / nar); onChange({ iw: s, ih: s * nar, ox: (s - e.w) / 2, oy: (s * nar - e.h) / 2 }); }}>Fill box</TBtn>
             </div>
           </div>
         );
       })()}
 
-      <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
-        <TBtn onClick={onFront}><RiBringToFront size={14} /> Front</TBtn>
-        <TBtn onClick={onBack}><RiSendToBack size={14} /> Back</TBtn>
-        <TBtn onClick={onDuplicate}><RiFileCopyLine size={14} /> Copy</TBtn>
-        <button type="button" onClick={onDelete} style={S.delBtn}><RiDeleteBinLine size={14} /> Delete</button>
+      <div className={styles['btnRowWide']}>
+        <TBtn label="Bring to front" onClick={onFront}><RiBringToFront size={14} aria-hidden="true" /> Front</TBtn>
+        <TBtn label="Send to back" onClick={onBack}><RiSendToBack size={14} aria-hidden="true" /> Back</TBtn>
+        <TBtn label="Duplicate" onClick={onDuplicate}><RiFileCopyLine size={14} aria-hidden="true" /> Copy</TBtn>
+        <button type="button" onClick={onDelete} className={cx(styles['tbtn'], styles['tbtnDanger'])}>
+          <RiDeleteBinLine size={14} aria-hidden="true" /> Delete
+        </button>
       </div>
     </div>
   );
 }
 
 // ── Small primitives ─────────────────────────────────────────────────────────
-function TBtn({ children, onClick, title, disabled }: { children: React.ReactNode; onClick?: () => void; title?: string; disabled?: boolean }) {
-  const [h, setH] = useState(false);
+const cx = (...names: Array<string | undefined | false>) => names.filter(Boolean).join(' ');
+
+/**
+ * A toolbar button. Named by `label` so an icon-only one (undo, redo) is not
+ * "button"; `pressed` makes it a toggle that says so; `expanded` a menu opener.
+ */
+function TBtn({ children, onClick, label, disabled, pressed, expanded }: {
+  children: React.ReactNode; onClick?: () => void; label: string; disabled?: boolean;
+  pressed?: boolean; expanded?: boolean;
+}) {
   return (
-    <button type="button" title={title} onClick={onClick} disabled={disabled}
-      onMouseEnter={() => setH(true)} onMouseLeave={() => setH(false)}
-      style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 9px', fontSize: '0.74rem', fontWeight: 600,
-        border: '1px solid #e2e8f0', borderRadius: 5, background: disabled ? '#f8fafc' : h ? '#f1f5f9' : '#fff',
-        color: disabled ? '#cbd5e1' : '#334155', cursor: disabled ? 'default' : 'pointer' }}>
+    <button
+      type="button"
+      className={styles['tbtn']}
+      aria-label={label}
+      title={label}
+      aria-pressed={pressed}
+      aria-haspopup={expanded === undefined ? undefined : 'menu'}
+      aria-expanded={expanded}
+      onClick={onClick}
+      disabled={disabled}
+    >
       {children}
     </button>
   );
@@ -972,14 +1015,14 @@ function TBtn({ children, onClick, title, disabled }: { children: React.ReactNod
 // A number field that lets you actually TYPE a value — clear it, type digits,
 // paste — instead of the arrows driving a hard-controlled input. It commits any
 // valid number as you type and re-syncs to the real value when focus leaves.
-function NumInput({ value, onCommit, step = 1, style }: {
-  value: number; onCommit: (n: number) => void; step?: number; style?: React.CSSProperties;
+function NumInput({ value, onCommit, step = 1, className }: {
+  value: number; onCommit: (n: number) => void; step?: number; className?: string;
 }) {
   const [text, setText] = useState(String(Math.round(value)));
   const [focused, setFocused] = useState(false);
   useEffect(() => { if (!focused) setText(String(Math.round(value))); }, [value, focused]);
   return (
-    <input type="number" step={step} value={text} style={style}
+    <input type="number" step={step} value={text} className={className}
       onFocus={(e) => { setFocused(true); e.currentTarget.select(); }}
       onChange={(e) => { setText(e.target.value); const n = parseFloat(e.target.value); if (!isNaN(n)) onCommit(n); }}
       onBlur={() => { setFocused(false); const n = parseFloat(text); if (!isNaN(n)) onCommit(n); }}
@@ -987,55 +1030,24 @@ function NumInput({ value, onCommit, step = 1, style }: {
   );
 }
 function MenuItem({ children, onClick }: { children: React.ReactNode; onClick: () => void }) {
-  const [h, setH] = useState(false);
   return (
-    <button type="button" onClick={onClick} onMouseEnter={() => setH(true)} onMouseLeave={() => setH(false)}
-      style={{ display: 'flex', alignItems: 'center', gap: 7, width: '100%', padding: '7px 12px', fontSize: '0.78rem',
-        fontWeight: 600, border: 'none', background: h ? '#f1f5f9' : '#fff', color: '#334155', cursor: 'pointer', textAlign: 'left' }}>
+    <button type="button" role="menuitem" onClick={onClick} className={styles['menuItem']}>
       {children}
     </button>
   );
 }
-function IconBtn({ children, onClick, title }: { children: React.ReactNode; onClick: () => void; title?: string }) {
-  const [h, setH] = useState(false);
+function IconBtn({ children, onClick, label }: { children: React.ReactNode; onClick: () => void; label: string }) {
   return (
-    <button type="button" title={title} onClick={onClick} onMouseEnter={() => setH(true)} onMouseLeave={() => setH(false)}
-      style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flex: 1, height: 28,
-        border: '1px solid #e2e8f0', borderRadius: 5, background: h ? '#f1f5f9' : '#fff', color: '#334155', cursor: 'pointer' }}>
+    <button type="button" aria-label={label} title={label} onClick={onClick} className={styles['iconBtn']}>
       {children}
     </button>
   );
 }
-function Toggle({ children, on, onClick }: { children: React.ReactNode; on: boolean; onClick: () => void }) {
+/** The old one had no name and no state: a screen reader heard "button". */
+function Toggle({ children, on, onClick, label }: { children: React.ReactNode; on: boolean; onClick: () => void; label: string }) {
   return (
-    <button type="button" onClick={onClick}
-      style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 26,
-        border: '1px solid ' + (on ? '#2563eb' : '#e2e8f0'), borderRadius: 5, background: on ? '#e0f2fe' : '#fff',
-        color: on ? '#0369a1' : '#334155', cursor: 'pointer' }}>
+    <button type="button" aria-label={label} title={label} aria-pressed={on} onClick={onClick} className={styles['toggle']}>
       {children}
     </button>
   );
 }
-
-// ── Styles ───────────────────────────────────────────────────────────────────
-const S: Record<string, React.CSSProperties> = {
-  wrap: { border: '1px solid #d1d5db', borderRadius: 6, overflow: 'hidden', background: '#f8fafc', display: 'flex', flexDirection: 'column' },
-  toolbar: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, padding: '8px 10px', background: '#fff', borderBottom: '1px solid #e2e8f0' },
-  tGroupLabel: { fontSize: '0.66rem', fontWeight: 800, textTransform: 'uppercase', color: '#94a3b8', marginRight: 2 },
-  body: { display: 'flex', minHeight: 340, alignItems: 'stretch' },
-  canvasScroll: { flex: 1, overflow: 'auto', padding: 20, background: '#e9edf2', display: 'flex', justifyContent: 'center' },
-  canvas: { position: 'relative', background: '#fff', boxShadow: '0 1px 4px rgba(0,0,0,0.15)', flexShrink: 0, backgroundImage: 'linear-gradient(#f1f5f9 1px, transparent 1px), linear-gradient(90deg, #f1f5f9 1px, transparent 1px)', backgroundSize: '20px 20px' },
-  inspector: { width: 250, flexShrink: 0, borderLeft: '1px solid #e2e8f0', background: '#fff', padding: 12, overflowY: 'auto' },
-  hint: { fontSize: '0.76rem', color: '#64748b', lineHeight: 1.5 },
-  inspTitle: { fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em', color: '#334155', paddingBottom: 6, borderBottom: '1px solid #f1f5f9' },
-  row: { display: 'flex', gap: 8 },
-  field: { display: 'flex', flexDirection: 'column', gap: 3, flex: 1, minWidth: 0 },
-  fLabel: { fontSize: '0.66rem', fontWeight: 600, color: '#64748b' },
-  num: { width: '100%', padding: '4px 6px', fontSize: '0.76rem', border: '1px solid #e2e8f0', borderRadius: 4, boxSizing: 'border-box' },
-  numSm: { width: 60, padding: '4px 6px', fontSize: '0.76rem', border: '1px solid #e2e8f0', borderRadius: 4 },
-  color: { width: '100%', height: 28, padding: 0, border: '1px solid #e2e8f0', borderRadius: 4, background: 'none', cursor: 'pointer' },
-  select: { width: '100%', padding: '4px 6px', fontSize: '0.74rem', border: '1px solid #e2e8f0', borderRadius: 4 },
-  delBtn: { display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 9px', fontSize: '0.74rem', fontWeight: 600, border: '1px solid #fecaca', borderRadius: 5, background: '#fef2f2', color: '#dc2626', cursor: 'pointer', marginLeft: 'auto' },
-  menuBackdrop: { position: 'fixed', inset: 0, zIndex: 50 },
-  menu: { position: 'absolute', top: '100%', left: 0, marginTop: 4, minWidth: 150, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 6, boxShadow: '0 6px 20px rgba(0,0,0,0.14)', overflow: 'hidden', zIndex: 51, padding: '4px 0' },
-};

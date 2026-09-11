@@ -1,0 +1,404 @@
+/* The letterhead design canvas.
+ *
+ * Chrome — toolbar, inspector, menus — follows the theme. The canvas is a
+ * sheet of paper and does not: what is drawn there is what prints, so it
+ * stays white with a faint grid whatever the theme says. Those literals are
+ * marked. Element positions (x, y, w, h, rotation) stay inline in the TSX
+ * because they are the design, not styling.
+ */
+
+.wrap {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+}
+
+.fileInput { display: none; }
+
+/* --- Toolbar ------------------------------------------------------------- */
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  background: var(--surface-raised);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.groupLabel {
+  margin-right: 2px;
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.divider {
+  width: 1px;
+  height: 22px;
+  margin: 0 2px;
+  background: var(--border-default);
+}
+
+.spacer { flex: 1; }
+
+.tbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 9px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+}
+.tbtn:hover:not(:disabled) { background: var(--surface-hover); }
+.tbtn:focus-visible {
+  outline: var(--focus-width) solid var(--focus-color);
+  outline-offset: 1px;
+}
+.tbtn:disabled {
+  background: var(--surface-sunken);
+  color: var(--text-disabled);
+  cursor: default;
+}
+.tbtn[aria-pressed="true"],
+.tbtn[aria-expanded="true"] {
+  border-color: var(--accent-solid);
+  background: var(--accent-subtle);
+  color: var(--accent-text);
+}
+
+.tbtnPrimary {
+  border-color: var(--accent-solid);
+  background: var(--accent-solid);
+  color: var(--accent-solid-text);
+  font-weight: var(--weight-bold);
+}
+.tbtnPrimary:hover:not(:disabled) { background: var(--accent-solid-hover); }
+
+.tbtnDanger {
+  margin-left: auto;
+  border-color: var(--critical-border);
+  background: var(--critical-subtle);
+  color: var(--critical-text);
+}
+.tbtnDanger:hover:not(:disabled) { background: var(--critical-subtle); filter: brightness(0.97); }
+
+.heightField {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+/* --- Menus --------------------------------------------------------------- */
+
+.menuWrap { position: relative; }
+
+.menuBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-overlay);
+}
+
+.menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: var(--z-dropdown);
+  min-width: 150px;
+  margin-top: 4px;
+  padding: 4px 0;
+  overflow: hidden;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+}
+
+.menuItem {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 7px 12px;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  text-align: left;
+  cursor: pointer;
+}
+.menuItem:hover,
+.menuItem:focus-visible {
+  background: var(--surface-hover);
+  outline: none;
+}
+
+/* --- Body ---------------------------------------------------------------- */
+
+.body {
+  display: flex;
+  align-items: stretch;
+  min-height: 340px;
+}
+
+.canvasScroll {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  overflow: auto;
+  padding: 20px;
+  background: var(--surface-sunken);
+}
+
+/* Paper. Deliberately not themed. */
+.canvas {
+  position: relative;
+  flex-shrink: 0;
+  background-color: #ffffff;
+  background-image:
+    linear-gradient(#f1f5f9 1px, transparent 1px),
+    linear-gradient(90deg, #f1f5f9 1px, transparent 1px);
+  background-size: 20px 20px;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 15%);
+}
+
+/* Snap guides and selection handles are drawn over the paper, so they take
+ * fixed colours that read against white. */
+.guideX,
+.guideY {
+  position: absolute;
+  z-index: 10000;
+  background: #ec4899;
+  pointer-events: none;
+}
+.guideX { top: 0; width: 1px; height: 100%; }
+.guideY { left: 0; height: 1px; width: 100%; }
+
+.selection {
+  position: absolute;
+  z-index: 9999;
+  outline: 1px solid #2563eb;
+  pointer-events: none;
+}
+
+.handle {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: #ffffff;
+  border: 1.5px solid #2563eb;
+  border-radius: 2px;
+  pointer-events: auto;
+}
+
+.rotateHandle {
+  position: absolute;
+  top: -28px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #2563eb;
+  border: 2px solid #ffffff;
+  pointer-events: auto;
+  cursor: grab;
+}
+
+.rotateStem {
+  position: absolute;
+  top: -18px;
+  width: 1px;
+  height: 18px;
+  background: #2563eb;
+}
+
+.textEdit {
+  width: 100%;
+  height: 100%;
+}
+
+.image {
+  position: absolute;
+  display: block;
+  max-width: none;
+  pointer-events: none;
+}
+
+/* --- Inspector ----------------------------------------------------------- */
+
+.inspector {
+  width: 250px;
+  flex-shrink: 0;
+  padding: 12px;
+  overflow-y: auto;
+  border-left: 1px solid var(--border-subtle);
+  background: var(--surface-raised);
+}
+
+.hint {
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+  color: var(--text-secondary);
+}
+
+.inspBody {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.inspTitle {
+  margin: 0;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-primary);
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+}
+
+.rowEnd {
+  display: flex;
+  gap: 4px;
+  align-items: flex-end;
+}
+
+.field {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.fLabel {
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  color: var(--text-secondary);
+}
+
+.num,
+.select {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 4px 6px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: var(--text-xs);
+}
+.numSm { width: 60px; }
+.num:focus-visible,
+.select:focus-visible,
+.color:focus-visible,
+.range:focus-visible {
+  outline: var(--focus-width) solid var(--focus-color);
+  outline-offset: 1px;
+}
+
+.color {
+  width: 100%;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: none;
+  cursor: pointer;
+}
+
+.range { width: 100%; }
+
+.btnRow {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.btnRowWide {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.vDivider {
+  width: 1px;
+  margin: 0 2px;
+  background: var(--border-default);
+}
+
+.iconBtn {
+  display: inline-flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.iconBtn:hover { background: var(--surface-hover); }
+.iconBtn:focus-visible {
+  outline: var(--focus-width) solid var(--focus-color);
+  outline-offset: 1px;
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 26px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.toggle:hover { background: var(--surface-hover); }
+.toggle:focus-visible {
+  outline: var(--focus-width) solid var(--focus-color);
+  outline-offset: 1px;
+}
+.toggle[aria-pressed="true"] {
+  border-color: var(--accent-solid);
+  background: var(--accent-subtle);
+  color: var(--accent-text);
+}
+
+.picture {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.pictureBtns {
+  display: flex;
+  gap: 6px;
+}
