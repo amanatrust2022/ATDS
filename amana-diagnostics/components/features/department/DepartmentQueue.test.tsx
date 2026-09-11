@@ -4,7 +4,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 import type { Patient, PatientTest } from '@/lib/store';
 import DepartmentQueue from './DepartmentQueue';
-import { departmentTheme } from './theme';
 
 /**
  * Characterisation tests for the bench queue.
@@ -56,7 +55,6 @@ const renderQueue = (over: Partial<React.ComponentProps<typeof DepartmentQueue>>
       pendingCount={1}
       loading={false}
       onOpenTest={vi.fn()}
-      theme={departmentTheme('lab')}
       {...over}
     />,
   );

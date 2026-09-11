@@ -1,16 +1,17 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import dynamic from 'next/dynamic';
-import { ErrorBoundary, LoadingPanel } from '@/components/ui';
+import { Alert, Button, Card, Dialog, Field, Input, LoadingPanel, Textarea } from '@/components/ui';
+import { useNotices } from '@/components/Notices';
+import styles from './DepartmentPage.module.css';
 import { Department, Patient, PatientTest, getTestById, fetchPatients, updateTestResult, subscribeToPatients, fetchCustomTemplates, RadiologyTemplate, fetchCustomTests, setCustomCatalogueCache } from '@/lib/store';
-import { RiTestTubeLine, RiRadarLine, RiCheckLine, RiSettings3Line } from '@remixicon/react';
+import { RiCheckLine, RiErrorWarningLine, RiSettings3Line } from '@remixicon/react';
 import { useAuth } from '@/components/AuthProvider';
 import { RADIOLOGY_TEMPLATES, serializeRadiologyResults, deserializeRadiologyResults, RadiologyFormState, convertTextToFormattedHtml } from '@/lib/radiology-templates';
 import { windowStartIso } from '@/lib/store/useQueueStore';
 import DepartmentQueue from '@/components/features/department/DepartmentQueue';
 import ParameterTable, { criticalRows } from '@/components/features/department/ParameterTable';
 import { CriticalValueDialog } from '@/components/features/department/CriticalValueDialog';
-import { departmentTheme } from '@/components/features/department/theme';
 import { normaliseSex } from '@/lib/clinical/referenceRange';
 import { useNewTestAlerts } from '@/components/features/department/useNewTestAlerts';
 const TemplateManager = dynamic(() => import('@/components/TemplateManager'), {
@@ -36,7 +37,8 @@ interface Props { department: Department; }
 
 
 export default function DepartmentPage({ department }: Props) {
-  const { profile, organization, signOut } = useAuth();
+  const { profile, organization } = useAuth();
+  const { ask } = useNotices();
   const [patients, setPatients] = useState<Patient[]>([]);
   const [completedPatients, setCompletedPatients] = useState<Patient[]>([]);
   const [selected, setSelected] = useState<{ patient: Patient; test: PatientTest } | null>(null);
@@ -77,12 +79,16 @@ export default function DepartmentPage({ department }: Props) {
   }, [organization?.id, department, loadCustomTemplates]);
 
   const isLab = department === 'lab';
-  const theme = departmentTheme(department);
 
+  // One timer. Two toasts in quick succession used to leave the first
+  // timer running, which cleared the second one early.
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const showToast = (msg: string, type: 'success' | 'error' = 'success') => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
     setToast({ msg, type });
-    setTimeout(() => setToast(null), 4000);
+    toastTimer.current = setTimeout(() => setToast(null), 4000);
   };
+  useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
 
   const refresh = useCallback(async () => {
     if (!organization?.id) return;
@@ -325,123 +331,117 @@ export default function DepartmentPage({ department }: Props) {
     }
   };
 
+  /**
+   * What the panel looked like when it opened, so Cancel can tell whether
+   * anything has been typed since. It used to throw it all away — twenty
+   * parameters of a full blood count — without asking.
+   */
+  const snapshot = () =>
+    JSON.stringify({ results, notes, mcsState, widalState, mpsState, radiologyState });
+  const openedAs = useRef('');
+  useEffect(() => {
+    if (selected) openedAs.current = snapshot();
+    // Only when a test is opened; every setState in openEntry lands in the
+    // same commit, so the snapshot sees all of it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected]);
+
+  const closePanel = async () => {
+    const dirty = snapshot() !== openedAs.current;
+    if (dirty && !(await ask('Close without saving? What you have typed here will be lost.'))) return;
+    setSelected(null);
+  };
+
   const updateResult = (i: number, field: string, value: string) =>
     setResults(prev => prev.map((r, idx) => idx === i ? { ...r, [field]: value } : r));
 
-
   if (!organization) return null;
+
+  const patientName =
+    selected?.patient.name ||
+    [selected?.patient.firstName, selected?.patient.middleName, selected?.patient.surname]
+      .filter(Boolean)
+      .join(' ');
 
   return (
     <>
-      {/* Toast */}
+      {/* Said out loud, not only painted. A result going to reception — or
+        * failing to — is the one thing this screen must tell you. */}
       {toast && (
-        <div style={{
-          position: 'fixed', top: '1rem', right: '1rem', zIndex: 9999,
-          background: toast.type === 'success' ? 'var(--green)' : 'var(--red)',
-          color: 'white', padding: '0.75rem 1.25rem', borderRadius: 'var(--radius)',
-          fontSize: '0.85rem', fontWeight: 600, boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-          animation: 'fadeIn 0.2s ease', maxWidth: 380, display: 'flex', alignItems: 'center', gap: '0.5rem',
-        }}>
-          <RiCheckLine size={16} /> {toast.msg}
+        <div
+          className={`${styles['toast']} ${toast.type === 'success' ? styles['toastSuccess'] : styles['toastError']}`}
+          role={toast.type === 'success' ? 'status' : 'alert'}
+        >
+          {toast.type === 'success'
+            ? <RiCheckLine size={16} aria-hidden="true" />
+            : <RiErrorWarningLine size={16} aria-hidden="true" />}
+          {toast.msg}
         </div>
       )}
 
-
-      {/* Toolbar */}
-      <div style={{ background: 'white', borderBottom: '1px solid var(--gray-300)', padding: '0 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        {/* Stats */}
-        <div style={{ display: 'flex', gap: '1.5rem', padding: '0.75rem 0' }}>
-          {[
-            { label: 'Pending', val: pendingCount, color: 'var(--amber)' },
-            { label: 'Done Today', val: completedToday.length, color: 'var(--green)' },
-          ].map(s => (
-            <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-              <span style={{ fontWeight: 800, fontSize: '1.1rem', color: s.color }}>{s.val}</span>
-              <span style={{ fontSize: '0.72rem', color: 'var(--gray-500)', fontWeight: 600 }}>{s.label}</span>
-            </div>
-          ))}
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <button
-            onClick={() => setShowTestManager(true)}
-            style={{
-              background: 'none', border: '1px solid var(--gray-300)',
-              color: 'var(--gray-700)', padding: '0.4rem 0.8rem',
-              fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer',
-              display: 'flex', alignItems: 'center', gap: '0.3rem',
-              borderRadius: 0, transition: 'all 0.15s'
-            }}
-          >
-            <RiSettings3Line size={14} /> Manage Tests
-          </button>
-
+      <div className={styles['toolbar']}>
+        <ul className={styles['stats']}>
+          <li className={styles['stat']}>
+            <span className={`${styles['statNum']} ${styles['statPending']}`}>{pendingCount}</span>
+            <span className={styles['statLabel']}>Pending</span>
+          </li>
+          <li className={styles['stat']}>
+            <span className={`${styles['statNum']} ${styles['statDone']}`}>{completedToday.length}</span>
+            <span className={styles['statLabel']}>Done today</span>
+          </li>
+        </ul>
+        <div className={styles['tools']}>
+          <Button size="sm" icon={<RiSettings3Line size={14} />} onClick={() => setShowTestManager(true)}>
+            Manage Tests
+          </Button>
           {department === 'radiology' && (
-            <button
-              onClick={() => setShowTemplateManager(true)}
-              style={{
-                background: 'none', border: '1px solid var(--gray-300)',
-                color: 'var(--gray-700)', padding: '0.4rem 0.8rem',
-                fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer',
-                display: 'flex', alignItems: 'center', gap: '0.3rem',
-                borderRadius: 0, transition: 'all 0.15s'
-              }}
-            >
-              <RiSettings3Line size={14} /> Manage Templates
-            </button>
+            <Button size="sm" icon={<RiSettings3Line size={14} />} onClick={() => setShowTemplateManager(true)}>
+              Manage Templates
+            </Button>
           )}
         </div>
       </div>
 
-      <div style={{ flex: 1, padding: '1.5rem', maxWidth: 960, margin: '0 auto', width: '100%' }}>
-
-        {/* Result Entry Panel */}
+      <div className={styles['main']}>
         {selected && (
-          <div style={{ background: 'white', borderRadius: 'var(--radius-lg)', border: `1px solid ${theme.border}`, marginBottom: '1.5rem', overflow: 'hidden', animation: 'fadeIn 0.2s ease' }}>
-            <div style={{ background: theme.accent, padding: '1rem 1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Card className={styles['panel']} aria-labelledby="entry-title">
+            <div className={styles['panelHead']}>
               <div>
-                <h2 style={{ color: 'white', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '1rem' }}>
+                <h2 id="entry-title" className={styles['panelTitle']}>
                   Entering Results: {selected.test.testName}
                 </h2>
-                <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.72rem', marginTop: '0.15rem' }}>
-                  {selected.patient.name || [selected.patient.firstName, selected.patient.middleName, selected.patient.surname].filter(Boolean).join(' ')} &nbsp;•&nbsp; {selected.patient.slipNumber} &nbsp;•&nbsp; Specimen: <b>{selected.test.specimen || 'Not Specified'}</b>
+                <p className={styles['panelMeta']}>
+                  {patientName} &nbsp;•&nbsp; {selected.patient.slipNumber} &nbsp;•&nbsp; Specimen:{' '}
+                  <b>{selected.test.specimen || 'Not Specified'}</b>
                 </p>
               </div>
-              <button onClick={() => setSelected(null)} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: 'white', cursor: 'pointer', borderRadius: 0, padding: '0.3rem 0.7rem', fontSize: '0.75rem' }}>
-                Cancel
-              </button>
+              <Button intent="ghost" size="sm" onClick={() => void closePanel()}>Cancel</Button>
             </div>
-            <div style={{ padding: '1.25rem' }}>
-              <div style={{ marginBottom: '1rem', display: 'flex', gap: '1rem', alignItems: 'flex-end' }}>
-                <div style={{ flex: 1 }}>
-                  <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--gray-700)', marginBottom: '0.3rem', textTransform: 'uppercase' }}>
-                    {canEditProfessional ? 'Professional Name / Staff ID *' : 'Signed by'}
-                  </label>
-                  <input
+
+            <div className={styles['panelBody']}>
+              <div className={styles['signRow']}>
+                <Field
+                  label={canEditProfessional ? 'Professional name / staff ID' : 'Signed by'}
+                  required={canEditProfessional}
+                  hint={canEditProfessional ? undefined : 'Results are signed by the account entering them.'}
+                >
+                  <Input
                     value={professional}
-                    onChange={e => canEditProfessional && setProfessional(e.target.value)}
+                    onChange={(e) => canEditProfessional && setProfessional(e.target.value)}
                     readOnly={!canEditProfessional}
-                    title={canEditProfessional ? undefined : 'Results are signed by the account entering them'}
                     placeholder={isLab ? 'e.g. MLS ABDULLAHI SHEHU' : 'e.g. Dr. Fatima Abdullahi'}
-                    style={{
-                      width: '100%', padding: '0.55rem 0.75rem', border: '1px solid var(--gray-300)',
-                      borderRadius: 'var(--radius)', fontSize: '0.82rem', fontFamily: 'var(--font-body)',
-                      background: canEditProfessional ? undefined : 'var(--gray-50)',
-                      color: canEditProfessional ? undefined : 'var(--gray-600)',
-                      cursor: canEditProfessional ? undefined : 'not-allowed',
-                    }}
                   />
-                </div>
-                <div style={{ width: 200 }}>
-                  <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--gray-700)', marginBottom: '0.3rem', textTransform: 'uppercase' }}>Specimen</label>
-                  <div style={{ padding: '0.55rem 0.75rem', border: '1px solid var(--gray-200)', background: 'var(--gray-50)', borderRadius: 'var(--radius)', fontSize: '0.82rem', color: 'var(--gray-600)', fontWeight: 600 }}>
-                    {selected.test.specimen || '—'}
-                  </div>
+                </Field>
+                <div className={styles['specimen']}>
+                  <span className="sr-only">Specimen: </span>
+                  {selected.test.specimen || '—'}
                 </div>
               </div>
+
               {isWidal && widalState && isMPs && mpsState ? (
                 <>
                   <MpsEntryForm value={mpsState} onChange={setMpsState} />
-                  <div style={{ height: '1px', borderBottom: '1px dashed var(--gray-300)', margin: '1.5rem 0' }} />
+                  <hr className={styles['split']} />
                   <WidalEntryForm value={widalState} onChange={setWidalState} />
                 </>
               ) : isWidal && widalState ? (
@@ -460,29 +460,41 @@ export default function DepartmentPage({ department }: Props) {
                   onManageTemplates={() => setShowTemplateManager(true)}
                 />
               ) : (
-                <div style={{ overflowX: 'auto', marginBottom: '1rem' }}>
+                <div className={styles['scroll']}>
                   <ParameterTable results={results} onUpdate={updateResult} sex={normaliseSex(selected.patient.sex)} />
                 </div>
               )}
+
               {((isWidal && widalState) || (isMPs && mpsState)) && results.length > 0 && (
-                <div style={{ marginTop: '1.5rem', marginBottom: '1rem' }}>
-                  <h3 style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--teal-800)', textTransform: 'uppercase', marginBottom: '0.75rem', letterSpacing: '0.05em' }}>
-                    Additional Parameters
-                  </h3>
-                  <div style={{ overflowX: 'auto', border: '1px solid var(--gray-200)', borderRadius: 'var(--radius)' }}>
+                <section className={styles['extra']} aria-labelledby="extra-title">
+                  <h3 id="extra-title" className={styles['extraTitle']}>Additional parameters</h3>
+                  <div className={styles['extraTable']}>
                     <ParameterTable results={results} onUpdate={updateResult} sex={normaliseSex(selected.patient.sex)} />
                   </div>
-                </div>
+                </section>
               )}
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--gray-700)', marginBottom: '0.3rem', textTransform: 'uppercase' }}>Comments / Remarks (optional)</label>
-                <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} placeholder="Additional clinical comments or interpretation..." style={{ width: '100%', padding: '0.55rem 0.75rem', border: '1px solid var(--gray-300)', borderRadius: 'var(--radius)', fontSize: '0.82rem', resize: 'vertical', fontFamily: 'var(--font-body)' }} />
+
+              <Field label="Comments / remarks" optional>
+                <Textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  rows={3}
+                  placeholder="Additional clinical comments or interpretation..."
+                />
+              </Field>
+
+              <div className={styles['submitRow']}>
+                <Button
+                  intent="primary"
+                  loading={saving}
+                  icon={<RiCheckLine size={16} />}
+                  onClick={() => handleSubmit()}
+                >
+                  {saving ? 'Sending…' : 'Submit & Send to Reception'}
+                </Button>
               </div>
-              <button onClick={() => handleSubmit()} disabled={saving} style={{ background: theme.accent, color: 'white', border: 'none', borderRadius: 'var(--radius)', padding: '0.75rem 2rem', fontSize: '0.88rem', fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1, transition: 'all 0.15s' }}>
-                {saving ? 'Sending...' : <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}><RiCheckLine size={16} /> Submit & Send to Reception</span>}
-              </button>
             </div>
-          </div>
+          </Card>
         )}
 
         <DepartmentQueue
@@ -492,9 +504,9 @@ export default function DepartmentPage({ department }: Props) {
           pendingCount={pendingCount}
           loading={loadingData}
           onOpenTest={openEntry}
-          theme={theme}
         />
       </div>
+
       <TemplateManager
         isOpen={showTemplateManager}
         onClose={() => setShowTemplateManager(false)}
@@ -502,25 +514,25 @@ export default function DepartmentPage({ department }: Props) {
         userId={profile?.id}
         onTemplateChange={loadCustomTemplates}
       />
-      {showTestManager && organization?.id && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(15, 23, 42, 0.45)', backdropFilter: 'blur(4px)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          zIndex: 9999, padding: '1.5rem'
-        }}>
-          <div style={{ width: '100%', maxWidth: 1000 }}>
-            <TestManager
-              organizationId={organization.id}
-              restrictDepartment={department}
-              onClose={() => {
-                setShowTestManager(false);
-                refresh();
-              }}
-            />
-          </div>
-        </div>
-      )}
+
+      {/* Was a fixed div: no dialog role, no focus trap, Escape did nothing,
+        * and the bench behind it stayed in the tab order. */}
+      <Dialog
+        open={showTestManager && !!organization?.id}
+        onOpenChange={(open) => { if (!open) { setShowTestManager(false); refresh(); } }}
+        title="Manage tests"
+        titleHidden
+        size="xl"
+        flush
+      >
+        {organization?.id && (
+          <TestManager
+            organizationId={organization.id}
+            restrictDepartment={department}
+            onClose={() => { setShowTestManager(false); refresh(); }}
+          />
+        )}
+      </Dialog>
 
       {/* The release interlock. A panic value has to be seen and named before
         * it can leave the bench; the acknowledgement is recorded with the

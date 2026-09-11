@@ -7,7 +7,6 @@ import type { Department, Patient, PatientTest } from '@/lib/store';
 import { patientDisplayName } from '@/lib/store/patientName';
 import { Badge, Button, EmptyState } from '@/components/ui';
 
-import type { DepartmentTheme } from './theme';
 import styles from './queue.module.css';
 
 interface Props {
@@ -20,13 +19,6 @@ interface Props {
   pendingCount: number;
   loading: boolean;
   onOpenTest: (patient: Patient, test: PatientTest) => void;
-  /**
-   * Still accepted so DepartmentPage need not change, but no longer used for
-   * colour: the radiology half of it was a hard-coded violet that is not the
-   * app accent and had no dark-mode counterpart. The queue takes its colours
-   * from the semantic tokens like everything else.
-   */
-  theme?: DepartmentTheme;
 }
 
 const fullName = patientDisplayName;

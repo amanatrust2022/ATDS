@@ -31,6 +31,13 @@ vi.mock('@/components/TemplateManager', () => ({
   default: ({ isOpen }: any) => (isOpen ? <div data-testid="template-manager" /> : null),
 }));
 
+// Cancel asks before throwing away typed results. Say yes unless a test
+// says otherwise.
+const ask = vi.hoisted(() => vi.fn(async (_message: string) => true));
+vi.mock('@/components/Notices', () => ({
+  useNotices: () => ({ ask, notify: vi.fn(), askFor: vi.fn() }),
+}));
+
 vi.mock('@/components/TestManager', () => ({
   default: ({ restrictDepartment }: any) => (
     <div data-testid="test-manager">{restrictDepartment}</div>
@@ -682,5 +689,86 @@ describe('Data loading', () => {
     authState.organization = null;
     const { container } = render(<DepartmentPage department="lab" />);
     expect(container.firstChild).toBeNull();
+  });
+});
+
+/**
+ * Added before the styling rebuild. Each of these failed on the old screen.
+ */
+describe('The bench, rebuilt', () => {
+  beforeEach(() => ask.mockClear());
+
+  const openFbc = async () => {
+    await renderPage('lab');
+    fireEvent.click(screen.getByRole('button', { name: /^Enter results for / }));
+    await screen.findByText('Entering Results: Full Blood Count');
+  };
+
+  /**
+   * The toast was a fixed div with no role. A result went to reception and
+   * the only confirmation was a green box for four seconds that a screen
+   * reader never mentioned — and on failure, the red box carried a tick.
+   */
+  it('announces that a result was sent', async () => {
+    await openFbc();
+    fireEvent.click(screen.getByRole('button', { name: /submit/i }));
+
+    const note = await screen.findByRole('status');
+    expect(note).toHaveTextContent(/sent to reception/);
+  });
+
+  it('announces a failed save as an alert', async () => {
+    await openFbc();
+    // After opening, which itself marks the test in progress.
+    updateTestResult.mockRejectedValueOnce(new Error('network down'));
+    fireEvent.click(screen.getByRole('button', { name: /submit/i }));
+
+    const note = await screen.findByRole('alert');
+    expect(note).toHaveTextContent(/network down/);
+  });
+
+  it('names the comments box and the signature field', async () => {
+    await openFbc();
+
+    expect(screen.getByRole('textbox', { name: /comments/i })).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: /signed by/i })).toBeInTheDocument();
+  });
+
+  /**
+   * Cancel threw away whatever had been typed — twenty parameters of a full
+   * blood count — with no question asked. It asks now, and only when there
+   * is something to lose.
+   */
+  it('asks before Cancel discards typed results', async () => {
+    ask.mockResolvedValueOnce(false);
+    await openFbc();
+
+    const [first] = screen.getAllByRole('textbox', { name: /result/i });
+    fireEvent.change(first!, { target: { value: '12.5' } });
+    fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+
+    await waitFor(() => expect(ask).toHaveBeenCalled());
+    expect(screen.getByText('Entering Results: Full Blood Count')).toBeInTheDocument();
+  });
+
+  it('does not ask when nothing has been typed', async () => {
+    await openFbc();
+    fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+
+    await waitFor(() => expect(screen.queryByText('Entering Results: Full Blood Count')).toBeNull());
+    expect(ask).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The test catalogue opened in a hand-rolled fixed overlay: no dialog role,
+   * no focus trap, Escape did nothing, and the bench behind it stayed in the
+   * tab order.
+   */
+  it('opens the test catalogue as a real dialog', async () => {
+    await renderPage('lab');
+    fireEvent.click(screen.getByRole('button', { name: /manage tests/i }));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByTestId('test-manager')).toBeInTheDocument();
   });
 });
