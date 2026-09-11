@@ -7,6 +7,7 @@ import type { Patient, PatientTest } from './store';
 import type { OrgForTemplate } from './templates';
 import { deserializeRadiologyResults } from './radiology-templates';
 import { SUPPORT_EMAIL, FALLBACK_ORG_NAME } from '@/lib/branding';
+import { letterheadFor } from './letterhead';
 
 function parseHtmlToPdfmake(html: string): any[] {
   if (!html) return [];
@@ -77,11 +78,14 @@ export function buildReportPdfDefinition(
   const specimens = Array.from(new Set(completedTests.map(t => t.specimen))).filter(Boolean).join(', ') || '—';
   const investigationList = completedTests.map(t => t.testName).join(', ');
 
-  const orgName = (org?.name || FALLBACK_ORG_NAME.toUpperCase()).toUpperCase();
-  const orgLine2 = org?.letterhead_line2 ? org.letterhead_line2.toUpperCase() : 'AND CLINICAL SERVICES LIMITED';
-  const orgAddress = org?.address || 'No 15, C Tudun Wada Bus Stop, Nasarawa LGA, Kano State.';
-  const orgPhone = org?.phone || '+2348033390574, +2347032663898';
-  const orgEmail = org?.email || SUPPORT_EMAIL;
+  // See lib/letterhead.ts: an unfilled field prints as nothing, never as
+  // another clinic's address.
+  const head = letterheadFor(org);
+  const orgName = head.name.toUpperCase();
+  const orgLine2 = head.line2.toUpperCase();
+  const orgAddress = head.address;
+  const orgPhone = head.phone;
+  const orgEmail = head.email || SUPPORT_EMAIL;
 
   const signatureUrl = completedTests[0]?.completedBySignatureUrl || null;
 

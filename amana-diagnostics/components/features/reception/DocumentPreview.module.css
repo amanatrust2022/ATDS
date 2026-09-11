@@ -179,3 +179,149 @@
   font-weight: var(--weight-medium);
   margin: var(--space-2) 0 0;
 }
+
+/* --- The slip and the receipt ----------------------------------------
+ *
+ * These were 51 inline style objects duplicating, by hand, the CSS in
+ * lib/templates.ts that actually prints. Same fixed colours as .paper and for
+ * the same reason: this is a facsimile of an 80mm thermal print, not app
+ * chrome, so nothing here reads a theme token. */
+
+.head {
+  text-align: center;
+  border-bottom: 1px dashed #000;
+  padding-bottom: 8px;
+  margin-bottom: 10px;
+}
+
+.orgName {
+  font-size: 16px;
+  font-weight: bold;
+  line-height: 1.2;
+}
+
+.orgLine2 {
+  font-size: 11px;
+  font-weight: bold;
+  margin: 2px 0 4px;
+}
+
+.orgMeta {
+  font-size: 10px;
+  margin: 2px 0;
+}
+
+.docTitle {
+  font-size: 14px;
+  font-weight: bold;
+  text-align: center;
+  margin: 8px 0 10px;
+  border-bottom: 1px solid #000;
+  padding-bottom: 4px;
+}
+
+.rows {
+  margin-bottom: 10px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/* The receipt rules its patient block off from the items below. */
+.rowsRuled {
+  border-bottom: 1px dashed #000;
+  padding-bottom: 8px;
+}
+
+.row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.rowLabel {
+  font-weight: bold;
+}
+
+.rowValue {
+  text-align: right;
+  max-width: 60%;
+}
+
+.sectionTitle {
+  font-weight: bold;
+  border-bottom: 1px solid #000;
+  padding-bottom: 2px;
+  margin-top: 10px;
+  font-size: 12px;
+}
+
+.docTable {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 4px;
+  font-size: 12px;
+}
+
+.docTable th {
+  border-bottom: 1px solid #000;
+  padding: 3px 0;
+  font-weight: 700;
+  text-align: left;
+}
+
+.docTable td {
+  padding: 3px 0;
+  font-size: 11px;
+  border-bottom: 1px dashed #ccc;
+}
+
+.docTable th.right,
+.docTable td.right {
+  text-align: right;
+}
+
+.spec {
+  font-size: 9px;
+  color: #666;
+}
+
+.summary {
+  margin-top: 10px;
+  border-top: 1px solid #000;
+  padding-top: 6px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.summaryStrong {
+  font-weight: bold;
+  font-size: 13px;
+  border-bottom: 1px dashed #000;
+  padding-bottom: 4px;
+  margin-bottom: 4px;
+}
+
+.summaryNote {
+  font-size: 10px;
+  color: #555;
+}
+
+.upper {
+  text-transform: uppercase;
+}
+
+/* Money still owed, on a receipt the patient keeps. Stated in words beside
+ * the figure as well, so it does not rest on the colour alone. */
+.owing {
+  font-weight: bold;
+  color: #c0392b;
+}
+
+.foot {
+  margin-top: 14px;
+  border-top: 1px dashed #000;
+  padding-top: 8px;
+  font-size: 10px;
+  text-align: center;
+  line-height: 1.5;
+}

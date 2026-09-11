@@ -2,10 +2,17 @@
 
 import { useState } from 'react';
 import { RiPrinterLine } from '@remixicon/react';
-import type { Patient } from '@/lib/store';
-import { getSlipTemplate, getInvoiceTemplate, printHtml } from '@/lib/templates';
+import type { Patient, PatientTest } from '@/lib/store';
+import {
+  getSlipTemplate,
+  getInvoiceTemplate,
+  printHtml,
+  specimenOf,
+  type OrgForTemplate,
+} from '@/lib/templates';
+import { patientDisplayName } from '@/lib/store/patientName';
+import { letterheadFor, addressLines } from '@/lib/letterhead';
 import { Button, Dialog, SegmentedControl } from '@/components/ui';
-import { FALLBACK_ORG_NAME } from '@/lib/branding';
 import styles from './DocumentPreview.module.css';
 
 /**
@@ -17,9 +24,56 @@ import styles from './DocumentPreview.module.css';
  * Dialog, and the tab switcher is a real SegmentedControl rather than two
  * buttons with a borderBottom.
  *
- * The preview itself is untouched. It is a facsimile of a piece of paper, so
- * its black-on-white is the paper's and must not follow the viewer's theme.
+ * The preview is a facsimile of a piece of paper, so its black-on-white is the
+ * paper's and must not follow the viewer's theme.
+ *
+ * What it shows is now derived exactly as the printed page derives it. It used
+ * to be a second, hand-written description of the same document, and the two
+ * had already parted: the preview read `patient.name`, which is blank on every
+ * real patient because the column does not exist, so the slip on screen had no
+ * name on it while the paper did; it read the specimen off the visit row where
+ * the printer falls back to the catalogue; it ran a two-line address onto one
+ * line; and it called the receipt something the receipt does not call itself.
+ * Everything on the paper now comes from one place, so the desk approves what
+ * the patient is actually handed.
  */
+const money = (n: number) => `₦${n.toLocaleString('en-NG', { minimumFractionDigits: 2 })}`;
+
+function Letterhead({ org }: { org?: OrgForTemplate | null }) {
+  const head = letterheadFor(org);
+  return (
+    <div className={styles['head']}>
+      <div className={styles['orgName']}>{head.name.toUpperCase()}</div>
+      {head.line2 && <div className={styles['orgLine2']}>{head.line2.toUpperCase()}</div>}
+      {/* One line per line the clinic typed, as the printed page does. */}
+      {addressLines(head.address).map((line) => (
+        <div key={line} className={styles['orgMeta']}>
+          {line}
+        </div>
+      ))}
+      {head.phone && <div className={styles['orgMeta']}>{head.phone}</div>}
+    </div>
+  );
+}
+
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <div className={styles['row']}>
+      <span className={styles['rowLabel']}>{label}:</span>
+      <span className={styles['rowValue']}>{value}</span>
+    </div>
+  );
+}
+
+function Foot({ org, children }: { org?: OrgForTemplate | null; children: React.ReactNode }) {
+  return (
+    <div className={styles['foot']}>
+      {children}
+      {letterheadFor(org).name} &copy; {new Date().getFullYear()}
+    </div>
+  );
+}
+
 export default function SlipModal({
   patient,
   onClose,
@@ -27,27 +81,36 @@ export default function SlipModal({
 }: {
   patient: Patient;
   onClose: () => void;
-  org?: any;
+  // Genuinely absent until the organisation loads, so null is a real value
+  // here rather than a call-site oversight.
+  org?: OrgForTemplate | null;
 }) {
   const [modalTab, setModalTab] = useState<'slip' | 'invoice'>('slip');
-  const regDate = new Date(patient.registeredAt).toLocaleDateString('en-NG');
-  const specimens =
-    Array.from(new Set(patient.tests.map((t: any) => t.specimen))).filter(Boolean).join(', ') ||
-    '—';
 
-  const orgName = org?.name || FALLBACK_ORG_NAME;
-  const orgLine2 = org?.letterhead_line2 || '';
-  const orgAddress = org?.address || '';
-  const orgPhone = org?.phone || '';
+  const name = patientDisplayName(patient);
+  const regDate = new Date(patient.registeredAt).toLocaleDateString('en-NG');
+  const tests: PatientTest[] = patient.tests || [];
+  const specimens =
+    Array.from(new Set(tests.map(specimenOf))).filter(Boolean).join(', ') || '—';
+
+  const subtotal = patient.totalAmount || 0;
+  const discount = patient.discountAmount || 0;
+  const net = patient.netAmount || 0;
+  const paid = patient.paidAmount || 0;
+  const balance = net - paid;
+
+  const discountLabel =
+    patient.discountType === 'percentage'
+      ? `Discount (${patient.discountValue}%)`
+      : patient.discountType === 'flat'
+        ? 'Discount (Flat)'
+        : 'Discount';
 
   const handlePrint = () => {
-    const html =
-      modalTab === 'slip' ? getSlipTemplate(patient, org) : getInvoiceTemplate(patient, org);
-    printHtml(html);
+    printHtml(
+      modalTab === 'slip' ? getSlipTemplate(patient, org ?? undefined) : getInvoiceTemplate(patient, org ?? undefined),
+    );
   };
-
-  const title =
-    modalTab === 'slip' ? 'Investigation request slip' : 'Payment receipt';
 
   return (
     <Dialog
@@ -55,8 +118,8 @@ export default function SlipModal({
       onOpenChange={(next) => {
         if (!next) onClose();
       }}
-      title={title}
-      description={`${patient.name} · ${patient.slipNumber}`}
+      title={modalTab === 'slip' ? 'Investigation request slip' : 'Payment receipt'}
+      description={`${name} · ${patient.slipNumber}`}
       size="sm"
       flush
       footer={
@@ -72,7 +135,7 @@ export default function SlipModal({
         </Button>
       }
     >
-      <div className={styles.switcher}>
+      <div className={styles['switcher']}>
         <SegmentedControl
           value={modalTab}
           onValueChange={setModalTab}
@@ -84,171 +147,132 @@ export default function SlipModal({
         />
       </div>
 
-      {/* A facsimile of the printed page. Fixed colours on purpose. */}
-      <div className={styles.tray}>
-        {modalTab === 'slip' ? (
-          <div className={styles.paper}>
-            {/* ── Org Header ── */}
-            <div style={{ textAlign: 'center', borderBottom: '1px dashed #000', paddingBottom: 8, marginBottom: 10 }}>
-              <div style={{ fontSize: 16, fontWeight: 'bold', lineHeight: 1.2, margin: 0 }}>{orgName.toUpperCase()}</div>
-              {orgLine2 && <div style={{ fontSize: 11, fontWeight: 'bold', margin: '2px 0 4px' }}>{orgLine2.toUpperCase()}</div>}
-              {orgAddress && <div style={{ fontSize: 10, margin: '2px 0' }}>{orgAddress}</div>}
-              {orgPhone && <div style={{ fontSize: 10, margin: 0 }}>{orgPhone}</div>}
-            </div>
+      <div className={styles['tray']}>
+        <div className={styles['paper']} data-testid="document-preview">
+          <Letterhead org={org} />
 
-            {/* ── Slip title ── */}
-            <div style={{ fontSize: 14, fontWeight: 'bold', textAlign: 'center', margin: '8px 0 10px', borderBottom: '1px solid #000', paddingBottom: 4 }}>
-              INVESTIGATION SLIP
-            </div>
+          {modalTab === 'slip' ? (
+            <>
+              <div className={styles['docTitle']}>INVESTIGATION SLIP</div>
 
-            {/* ── Patient info ── */}
-            <div style={{ marginBottom: 10, fontSize: 12, lineHeight: 1.6 }}>
-              {[
-                ['ID', patient.slipNumber],
-                ['Name', patient.name],
-                ['Age / Sex', `${patient.age} / ${patient.sex}`],
-                ['Date', regDate],
-                ['Specimen(s)', specimens],
-              ].map(([l, v]) => (
-                <div key={l} style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ fontWeight: 'bold' }}>{l}:</span>
-                  <span style={{ textAlign: 'right', maxWidth: '60%' }}>{v}</span>
-                </div>
-              ))}
-            </div>
+              <div className={styles['rows']}>
+                <Row label="ID" value={patient.slipNumber} />
+                <Row label="Name" value={name} />
+                <Row label="Age / Sex" value={`${patient.age} / ${patient.sex}`} />
+                <Row label="Date" value={regDate} />
+                <Row label="Specimen(s)" value={specimens} />
+              </div>
 
-            {/* ── Tests ── */}
-            <div style={{ fontWeight: 'bold', borderBottom: '1px solid #000', paddingBottom: 2, marginTop: 10, fontSize: 12 }}>
-              TESTS ORDERED ({patient.tests.length})
-            </div>
-            <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 4, fontSize: 12 }}>
-              <thead>
-                <tr>
-                  <th style={{ borderBottom: '1px solid #000', textAlign: 'left', padding: '3px 0', fontWeight: 700 }}>Test</th>
-                  <th style={{ borderBottom: '1px solid #000', textAlign: 'right', padding: '3px 0', fontWeight: 700 }}>Dept</th>
-                </tr>
-              </thead>
-              <tbody>
-                {patient.tests.map((t: any) => (
-                  <tr key={t.testId} style={{ borderBottom: '1px dashed #ccc' }}>
-                    <td style={{ padding: '3px 0', fontSize: 11 }}>
-                      {t.testName}
-                      {t.specimen && <span style={{ fontSize: 9, color: '#666' }}> ({t.specimen})</span>}
-                    </td>
-                    <td style={{ padding: '3px 0', textAlign: 'right', fontSize: 11 }}>
-                      {t.department === 'lab' ? 'Lab' : 'Radio'}
-                    </td>
+              <div className={styles['sectionTitle']}>TESTS ORDERED ({tests.length})</div>
+              <table className={styles['docTable']}>
+                <caption className="sr-only">Tests ordered on this slip</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Test</th>
+                    <th scope="col" className={styles['right']}>
+                      Dept
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {tests.map((t) => {
+                    const spec = specimenOf(t);
+                    return (
+                      <tr key={t.testId}>
+                        <td>
+                          {t.testName}
+                          {spec && <span className={styles['spec']}> ({spec})</span>}
+                        </td>
+                        <td className={styles['right']}>
+                          {t.department === 'lab' ? 'Lab' : 'Radio'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
 
-            {/* ── Footer ── */}
-            <div style={{ marginTop: 14, borderTop: '1px dashed #000', paddingTop: 8, fontSize: 10, textAlign: 'center', lineHeight: 1.5 }}>
-              Please proceed to the respective department with this slip<br />
-              {orgName} &copy; {new Date().getFullYear()}
-            </div>
-          </div>
-        ) : (
-          <div className={styles.paper}>
-            {/* ── Org Header ── */}
-            <div style={{ textAlign: 'center', borderBottom: '1px dashed #000', paddingBottom: 8, marginBottom: 10 }}>
-              <div style={{ fontSize: 16, fontWeight: 'bold', lineHeight: 1.2, margin: 0 }}>{orgName.toUpperCase()}</div>
-              {orgLine2 && <div style={{ fontSize: 11, fontWeight: 'bold', margin: '2px 0 4px' }}>{orgLine2.toUpperCase()}</div>}
-              {orgAddress && <div style={{ fontSize: 10, margin: '2px 0' }}>{orgAddress}</div>}
-              {orgPhone && <div style={{ fontSize: 10, margin: 0 }}>{orgPhone}</div>}
-            </div>
+              <Foot org={org}>
+                Please proceed to the respective department with this slip
+                <br />
+              </Foot>
+            </>
+          ) : (
+            <>
+              {/* Named as the printed receipt names itself. The preview said
+                * "PAYMENT RECEIPT" while the paper said "PAYMENT RECEIPT /
+                * INVOICE". */}
+              <div className={styles['docTitle']}>PAYMENT RECEIPT / INVOICE</div>
 
-            {/* ── Invoice Title ── */}
-            <div style={{ fontSize: 14, fontWeight: 'bold', textAlign: 'center', margin: '8px 0 10px', borderBottom: '1px solid #000', paddingBottom: 4 }}>
-              PAYMENT RECEIPT
-            </div>
+              <div className={`${styles['rows']} ${styles['rowsRuled']}`}>
+                <Row label="Invoice No" value={patient.slipNumber} />
+                <Row label="Patient Name" value={name} />
+                <Row label="Age/Sex" value={`${patient.age} / ${patient.sex}`} />
+                <Row label="Date" value={regDate} />
+              </div>
 
-            {/* ── Patient & Referral Info ── */}
-            <div style={{ marginBottom: 10, fontSize: 12, lineHeight: 1.6, borderBottom: '1px dashed #000', paddingBottom: 8 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ fontWeight: 'bold' }}>Invoice No:</span> <span>{patient.slipNumber}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ fontWeight: 'bold' }}>Patient Name:</span> <span>{patient.name}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ fontWeight: 'bold' }}>Age/Sex:</span> <span>{patient.age} / {patient.sex}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ fontWeight: 'bold' }}>Date:</span> <span>{regDate}</span>
-              </div>
-            </div>
-
-            {/* ── Invoice Items ── */}
-            <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 4, fontSize: 12 }}>
-              <thead>
-                <tr>
-                  <th style={{ borderBottom: '1px solid #000', textAlign: 'left', padding: '3px 0', fontWeight: 700 }}>Investigation</th>
-                  <th style={{ borderBottom: '1px solid #000', textAlign: 'right', padding: '3px 0', fontWeight: 700 }}>Price</th>
-                </tr>
-              </thead>
-              <tbody>
-                {patient.tests.map((t: any) => (
-                  <tr key={t.testId} style={{ borderBottom: '1px dashed #eee' }}>
-                    <td style={{ padding: '3px 0', fontSize: 11 }}>{t.testName}</td>
-                    <td style={{ padding: '3px 0', textAlign: 'right', fontSize: 11 }}>
-                      ₦{(t.price || 0).toLocaleString('en-NG', { minimumFractionDigits: 2 })}
-                    </td>
+              <table className={styles['docTable']}>
+                <caption className="sr-only">What this visit was charged for</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Investigation</th>
+                    <th scope="col" className={styles['right']}>
+                      Price
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {tests.map((t) => (
+                    <tr key={t.testId}>
+                      <td>{t.testName}</td>
+                      <td className={styles['right']}>{money(t.price || 0)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
 
-            {/* ── Billing Summary ── */}
-            <div style={{ marginTop: 10, borderTop: '1px solid #000', paddingTop: 6, fontSize: 12, lineHeight: 1.6 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span>Subtotal:</span>
-                <span>₦{(patient.totalAmount || 0).toLocaleString('en-NG', { minimumFractionDigits: 2 })}</span>
-              </div>
-              {(patient.discountAmount || 0) > 0 && (
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span>
-                    {patient.discountType === 'percentage'
-                      ? `Discount (${patient.discountValue}%)`
-                      : patient.discountType === 'flat'
-                        ? 'Discount (Flat)'
-                        : 'Discount'}
-                    :
-                  </span>
-                  <span>-₦{(patient.discountAmount || 0).toLocaleString('en-NG', { minimumFractionDigits: 2 })}</span>
+              <div className={styles['summary']}>
+                <div className={styles['row']}>
+                  <span>Subtotal:</span>
+                  <span>{money(subtotal)}</span>
                 </div>
-              )}
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: 13, borderBottom: '1px dashed #000', paddingBottom: 4, marginBottom: 4 }}>
-                <span>Net Amount:</span>
-                <span>₦{(patient.netAmount || 0).toLocaleString('en-NG', { minimumFractionDigits: 2 })}</span>
+                {discount > 0 && (
+                  <div className={styles['row']}>
+                    <span>{discountLabel}:</span>
+                    <span>-{money(discount)}</span>
+                  </div>
+                )}
+                <div className={`${styles['row']} ${styles['summaryStrong']}`}>
+                  <span>Net Amount:</span>
+                  <span>{money(net)}</span>
+                </div>
+                <div className={styles['row']}>
+                  <span>Amount Paid:</span>
+                  <span>{money(paid)}</span>
+                </div>
+                <div className={`${styles['row']} ${balance > 0 ? styles['owing'] : ''}`}>
+                  <span>Balance Due:</span>
+                  <span>{money(balance)}</span>
+                </div>
+                <div className={`${styles['row']} ${styles['summaryNote']}`}>
+                  <span>Payment Method:</span>
+                  <span className={styles['upper']}>{patient.paymentMethod || 'cash'}</span>
+                </div>
+                <div className={`${styles['row']} ${styles['summaryNote']}`}>
+                  <span>Payment Status:</span>
+                  <span className={styles['upper']}>{patient.paymentStatus || 'paid'}</span>
+                </div>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span>Amount Paid:</span>
-                <span>₦{(patient.paidAmount || 0).toLocaleString('en-NG', { minimumFractionDigits: 2 })}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', color: ((patient.netAmount || 0) - (patient.paidAmount || 0)) > 0 ? '#c0392b' : '#000' }}>
-                <span>Balance Due:</span>
-                <span>₦{((patient.netAmount || 0) - (patient.paidAmount || 0)).toLocaleString('en-NG', { minimumFractionDigits: 2 })}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#555', marginTop: 4 }}>
-                <span>Payment Method:</span>
-                <span style={{ textTransform: 'uppercase' }}>{patient.paymentMethod || 'cash'}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#555' }}>
-                <span>Payment Status:</span>
-                <span style={{ textTransform: 'uppercase', fontWeight: 'bold' }}>{patient.paymentStatus || 'paid'}</span>
-              </div>
-            </div>
 
-            {/* ── Footer ── */}
-            <div style={{ marginTop: 14, borderTop: '1px dashed #000', paddingTop: 8, fontSize: 10, textAlign: 'center', lineHeight: 1.5 }}>
-              Thank you for your patronage.<br />
-              Please retain this receipt for your records.<br />
-              {orgName} &copy; {new Date().getFullYear()}
-            </div>
-          </div>
-        )}
+              <Foot org={org}>
+                Thank you for your patronage.
+                <br />
+                Please retain this receipt for your records.
+                <br />
+              </Foot>
+            </>
+          )}
+        </div>
       </div>
     </Dialog>
   );

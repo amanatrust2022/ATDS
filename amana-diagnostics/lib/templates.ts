@@ -13,6 +13,7 @@ import { patientDisplayName } from './store/patientName';
 import { deserializeRadiologyResults, convertTextToFormattedHtml } from './radiology-templates';
 import { buildDocCss, splitLetterhead } from './letterheadStyles';
 import { SUPPORT_EMAIL, FALLBACK_ORG_NAME } from '@/lib/branding';
+import { letterheadFor } from './letterhead';
 
 /** Minimal org shape needed for rendering letterheads */
 export type OrgForTemplate = {
@@ -44,7 +45,7 @@ export type OrgForTemplate = {
  * since gained a specimen it did not have then. The catalogue is the source
  * either way, so fall back to it rather than printing nothing.
  */
-const specimenOf = (t: PatientTest): string =>
+export const specimenOf = (t: PatientTest): string =>
   t.specimen || getTestById(t.testId)?.specimen || '';
 export const getResultTemplate = (patient: Patient, completedTests: PatientTest[], org?: OrgForTemplate) => {
   const regDate = new Date(patient.registeredAt).toLocaleDateString('en-NG');
@@ -52,12 +53,14 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
   const specimens = Array.from(new Set(completedTests.map(specimenOf))).filter(Boolean).join(', ') || '—';
   const investigationList = completedTests.map(t => t.testName).join(', ');
 
-  // Letterhead values — fall back gracefully if org not provided
-  const orgName = org?.name?.toUpperCase() || FALLBACK_ORG_NAME.toUpperCase();
-  const orgLine2 = org?.letterhead_line2?.toUpperCase() || 'AND CLINICAL SERVICES LIMITED';
-  const orgAddress = org?.address || 'No 15, C Tudun Wada Bus Stop, Nasarawa LGA, Kano State.';
-  const orgPhone = org?.phone || '+2348033390574, +2347032663898';
-  const orgEmail = org?.email || SUPPORT_EMAIL;
+  // Letterhead values. A field the clinic has not filled in prints as
+  // nothing — see lib/letterhead.ts for why that matters.
+  const head = letterheadFor(org);
+  const orgName = head.name.toUpperCase();
+  const orgLine2 = head.line2.toUpperCase();
+  const orgAddress = head.address;
+  const orgPhone = head.phone;
+  const orgEmail = head.email || SUPPORT_EMAIL;
 
   // Sanitised, not merely tidied: this HTML is authored in the app and then
   // injected into reports, into the page the patient is shown, and into a
@@ -623,10 +626,11 @@ export const getSlipTemplate = (patient: Patient, org?: OrgForTemplate) => {
     </tr>`).join('');
 
   // Letterhead values
-  const orgName = org?.name || FALLBACK_ORG_NAME.toUpperCase();
-  const orgLine2 = org?.letterhead_line2 || 'AND CLINICAL SERVICES LTD';
-  const orgAddress = org?.address || 'No 15, C Tudun Wada Bus Stop,\nNasarawa LGA, Kano State.';
-  const orgPhone = org?.phone || 'Tel: 08033390574, 07032663898';
+  const head = letterheadFor(org);
+  const orgName = head.name;
+  const orgLine2 = head.line2;
+  const orgAddress = head.address;
+  const orgPhone = head.phone;
 
   return `
     <!DOCTYPE html><html><head><title>Patient Slip - ${patient.slipNumber}</title>
@@ -680,10 +684,11 @@ export const getSlipTemplate = (patient: Patient, org?: OrgForTemplate) => {
  */
 export const getInvoiceTemplate = (patient: Patient, org?: OrgForTemplate) => {
   const regDate = new Date(patient.registeredAt).toLocaleDateString('en-NG');
-  const orgName = org?.name || FALLBACK_ORG_NAME.toUpperCase();
-  const orgLine2 = org?.letterhead_line2 || 'AND CLINICAL SERVICES LTD';
-  const orgAddress = org?.address || 'No 15, C Tudun Wada Bus Stop,\nNasarawa LGA, Kano State.';
-  const orgPhone = org?.phone || 'Tel: 08033390574, 07032663898';
+  const head = letterheadFor(org);
+  const orgName = head.name;
+  const orgLine2 = head.line2;
+  const orgAddress = head.address;
+  const orgPhone = head.phone;
 
   const testRows = (patient.tests || []).map(t => `
     <tr>
@@ -778,10 +783,11 @@ export const getLedgerStatementTemplate = (
   members: any[],
   org?: OrgForTemplate
 ) => {
-  const orgName = org?.name || FALLBACK_ORG_NAME.toUpperCase();
-  const orgLine2 = org?.letterhead_line2 || 'AND CLINICAL SERVICES LTD';
-  const orgAddress = org?.address || 'No 15, C Tudun Wada Bus Stop,\nNasarawa LGA, Kano State.';
-  const orgPhone = org?.phone || 'Tel: 08033390574, 07032663898';
+  const head = letterheadFor(org);
+  const orgName = head.name;
+  const orgLine2 = head.line2;
+  const orgAddress = head.address;
+  const orgPhone = head.phone;
   const orgEmail = org?.email || SUPPORT_EMAIL;
 
   const memberNames = members.map(m => `${m.firstName || m.first_name || ''} ${m.surname || ''}`).join(', ');
