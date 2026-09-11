@@ -382,20 +382,20 @@ describe('Specialised entry forms', () => {
 
     expect(screen.getByText('Macroscopy')).toBeDefined();
     expect(screen.getByText('Microscopy')).toBeDefined();
-    expect(screen.getByText('Culture Findings')).toBeDefined();
-    expect(screen.getByText('Antibiotic Sensitivity Testing (AST)')).toBeDefined();
+    expect(screen.getByText('Culture')).toBeDefined();
+    expect(screen.getByText('Antibiotic sensitivity')).toBeDefined();
   });
 
   it('loads the gram-negative antibiotic panel when gram reaction is set', async () => {
     await openOnly(patientTest({ testId: 'urine_mcs', testName: 'Urine M/C/S' }));
 
-    expect(screen.getByText(/Please select Gram Reaction/)).toBeDefined();
-    fireEvent.change(screen.getByDisplayValue('-- Select Reaction --'), { target: { value: 'Gram Negative' } });
+    expect(screen.getByText(/to load the matching antibiotics/i)).toBeDefined();
+    fireEvent.change(screen.getByLabelText(/gram reaction/i), { target: { value: 'Gram Negative' } });
 
     // Each row reads "<antibiotic> (<code>)", and the code differs between panels.
-    expect(await screen.findByText('Nitrofurantoin (NF)')).toBeDefined();
-    expect(screen.getByText('Ampiclox (ACX)')).toBeDefined();  // gram-negative code
-    expect(screen.queryByText('Ampiclox (APX)')).toBeNull();   // gram-positive code
+    expect(await screen.findByLabelText('Nitrofurantoin result')).toBeDefined();
+    expect(screen.getByText('(ACX)')).toBeDefined();  // gram-negative code
+    expect(screen.queryByText('(APX)')).toBeNull();   // gram-positive code
     expect(screen.queryByText(/Erythromycin/)).toBeNull();     // gram-positive only
   });
 

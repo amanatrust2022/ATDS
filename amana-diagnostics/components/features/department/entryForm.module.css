@@ -1,0 +1,165 @@
+/**
+ * The lab result entry forms.
+ *
+ * These were inline style objects and a hard-coded palette: rgba() row tints
+ * over a `background: white` that stayed white in dark mode while the text
+ * colour above it flipped. What a scientist types here is printed and handed
+ * to a doctor, so every state has to read in both themes and none of them may
+ * rest on colour alone.
+ */
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+  align-items: start;
+}
+
+@media (max-width: 60rem) {
+  .pair {
+    grid-template-columns: 1fr;
+  }
+}
+
+.fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.culture {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: var(--space-3);
+}
+
+.custom {
+  margin-top: var(--space-2);
+}
+
+/* --- Microscopy rows --------------------------------------------------- */
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-height: 18rem;
+  overflow-y: auto;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto;
+  gap: var(--space-2);
+  align-items: start;
+}
+
+.rowsEmpty {
+  padding: var(--space-4);
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+/* --- Antibiogram ------------------------------------------------------- */
+
+.panel {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+}
+
+@media (max-width: 60rem) {
+  .panel {
+    grid-template-columns: 1fr;
+  }
+}
+
+.astTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-md);
+}
+
+.astTable th {
+  text-align: left;
+  padding: var(--space-2);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.astTable td {
+  padding: var(--space-1) var(--space-2);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.drug {
+  font-weight: var(--weight-medium);
+  color: var(--text-primary);
+}
+
+.code {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+/* A scored row. The tint is a hint; the word beside the letter is the answer.
+ * Each takes its ground and its text from the same token set, so the pair
+ * stays legible in both themes — the old rgba-over-white did not. */
+.scored {
+  background: var(--surface-hover);
+}
+
+.scoreCell {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.scoreBox {
+  width: 2.5rem;
+  text-align: center;
+  font-weight: var(--weight-bold);
+  text-transform: uppercase;
+}
+
+.scoreWord {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  white-space: nowrap;
+}
+
+.wordS {
+  color: var(--success-text);
+}
+
+.wordI {
+  color: var(--warning-text);
+}
+
+.wordR {
+  color: var(--critical-text);
+}
+
+.scoreButtons {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.astHint {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  margin: 0;
+}

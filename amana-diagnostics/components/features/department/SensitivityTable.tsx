@@ -1,6 +1,9 @@
 'use client';
+
 import { McsFormState } from '@/lib/store/labResults';
-import { cardStyle, cardHeaderStyle, tableHeaderStyle } from './entryFormStyles';
+import { Alert, Button, Card, CardBody, CardHeader, Input } from '@/components/ui';
+
+import styles from './entryForm.module.css';
 
 type Sensitivity = McsFormState['sensitivity'];
 type Result = Sensitivity[number]['result'];
@@ -12,36 +15,40 @@ interface Props {
   onResult: (index: number, result: Result) => void;
 }
 
-const rowColour = (result: Result) =>
-  result === 'R' ? 'rgba(192, 57, 43, 0.08)'
-    : result === 'S' ? 'rgba(30, 126, 90, 0.08)'
-      : result === 'I' ? 'rgba(212, 133, 10, 0.08)'
-        : 'white';
-
-const textColour = (result: Result) =>
-  result === 'R' ? 'var(--red)'
-    : result === 'S' ? 'var(--green)'
-      : result === 'I' ? 'var(--amber)'
-        : 'var(--gray-900)';
-
-const buttonColour = (res: 'S' | 'I' | 'R') =>
-  res === 'R' ? 'var(--red)' : res === 'S' ? 'var(--green)' : 'var(--amber)';
-
 /**
- * One column of the antibiogram. `offset` is the row's position in the whole
- * list, which is what the input ids, the tab order and the S/I/R keyboard
- * navigation all count in — so the two columns read as one continuous run.
+ * What each score means, spelled out.
+ *
+ * The row said "R" and tinted itself red. A doctor prescribes from this, and a
+ * tint is not a reading — it does not survive a monochrome print, a colour
+ * vision difference, or a screen reader. The word goes beside the letter.
  */
+const MEANING: Record<Exclude<Result, ''>, string> = {
+  S: 'Sensitive',
+  I: 'Intermediate',
+  R: 'Resistant',
+};
+
+const WORD_CLASS: Record<Exclude<Result, ''>, string> = {
+  S: styles['wordS']!,
+  I: styles['wordI']!,
+  R: styles['wordR']!,
+};
+
 function AntibioticColumn({
-  rows, offset, onResult,
-}: { rows: Sensitivity; offset: number; onResult: Props['onResult'] }) {
+  rows,
+  offset,
+  onResult,
+}: {
+  rows: Sensitivity;
+  offset: number;
+  onResult: Props['onResult'];
+}) {
   const focusRow = (index: number) => {
-    const el = document.getElementById(`anti-input-${index}`);
-    if (el) (el as HTMLInputElement).focus();
+    document.getElementById(`anti-input-${index}`)?.focus();
   };
 
-  // Typing S, I or R scores the row and jumps to the next, so a technologist can
-  // work down a plate reading without touching the mouse.
+  // Typing S, I or R scores the row and jumps to the next, so a technologist
+  // can work down a plate reading without touching the mouse.
   const handleKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
     const key = e.key.toUpperCase();
     if (key === 'S' || key === 'I' || key === 'R') {
@@ -61,84 +68,76 @@ function AntibioticColumn({
   };
 
   return (
-    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+    <table className={styles['astTable']}>
+      <caption className="sr-only">
+        Antibiotic sensitivity. Type S, I or R in a result box to score it and move to the next.
+      </caption>
       <thead>
-        <tr style={{ background: 'var(--teal-50)' }}>
-          <th style={{ ...tableHeaderStyle, width: '45%' }}>Antibiotic Name</th>
-          <th style={tableHeaderStyle}>Result</th>
+        <tr>
+          <th scope="col">Antibiotic</th>
+          <th scope="col">Result</th>
         </tr>
       </thead>
       <tbody>
         {rows.map((s, idx) => {
           const globalIdx = offset + idx;
-          const colour = textColour(s.result);
+          const scored = s.result !== '';
 
           return (
-            <tr key={s.code} style={{ borderBottom: '1px solid var(--gray-100)', background: rowColour(s.result) }}>
-              <td style={{ padding: '0.35rem 0.5rem', fontWeight: 600, color: colour }}>
-                {s.antibiotic} ({s.code})
+            <tr key={s.code} className={scored ? styles['scored'] : undefined}>
+              <td>
+                <span className={styles['drug']}>{s.antibiotic}</span>{' '}
+                <span className={styles['code']}>({s.code})</span>
               </td>
-              <td style={{ padding: '0.25rem 0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <input
-                  id={`anti-input-${globalIdx}`}
-                  value={s.result}
-                  onChange={e => {
-                    const val = e.target.value.toUpperCase();
-                    if (['S', 'I', 'R', ''].includes(val)) {
-                      onResult(globalIdx, val as Result);
-                    }
-                  }}
-                  onKeyDown={e => handleKeyDown(globalIdx, e)}
-                  placeholder="-"
-                  maxLength={1}
-                  style={{
-                    width: '32px',
-                    padding: '0.2rem',
-                    border: '1px solid var(--gray-300)',
-                    textAlign: 'center',
-                    fontWeight: 'bold',
-                    textTransform: 'uppercase',
-                    color: colour,
-                    background: 'white'
-                  }}
-                  tabIndex={100 + globalIdx}
-                />
-                <div style={{ display: 'flex', gap: '0.15rem' }}>
-                  {(['S', 'I', 'R'] as const).map(res => (
-                    <button
-                      key={res}
-                      type="button"
-                      onClick={() => onResult(globalIdx, res)}
-                      style={{
-                        border: '1px solid var(--gray-300)',
-                        background: s.result === res ? buttonColour(res) : 'white',
-                        color: s.result === res ? 'white' : 'var(--gray-600)',
-                        fontSize: '0.65rem',
-                        fontWeight: 'bold',
-                        padding: '0.1rem 0.3rem',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      {res}
-                    </button>
-                  ))}
-                  {s.result && (
-                    <button
-                      type="button"
-                      onClick={() => onResult(globalIdx, '')}
-                      style={{
-                        border: 'none',
-                        background: 'none',
-                        color: 'var(--gray-400)',
-                        fontSize: '0.65rem',
-                        padding: '0.1rem 0.2rem',
-                        cursor: 'pointer',
-                        textDecoration: 'underline'
-                      }}
-                    >
-                      Clear
-                    </button>
+              <td>
+                <div className={styles['scoreCell']}>
+                  <Input
+                    id={`anti-input-${globalIdx}`}
+                    // Named after the drug. Thirty identical one-character
+                    // boxes were thirty of "edit text", and scoring the wrong
+                    // row is a wrong prescription.
+                    aria-label={`${s.antibiotic} result`}
+                    className={styles['scoreBox']}
+                    value={s.result}
+                    onChange={(e) => {
+                      const val = e.target.value.toUpperCase();
+                      if (['S', 'I', 'R', ''].includes(val)) onResult(globalIdx, val as Result);
+                    }}
+                    onKeyDown={(e) => handleKeyDown(globalIdx, e)}
+                    placeholder="—"
+                    maxLength={1}
+                  />
+
+                  {scored && (
+                    <span className={`${styles['scoreWord']} ${WORD_CLASS[s.result as 'S']}`}>
+                      {MEANING[s.result as 'S']}
+                    </span>
                   )}
+
+                  <span className={styles['scoreButtons']}>
+                    {(['S', 'I', 'R'] as const).map((res) => (
+                      <Button
+                        key={res}
+                        size="sm"
+                        intent={s.result === res ? 'primary' : 'secondary'}
+                        aria-pressed={s.result === res}
+                        aria-label={`${s.antibiotic}: ${MEANING[res]}`}
+                        onClick={() => onResult(globalIdx, res)}
+                      >
+                        {res}
+                      </Button>
+                    ))}
+                    {scored && (
+                      <Button
+                        size="sm"
+                        intent="ghost"
+                        aria-label={`Clear the ${s.antibiotic} result`}
+                        onClick={() => onResult(globalIdx, '')}
+                      >
+                        Clear
+                      </Button>
+                    )}
+                  </span>
                 </div>
               </td>
             </tr>
@@ -150,27 +149,32 @@ function AntibioticColumn({
 }
 
 export default function SensitivityTable({ sensitivity, gramReaction, onResult }: Props) {
-  const halfLength = Math.ceil(sensitivity.length / 2);
+  const half = Math.ceil(sensitivity.length / 2);
 
   return (
-    <div style={cardStyle}>
-      <h3 style={cardHeaderStyle}>Antibiotic Sensitivity Testing (AST)</h3>
-      <div style={{ padding: '1rem' }}>
+    <Card>
+      <CardHeader
+        title="Antibiotic sensitivity"
+        subtitle="Type S, I or R to score a row and move to the next."
+      />
+      <CardBody>
         {!gramReaction ? (
-          <div style={{ color: 'var(--amber)', background: 'var(--amber-light)', padding: '0.75rem 1rem', border: '1px solid #ffeeba', fontSize: '0.8rem', fontWeight: 600 }}>
-            Please select Gram Reaction (Gram Positive or Gram Negative) in the Culture section above to load the matching antibiotics.
-          </div>
+          <Alert tone="warning">
+            Choose a gram reaction in the culture section above — gram positive or gram negative —
+            to load the matching antibiotics.
+          </Alert>
         ) : sensitivity.length === 0 ? (
-          <div style={{ color: 'var(--gray-500)', fontSize: '0.8rem', fontStyle: 'italic' }}>
-            No antibiotics populated. Verify that Gram Reaction is Gram Positive or Gram Negative.
-          </div>
+          <p className={styles['astHint']}>
+            No antibiotics for a {gramReaction.toLowerCase()} culture. A panel is loaded only for
+            gram positive and gram negative.
+          </p>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
-            <AntibioticColumn rows={sensitivity.slice(0, halfLength)} offset={0} onResult={onResult} />
-            <AntibioticColumn rows={sensitivity.slice(halfLength)} offset={halfLength} onResult={onResult} />
+          <div className={styles['panel']}>
+            <AntibioticColumn rows={sensitivity.slice(0, half)} offset={0} onResult={onResult} />
+            <AntibioticColumn rows={sensitivity.slice(half)} offset={half} onResult={onResult} />
           </div>
         )}
-      </div>
-    </div>
+      </CardBody>
+    </Card>
   );
 }
