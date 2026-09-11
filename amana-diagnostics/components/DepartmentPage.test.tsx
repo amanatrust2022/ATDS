@@ -489,7 +489,7 @@ describe('Specialised entry forms', () => {
       testId: 'usg', testName: 'Abdominal Ultrasound', department: 'radiology', specimen: '',
     }));
 
-    expect(screen.getByPlaceholderText('Type to search e.g. Appendicitis, Pelvic, Normal...')).toBeDefined();
+    expect(screen.getByRole('combobox', { name: /report template/i })).toBeDefined();
     expect(screen.getByPlaceholderText('Describe the findings for each organ in detail...')).toBeDefined();
     expect(screen.getByPlaceholderText('Write clinical impression, summary, or suggestions here...')).toBeDefined();
   });
@@ -572,14 +572,17 @@ describe('Specialised entry forms', () => {
     }));
     updateTestResult.mockClear();
 
-    expect(screen.getByText('Attach Key Scan Images (Optional)')).toBeDefined();
-    const fibroid = screen.getByAltText('Uterine Fibroid');
+    expect(screen.getByText('Key scan images')).toBeDefined();
 
-    fireEvent.click(fibroid.parentElement!);
-    expect(await screen.findByText('1 Image(s) Attached')).toBeDefined();
+    // A real toggle button now, rather than a div whose parent had the click
+    // handler — so the test reaches it the way a user does.
+    const fibroid = screen.getByRole('button', { name: /uterine fibroid/i });
 
-    fireEvent.click(fibroid.parentElement!);
-    expect(screen.queryByText('1 Image(s) Attached')).toBeNull();
+    fireEvent.click(fibroid);
+    expect(await screen.findByText('1 image attached')).toBeDefined();
+
+    fireEvent.click(screen.getByRole('button', { name: /uterine fibroid/i }));
+    expect(screen.queryByText('1 image attached')).toBeNull();
   });
 
   it('replaces findings and impression with the chosen report template', async () => {
@@ -588,7 +591,7 @@ describe('Specialised entry forms', () => {
       testId: 'us_pelvis', testName: 'Pelvic Ultrasound', department: 'radiology', specimen: '',
     }));
 
-    const search = screen.getByPlaceholderText('Type to search e.g. Appendicitis, Pelvic, Normal...');
+    const search = screen.getByRole('combobox', { name: /report template/i });
     fireEvent.change(search, { target: { value: 'zzzz-no-such-template' } });
     expect(await screen.findByText('No matching templates found')).toBeDefined();
 

@@ -1,7 +1,11 @@
 'use client';
-import { useState } from 'react';
+
+import { useEffect, useId, useRef, useState } from 'react';
 import { RiSettings3Line } from '@remixicon/react';
-import { labelStyle, plainInputStyle } from './entryFormStyles';
+
+import { Badge, Button, Field, Input } from '@/components/ui';
+
+import styles from './entryForm.module.css';
 
 export interface PickableTemplate {
   key: string;
@@ -22,108 +26,128 @@ interface Props {
  *
  * The query and the open/closed flag are ephemeral UI state and belong here
  * (AGENTS.md §5) — nothing outside this widget reads them.
+ *
+ * This is the most-used control on the reporting screen and it could not be
+ * operated from a keyboard. The results were `<div onClick>` with no tabindex
+ * and no key handler, so focus reached the search box and stopped: no arrow
+ * keys, no Enter, nothing to tab to. A radiologist who typed "appendicitis"
+ * still had to go and find the mouse. It is a combobox over a listbox now,
+ * which is what it always was pretending to be.
  */
 export default function TemplatePicker({ templates, onSelect, onManageTemplates }: Props) {
   const [searchQuery, setSearchQuery] = useState('');
-  const [showDropdown, setShowDropdown] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(0);
+
+  const listId = useId();
+  const optionId = (idx: number) => `${listId}-opt-${idx}`;
+  const rootRef = useRef<HTMLDivElement>(null);
 
   const query = searchQuery.toLowerCase();
-  const filtered = templates.filter(t =>
-    t.name.toLowerCase().includes(query) || t.key.toLowerCase().includes(query)
+  const filtered = templates.filter(
+    (t) => t.name.toLowerCase().includes(query) || t.key.toLowerCase().includes(query),
   );
 
-  const choose = (template: PickableTemplate) => {
+  // Clicking away closes the list. It used to stay open over the report.
+  useEffect(() => {
+    if (!open) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [open]);
+
+  const choose = (template: PickableTemplate | undefined) => {
+    if (!template) return;
     onSelect(template);
     setSearchQuery('');
-    setShowDropdown(false);
+    setOpen(false);
+    setActive(0);
   };
 
-  const dropdownStyle: React.CSSProperties = {
-    position: 'absolute', top: '100%', left: 0, right: 0,
-    background: 'white', border: '1px solid #d1d5db',
-    borderRadius: 'var(--radius)', marginTop: '0.25rem',
-    zIndex: 50,
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Escape') {
+      setOpen(false);
+      return;
+    }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!open) {
+        setOpen(true);
+        return;
+      }
+      const step = e.key === 'ArrowDown' ? 1 : -1;
+      // Wraps, so holding one arrow key gets you round the list either way.
+      setActive((i) => (filtered.length === 0 ? 0 : (i + step + filtered.length) % filtered.length));
+      return;
+    }
+    if (e.key === 'Enter' && open) {
+      e.preventDefault();
+      choose(filtered[active]);
+    }
   };
 
   return (
-    <div style={{ position: 'relative' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
-        <label style={labelStyle}>Search &amp; Select Report Template</label>
-        <button
+    <div className={styles['picker']} ref={rootRef}>
+      <div className={styles['pickerHead']}>
+        <Field label="Report template" hint="Type to search, then use the arrow keys.">
+          <Input
+            role="combobox"
+            aria-expanded={open}
+            aria-controls={listId}
+            aria-autocomplete="list"
+            aria-activedescendant={open && filtered.length > 0 ? optionId(active) : undefined}
+            value={searchQuery}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setActive(0);
+              setOpen(true);
+            }}
+            onFocus={() => setOpen(true)}
+            onKeyDown={handleKeyDown}
+            placeholder="e.g. Appendicitis, Pelvic, Normal…"
+          />
+        </Field>
+
+        <Button
+          intent="link"
+          icon={<RiSettings3Line size={14} />}
           onClick={onManageTemplates}
-          style={{
-            background: 'none', border: 'none', color: '#7c3aed',
-            fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer',
-            display: 'flex', alignItems: 'center', gap: '0.2rem',
-            textTransform: 'uppercase', padding: 0
-          }}
         >
-          <RiSettings3Line size={13} /> Manage Templates
-        </button>
-      </div>
-      <div style={{ display: 'flex', gap: '0.5rem' }}>
-        <input
-          value={searchQuery}
-          onChange={e => {
-            setSearchQuery(e.target.value);
-            setShowDropdown(true);
-          }}
-          onFocus={() => setShowDropdown(true)}
-          placeholder="Type to search e.g. Appendicitis, Pelvic, Normal..."
-          style={plainInputStyle}
-        />
-        {searchQuery && (
-          <button
-            onClick={() => {
-              setSearchQuery('');
-              setShowDropdown(false);
-            }}
-            style={{
-              background: '#f3f4f6', border: '1px solid #d1d5db',
-              padding: '0.45rem 0.75rem', borderRadius: 'var(--radius)',
-              cursor: 'pointer', fontSize: '0.8rem'
-            }}
-          >
-            Clear
-          </button>
-        )}
+          Manage templates
+        </Button>
       </div>
 
-      {showDropdown && filtered.length > 0 && (
-        <div style={{
-          ...dropdownStyle,
-          boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
-          maxHeight: '250px', overflowY: 'auto'
-        }}>
-          {filtered.map(t => (
-            <div
+      {open && filtered.length > 0 && (
+        <ul className={styles['pickerList']} id={listId} role="listbox" aria-label="Report templates">
+          {filtered.map((t, idx) => (
+            <li
               key={t.key}
+              id={optionId(idx)}
+              role="option"
+              aria-selected={idx === active}
+              className={[styles['pickerOption'], idx === active ? styles['pickerActive'] : '']
+                .filter(Boolean)
+                .join(' ')}
+              // The input keeps focus throughout, so the pointer must not take
+              // it away before the click lands.
+              onMouseDown={(e) => e.preventDefault()}
+              onMouseEnter={() => setActive(idx)}
               onClick={() => choose(t)}
-              style={{
-                padding: '0.6rem 0.75rem', cursor: 'pointer',
-                fontSize: '0.8rem', borderBottom: '1px solid #f3f4f6',
-                display: 'flex', justifyContent: 'space-between',
-                alignItems: 'center', transition: 'background 0.1s'
-              }}
-              onMouseEnter={e => e.currentTarget.style.background = '#f3f4f6'}
-              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
             >
-              <span style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <span className={styles['pickerName']}>
                 {t.name}
-                {!t.isSystem && (
-                  <span style={{ fontSize: '0.65rem', padding: '1px 5px', background: '#f5f3ff', color: '#7c3aed', border: '1px solid #ddd6fe', borderRadius: '4px', fontWeight: 700 }}>Custom</span>
-                )}
+                {!t.isSystem && <Badge tone="accent">Custom</Badge>}
               </span>
-              <span style={{ fontSize: '0.65rem', color: '#9ca3af' }}>{t.key.replace(/_/g, ' ')}</span>
-            </div>
+              <span className={styles['pickerKey']}>{t.key.replace(/_/g, ' ')}</span>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
-      {showDropdown && filtered.length === 0 && (
-        <div style={{
-          ...dropdownStyle,
-          padding: '0.75rem', fontSize: '0.8rem', color: '#9ca3af', textAlign: 'center'
-        }}>
+
+      {open && filtered.length === 0 && (
+        <div className={styles['pickerEmpty']} id={listId}>
           No matching templates found
         </div>
       )}

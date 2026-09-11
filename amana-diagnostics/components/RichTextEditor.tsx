@@ -195,6 +195,15 @@ interface RichTextEditorProps {
   onChange: (val: string) => void;
   placeholder?: string;
   minHeight?: string;
+  /**
+   * What this editor is for, e.g. "Report findings".
+   *
+   * A contenteditable with no name is announced as an unlabelled text area,
+   * and a screen on which two of them sit one above the other — findings and
+   * impression — gives no way to tell which is which. A visible <label> cannot
+   * do it: htmlFor needs an id on a form control, and this is a div.
+   */
+  ariaLabel?: string;
 }
 
 const FONTS = [
@@ -232,6 +241,7 @@ export default function RichTextEditor({
   onChange,
   placeholder = 'Start typing…',
   minHeight = '320px',
+  ariaLabel,
 }: RichTextEditorProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const lastEmitted = useRef<string>('');
@@ -262,6 +272,13 @@ export default function RichTextEditor({
     ],
     content: value,
     immediatelyRender: false,
+    editorProps: {
+      attributes: {
+        role: 'textbox',
+        'aria-multiline': 'true',
+        ...(ariaLabel ? { 'aria-label': ariaLabel } : {}),
+      },
+    },
     onCreate: ({ editor }) => {
       lastEmitted.current = value;
       setIsEmpty(editor.isEmpty);

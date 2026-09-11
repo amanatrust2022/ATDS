@@ -1,5 +1,7 @@
 'use client';
 
+import styles from './entryForm.module.css';
+
 interface Props {
   /** Paths already attached to the report, e.g. `/uss-pics/BPD.jpg`. */
   images: string[];
@@ -24,61 +26,56 @@ const picOptions = [
   { name: 'Benign Prostatic Hyperplasia (BPH)', file: 'BPH.jpg' },
 ];
 
+/**
+ * The reference images a radiologist attaches to a report.
+ *
+ * Fifteen `<div onClick>` tiles: nothing focusable, nothing announced, nothing
+ * operable without a mouse. Whether a tile was attached was carried by a
+ * purple border and a nine-pixel tick in the corner — no text, and both of
+ * them invisible to anyone working by keyboard. They are toggle buttons now,
+ * and the count is stated in words.
+ */
 export default function ScanImagePicker({ images, onToggle }: Props) {
+  const attached = images.length;
+
   return (
-    <div style={{
-      border: '1px solid var(--gray-300)', borderRadius: 'var(--radius-lg)',
-      padding: '1rem', background: '#f9fafb'
-    }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-        <h4 style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--gray-700)', textTransform: 'uppercase', margin: 0 }}>
-          Attach Key Scan Images (Optional)
-        </h4>
-        {images.length > 0 && (
-          <span style={{ fontSize: '0.72rem', background: '#d1fae5', color: '#065f46', padding: '0.1rem 0.5rem', borderRadius: '9999px', fontWeight: 600 }}>
-            {images.length} Image(s) Attached
-          </span>
-        )}
+    <section className={styles['scans']} aria-labelledby="scan-picker-heading">
+      <div className={styles['scansHead']}>
+        <h3 className={styles['scansTitle']} id="scan-picker-heading">
+          Key scan images
+        </h3>
+        <span className={styles['scansCount']}>
+          {attached === 0
+            ? 'No images attached'
+            : `${attached} image${attached === 1 ? '' : 's'} attached`}
+        </span>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '0.75rem' }}>
-        {picOptions.map(pic => {
+      <ul className={styles['scanGrid']}>
+        {picOptions.map((pic) => {
           const path = `/uss-pics/${pic.file}`;
           const isAttached = images.includes(path);
+
           return (
-            <div
-              key={pic.file}
-              onClick={() => onToggle(path)}
-              style={{
-                border: `2px solid ${isAttached ? '#7c3aed' : '#e5e7eb'}`,
-                borderRadius: 'var(--radius)', background: 'white',
-                padding: '0.4rem', cursor: 'pointer', position: 'relative',
-                textAlign: 'center', overflow: 'hidden', display: 'flex',
-                flexDirection: 'column', alignItems: 'center', gap: '0.25rem'
-              }}
-            >
-              <img
-                src={path}
-                style={{ width: '100%', height: '50px', objectFit: 'cover', borderRadius: '2px' }}
-                alt={pic.name}
-              />
-              <span style={{ fontSize: '0.62rem', fontWeight: 600, display: 'block', height: '28px', overflow: 'hidden', color: '#374151' }}>
-                {pic.name}
-              </span>
-              {isAttached && (
-                <div style={{
-                  position: 'absolute', top: 2, right: 2,
-                  background: '#7c3aed', color: 'white', width: 14, height: 14,
-                  borderRadius: '50%', fontSize: '9px', fontWeight: 'bold',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center'
-                }}>
-                  ✓
-                </div>
-              )}
-            </div>
+            <li key={pic.file}>
+              <button
+                type="button"
+                aria-pressed={isAttached}
+                className={[styles['scanTile'], isAttached ? styles['scanOn'] : '']
+                  .filter(Boolean)
+                  .join(' ')}
+                onClick={() => onToggle(path)}
+              >
+                {/* Decorative here: the button already carries the name, and a
+                  * duplicate alt would have it read twice. */}
+                <img src={path} alt="" className={styles['scanThumb']} />
+                <span className={styles['scanName']}>{pic.name}</span>
+                <span className={styles['scanState']}>{isAttached ? 'Attached' : 'Attach'}</span>
+              </button>
+            </li>
           );
         })}
-      </div>
-    </div>
+      </ul>
+    </section>
   );
 }

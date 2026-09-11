@@ -8,7 +8,7 @@ import type { Department, RadiologyTemplate } from '@/lib/store';
 import TemplatePicker, { PickableTemplate } from './TemplatePicker';
 import ObstetricsCalculator from './ObstetricsCalculator';
 import ScanImagePicker from './ScanImagePicker';
-import { labelStyle } from './entryFormStyles';
+import styles from './entryForm.module.css';
 
 const RichTextEditor = dynamic(() => import('@/components/RichTextEditor'), { ssr: false });
 
@@ -62,7 +62,7 @@ export default function RadiologyEntryForm({
     });
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', marginBottom: '1.25rem' }}>
+    <div className={styles['form']}>
 
       {isRadiology && (
         <TemplatePicker
@@ -74,9 +74,14 @@ export default function RadiologyEntryForm({
 
       {isObs && <ObstetricsCalculator value={value} onChange={onChange} />}
 
+      {/* The heading names the editor for a sighted reader; ariaLabel names it
+        * for everyone else. A <label htmlFor> cannot reach it — the editor is a
+        * contenteditable div, not a form control — so without the prop these
+        * were two unnamed text areas stacked on one screen. */}
       <div>
-        <label style={labelStyle}>Report Findings (Prose)</label>
+        <h3 className={styles['editorLabel']}>Report findings</h3>
         <RichTextEditor
+          ariaLabel="Report findings"
           value={value.findings}
           onChange={val => onChange({ ...value, findings: val })}
           placeholder="Describe the findings for each organ in detail..."
@@ -84,8 +89,9 @@ export default function RadiologyEntryForm({
       </div>
 
       <div>
-        <label style={labelStyle}>Clinical Impression / Conclusion</label>
+        <h3 className={styles['editorLabel']}>Clinical impression</h3>
         <RichTextEditor
+          ariaLabel="Clinical impression"
           value={value.impression}
           onChange={val => onChange({ ...value, impression: val })}
           placeholder="Write clinical impression, summary, or suggestions here..."
