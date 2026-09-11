@@ -1,0 +1,231 @@
+/**
+ * The investigation catalogue editor.
+ *
+ * A list of tests on the left, the one you picked open on the right. It was 57
+ * inline style objects and a dozen hard-coded hexes, including a purple
+ * (#7c3aed) that meant "radiology" and existed nowhere else in the product.
+ */
+
+.shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  gap: var(--space-3);
+}
+
+.split {
+  display: grid;
+  grid-template-columns: minmax(15rem, 1fr) minmax(0, 1.5fr);
+  gap: var(--space-4);
+  align-items: start;
+  min-height: 0;
+}
+
+@media (max-width: 60rem) {
+  .split {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* --- Left: picking a test --------------------------------------------- */
+
+.picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-height: 0;
+}
+
+.categories {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 26rem;
+  overflow-y: auto;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: none;
+  color: var(--text-primary);
+  cursor: pointer;
+
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
+}
+
+.item:hover {
+  background: var(--surface-hover);
+}
+
+.item:focus-visible {
+  outline: var(--focus-width) solid var(--focus-color);
+  outline-offset: -2px;
+}
+
+/* Chosen reads as a fill and a left edge, not a fill alone. */
+.itemOn {
+  background: var(--surface-selected);
+  border-color: var(--accent-border);
+  box-shadow: inset 3px 0 0 var(--accent-solid);
+}
+
+.itemName {
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+}
+
+.itemMeta {
+  display: block;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  margin-top: 1px;
+}
+
+.itemTail {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.empty {
+  padding: var(--space-6) var(--space-4);
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+/* --- Right: the form -------------------------------------------------- */
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-height: 0;
+}
+
+.pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+}
+
+@media (max-width: 40rem) {
+  .pair {
+    grid-template-columns: 1fr;
+  }
+}
+
+.money {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 1fr;
+  gap: var(--space-3);
+}
+
+@media (max-width: 40rem) {
+  .money {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* A value the form shows but cannot change — a locked department, a fixed
+ * specimen. Reads as text, not as a disabled box you might try to type in. */
+.fixed {
+  display: flex;
+  align-items: center;
+  min-height: var(--control-height-md);
+  padding: 0 var(--control-padding-x);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  background: var(--surface-sunken);
+  color: var(--text-secondary);
+  font-size: var(--text-md);
+}
+
+.note {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  line-height: var(--leading-normal);
+  margin: 0;
+}
+
+/* --- Parameters ------------------------------------------------------- */
+
+.presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* Each preset is two buttons that act on one thing, so they share an edge. */
+.preset {
+  display: inline-flex;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.paramsHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.paramsTitle {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.params {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.param {
+  display: grid;
+  grid-template-columns: 1.5fr 0.8fr 1.5fr auto;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+@media (max-width: 40rem) {
+  .param {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.footerEnd {
+  margin-left: auto;
+  display: flex;
+  gap: var(--space-2);
+}
