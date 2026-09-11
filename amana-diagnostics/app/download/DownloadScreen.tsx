@@ -4,7 +4,7 @@ import {
   RiShieldCheckLine, RiWifiOffLine, RiComputerLine,
 } from '@remixicon/react';
 
-import { version as CURRENT_VERSION } from '../../package.json';
+import pkg from '../../package.json';
 import styles from '../landing.module.css';
 
 /**
@@ -25,6 +25,7 @@ import styles from '../landing.module.css';
  * protected on the disk. The sentence now says what is true.
  */
 
+const CURRENT_VERSION: string = pkg.version;
 const RELEASES = 'https://github.com/voltex-technologies/redian-releases/releases/download';
 const DOWNLOAD_URL = `${RELEASES}/v${CURRENT_VERSION}/Redian_${CURRENT_VERSION}_x64-setup.exe`;
 const DOWNLOAD_URL_MSI = `${RELEASES}/v${CURRENT_VERSION}/Redian_${CURRENT_VERSION}_x64_en-US.msi`;

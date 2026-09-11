@@ -2,7 +2,9 @@ import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-import { version } from '../../package.json';
+import pkg from '../../package.json';
+
+const version: string = pkg.version;
 import DownloadScreen from './DownloadScreen';
 
 /**
