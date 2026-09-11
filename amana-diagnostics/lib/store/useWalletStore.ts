@@ -3,7 +3,7 @@ import { BillingAccount, BillingLedgerTransaction, ExternalDepartmentCharge, Pat
 
 interface AccountFormState {
   name: string;
-  type: 'individual' | 'family';
+  type: 'individual' | 'family' | 'corporate';
   creditLimit: string;
   initialDeposit: string;
   paymentMethod: string;

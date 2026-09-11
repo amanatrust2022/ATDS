@@ -1,0 +1,199 @@
+/**
+ * Opening a billing account.
+ *
+ * Was a hand-rolled overlay with a teal header band, `background: white` and a
+ * hard-coded slate scrim — so it had no dark theme at all, and no focus trap or
+ * Escape. The frame is the design system's Dialog now; what is left here is the
+ * form's own layout and the owner picker.
+ */
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* ── The new-owner toggle ──────────────────────────────────────────────── */
+
+/*
+ * Was a div with an onClick and a readOnly checkbox inside it, so it could only
+ * be operated with a mouse: the checkbox took focus but ignored the space bar.
+ * It is a real label wrapping a real checkbox now, which gets keyboard
+ * operation and the hit area for free.
+ */
+.toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background var(--duration-fast), border-color var(--duration-fast);
+}
+
+.toggle:hover {
+  border-color: var(--border-strong);
+}
+
+.toggleOn {
+  background: var(--accent-subtle);
+  border-color: var(--accent-border);
+}
+
+.toggle:focus-within {
+  outline: var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* ── The owner picker ──────────────────────────────────────────────────── */
+
+.picker {
+  position: relative;
+}
+
+.results {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: var(--space-1);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  z-index: var(--z-dropdown);
+  overflow: hidden;
+}
+
+.resultList {
+  max-height: 11rem;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.result {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border-subtle);
+  cursor: pointer;
+  font: inherit;
+  color: var(--text-primary);
+}
+
+.result:last-child {
+  border-bottom: none;
+}
+
+.result:hover,
+.resultActive {
+  background: var(--accent-subtle);
+}
+
+.resultName {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+}
+
+.resultMeta {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.resultEmpty {
+  padding: var(--space-3);
+  text-align: center;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-sunken);
+  border-top: 1px solid var(--border-subtle);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.chosen {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--accent-subtle);
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+}
+
+/* ── New people ────────────────────────────────────────────────────────── */
+
+.newPerson {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--accent-subtle);
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-md);
+}
+
+.sectionTitle {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+}
+
+.dependants {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.dependantsHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.dependant {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.dependantHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.dependantLabel {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+}

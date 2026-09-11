@@ -10,3 +10,6 @@ amana-hub-portable/
 test-zip-extract/
 temp-releases-clone/
 
+
+# LibreOffice/OpenOffice lock files, created while a doc is open
+.~lock.*#

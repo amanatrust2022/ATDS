@@ -129,7 +129,11 @@ export function Field({
  * Controls
  * ==================================================================== */
 
-type InputProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'className'> & {
+// `prefix` is also a global HTML attribute (RDFa), typed `string`. Left in, it
+// intersects with the one below to `string & ReactNode`, which nothing can
+// satisfy — so this prop has never once been usable. First use of it found
+// that; see OwnerPicker.
+type InputProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'className' | 'prefix'> & {
   /** Shown inside the control's left edge — a currency mark, a search icon. */
   prefix?: ReactNode;
   /** Shown inside the right edge — a unit, a clear button. */
