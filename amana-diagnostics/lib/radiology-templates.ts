@@ -366,7 +366,7 @@ export const RADIOLOGY_TEMPLATES: Record<string, { name: string; findings: strin
                     },
     "complete_abortion":  {
                               "impression":  "IMPRESSION:The USS Features are suggestive of Complete Abortion.",
-                              "findings":  "AND CLINICAL SERVICES LIMITED\n:URINARY BLADDER:  Distended with urine with normal mucosal thickness. No gross masses or stone seen.\nUTERUS:  Anteverted and empty measuring 59mm in AP diametre. No evidence of pregnancy no retained product of conception. No focal lesion demonstrated. Myometrial and central endometrial echoes are preserved minimal fluid is noted within the endometrium likely blood. Right and Left adnexia are free.\nCUL-DE-SAC:  No sonographic abnormalities detected in anterior and posterior cul-de-sac.",
+                              "findings":  ":URINARY BLADDER:  Distended with urine with normal mucosal thickness. No gross masses or stone seen.\nUTERUS:  Anteverted and empty measuring 59mm in AP diametre. No evidence of pregnancy no retained product of conception. No focal lesion demonstrated. Myometrial and central endometrial echoes are preserved minimal fluid is noted within the endometrium likely blood. Right and Left adnexia are free.\nCUL-DE-SAC:  No sonographic abnormalities detected in anterior and posterior cul-de-sac.",
                               "name":  "COMPLETE ABORTION"
                           },
     "renal_hemangioma_right":  {
@@ -541,7 +541,7 @@ export const RADIOLOGY_TEMPLATES: Record<string, { name: string; findings: strin
                                      },
     "bpd_4_hc_ac_fl_efw":  {
                                "impression":  "CONCLUSION: Normal Single live Fetus at 33weeks 2day(s) GA.\nUltrasound  Specialist.",
-                               "findings":  "AND CLINICAL SERVICES LIMITED\n:URINARY BLADDER: Distended with urine with normal mucosal thickness. No gross masses or stone seen.\nUTERUS: The uterus is gravid and shows single live fetus in the uterine cavity. The cervical Os is closed. Right and Left adnexia are free. The POD is free and preserved\nPRESENTATION=   Cephalic\nLIE=  Longitudinal\nPLACENTA=    Anterior\nEGA by (BPD, HC, AC, and FL)=  33weeks 2day(s)\nEFW=      2.3Kg\nEDD=     01/06/2026 (±2weeks)\nGENDER=      XY",
+                               "findings":  ":URINARY BLADDER: Distended with urine with normal mucosal thickness. No gross masses or stone seen.\nUTERUS: The uterus is gravid and shows single live fetus in the uterine cavity. The cervical Os is closed. Right and Left adnexia are free. The POD is free and preserved\nPRESENTATION=   Cephalic\nLIE=  Longitudinal\nPLACENTA=    Anterior\nEGA by (BPD, HC, AC, and FL)=  33weeks 2day(s)\nEFW=      2.3Kg\nEDD=     01/06/2026 (±2weeks)\nGENDER=      XY",
                                "name":  "BPD 4 HC AC FL EFW"
                            },
     "peritoneal_inclusion_cyst_2":  {
@@ -791,7 +791,7 @@ export const RADIOLOGY_TEMPLATES: Record<string, { name: string; findings: strin
                },
     "gs_6-7weeks_1":  {
                           "impression":  "CONCLUSION: Early cyesis Intra-uterine Gestationt at 6weeks 4days GA.",
-                          "findings":  "AND CLINICAL SERVICES LIMITED\nREAL TIME PELVIC ULTRASONOGRAPHY  EXAM: REVEALED:\n:URINARY BLADDER:Distended with urine with normal mucosal thickness. No gross masses or stone seen.\nUTERUS:The uterus is gravid and shows single gestational sac with double decidual sac sign, yolk sac detected but embryo is not yet seen in the uterine cavity. Right and Left adnexia are free.\nGS= 21=mm.\nGA= 6week 4days.\nEDD= 07/12/2026±2weeks.\nCUL-DE-SAC:  No sonographic abnormalities detected in anterior and posterior cul-de-sac.",
+                          "findings":  "REAL TIME PELVIC ULTRASONOGRAPHY  EXAM: REVEALED:\n:URINARY BLADDER:Distended with urine with normal mucosal thickness. No gross masses or stone seen.\nUTERUS:The uterus is gravid and shows single gestational sac with double decidual sac sign, yolk sac detected but embryo is not yet seen in the uterine cavity. Right and Left adnexia are free.\nGS= 21=mm.\nGA= 6week 4days.\nEDD= 07/12/2026±2weeks.\nCUL-DE-SAC:  No sonographic abnormalities detected in anterior and posterior cul-de-sac.",
                           "name":  "GS 6-7WEEKS 1"
                       },
     "enteritis":  {
