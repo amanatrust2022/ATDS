@@ -2,9 +2,31 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
-import { RiMicroscopeLine, RiCheckLine, RiShieldCheckLine, RiUploadCloud2Line, RiEyeLine, RiEyeOffLine } from '@remixicon/react';
+import { RiMicroscopeLine, RiShieldCheckLine, RiUploadCloud2Line, RiEyeLine, RiEyeOffLine } from '@remixicon/react';
 import { apiBase } from '@/lib/cloudOrigin';
 
+import styles from '../../login/login.module.css';
+
+/**
+ * Invite acceptance: the front door for staff a workspace has invited.
+ *
+ * Shares the sign-in screen's stylesheet — it is the same front door and
+ * commits to the same single dark treatment for the same reason.
+ *
+ * What the old screen owed a keyboard user: not one of its fields had a label
+ * attached to it (four <label>s with no htmlFor, four inputs with no id, above
+ * a <select> that read as "combobox" with no name). The two password-reveal
+ * buttons had no name at all. Errors were painted red and never announced. The
+ * password fields did not tell the browser they were new credentials.
+ *
+ * And the lookup's slow-network warning went into the same state as a real
+ * error and was never cleared, so an invite that loaded after a slow moment
+ * opened under a red "slow network" message about a check that had passed.
+ */
+
+const cx = (...names: Array<string | undefined | false>) => names.filter(Boolean).join(' ');
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function withTimeout(promise: any, ms: number, onWarning: () => void): Promise<any> {
   const timer = setTimeout(onWarning, ms);
   try {
@@ -14,26 +36,34 @@ async function withTimeout(promise: any, ms: number, onWarning: () => void): Pro
   }
 }
 
+const roleLabels: Record<string, string> = {
+  reception: 'Receptionist',
+  lab: 'Lab Scientist',
+  radiology: 'Radiologist',
+  admin: 'Administrator',
+};
+
 export default function InviteAcceptPage() {
   const params = useParams();
   const token = params?.token as string;
   const router = useRouter();
   const supabase = createClient();
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [invite, setInvite] = useState<any>(null);
-  const [org, setOrg] = useState<any>(null);
+  const [org, setOrg] = useState<{ name: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [invalid, setInvalid] = useState(false);
-  
+
   const [form, setForm] = useState({
     title: 'Mr.',
     firstName: '',
     lastName: '',
     surname: '',
     password: '',
-    confirm: ''
+    confirm: '',
   });
-  
+
   const [signatureFile, setSignatureFile] = useState<File | null>(null);
   const [signaturePreview, setSignaturePreview] = useState<string | null>(null);
 
@@ -59,7 +89,7 @@ export default function InviteAcceptPage() {
         const res = await withTimeout(
           fetchPromise,
           10000,
-          () => setError('Slow network connection detected. Still retrieving invitation details... please wait.')
+          () => setError('Slow network connection detected. Still retrieving invitation details… please wait.')
         );
 
         if (!res.ok) {
@@ -68,8 +98,11 @@ export default function InviteAcceptPage() {
           const data = await res.json();
           setInvite(data);
           setOrg({ name: data.organizationName });
+          // The slow-network warning, if it fired, is about a lookup that has
+          // now succeeded. It must not sit over the form the invitee fills in.
+          setError('');
         }
-      } catch (err: any) {
+      } catch (err) {
         console.error('Invite fetch error:', err);
         setInvalid(true);
       } finally {
@@ -83,7 +116,10 @@ export default function InviteAcceptPage() {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       setSignatureFile(file);
-      setSignaturePreview(URL.createObjectURL(file));
+      setSignaturePreview((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return URL.createObjectURL(file);
+      });
     }
   };
 
@@ -99,15 +135,15 @@ export default function InviteAcceptPage() {
       if (signatureFile) {
         const fileExt = signatureFile.name.split('.').pop();
         const fileName = `${invite.id}-${Math.random()}.${fileExt}`;
-        
+
         const uploadPromise = supabase.storage
           .from('signatures')
           .upload(fileName, signatureFile);
 
-        const { data: uploadData, error: uploadError } = await withTimeout(
+        const { error: uploadError } = await withTimeout(
           uploadPromise,
           15000,
-          () => setError('Slow network connection detected. Still uploading your signature image... please wait.')
+          () => setError('Slow network connection detected. Still uploading your signature image… please wait.')
         );
 
         if (uploadError) throw uploadError;
@@ -115,12 +151,13 @@ export default function InviteAcceptPage() {
         const { data } = supabase.storage
           .from('signatures')
           .getPublicUrl(fileName);
-        
+
         publicUrl = data.publicUrl;
       }
 
       // 2. Format Full Name
       const fullName = `${form.title} ${form.firstName} ${form.lastName ? form.lastName + ' ' : ''}${form.surname}`.trim();
+      void fullName;
 
       // 3. Call server-side invite acceptance API
       const apiEndpoint = `${apiBase()}/api/invite/accept`;
@@ -135,8 +172,8 @@ export default function InviteAcceptPage() {
           firstName: form.firstName,
           lastName: form.lastName,
           surname: form.surname,
-          publicUrl
-        })
+          publicUrl,
+        }),
       });
 
       if (!res.ok) {
@@ -147,7 +184,7 @@ export default function InviteAcceptPage() {
       // 4. Log the user in seamlessly
       const signInPromise = supabase.auth.signInWithPassword({
         email: invite.email,
-        password: form.password
+        password: form.password,
       });
 
       const { error: signInErr } = await withTimeout(
@@ -160,200 +197,226 @@ export default function InviteAcceptPage() {
 
       // 5. Redirect directly to workspace
       router.push('/');
-    } catch (err: any) {
-      setError(err.message || 'An unexpected connection error occurred.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An unexpected connection error occurred.');
       setSubmitting(false);
     }
   };
 
-  const inp: React.CSSProperties = {
-    width: '100%', padding: '0.7rem 0.9rem',
-    background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)',
-    borderRadius: 8, color: 'white', fontSize: '0.9rem',  transition: 'border-color 0.2s'
-  };
-  const lbl: React.CSSProperties = {
-    display: 'block', fontSize: '0.75rem', fontWeight: 600,
-    color: 'rgba(255,255,255,0.5)', marginBottom: '0.4rem',
-    textTransform: 'uppercase', letterSpacing: '0.05em'
-  };
-
-  if (loading) return (
-    <div style={{ minHeight: '100vh', background: '#0a0f1e', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.4)', fontFamily: 'var(--font-body)' }}>
-      Verifying invite link...
-    </div>
+  const errorBox = error && (
+    <p className={styles.error} role="alert">
+      <span className={styles.errorMark} aria-hidden="true">!</span>
+      <span>{error}</span>
+    </p>
   );
 
-  if (invalid) return (
-    <div style={{ minHeight: '100vh', background: '#0a0f1e', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-body)', padding: '2rem' }}>
-      <div style={{ textAlign: 'center', color: 'white', maxWidth: 400 }}>
-        <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🔗</div>
-        <h2 style={{ fontWeight: 700, marginBottom: '0.5rem' }}>Invalid or expired link</h2>
-        <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.85rem', marginBottom: '1.5rem' }}>
-          This invite link has already been used, expired, or verification timed out due to slow network. Please contact your administrator.
-        </p>
-        <a href="/login" style={{ color: '#7fa3e0', textDecoration: 'none', fontWeight: 600 }}>← Back to sign in</a>
+  if (loading) {
+    return (
+      <div className={cx(styles.page, styles.single)}>
+        <div className={styles.state}>
+          <span className={styles.brandMark} aria-hidden="true">
+            <RiMicroscopeLine size={20} />
+          </span>
+          <p className={styles.sub} role="status">Verifying invite link…</p>
+        </div>
       </div>
-    </div>
-  );
+    );
+  }
 
-  const roleLabels: Record<string, string> = {
-    reception: 'Receptionist', lab: 'Lab Scientist', radiology: 'Radiologist', admin: 'Administrator'
-  };
+  if (invalid) {
+    return (
+      <div className={cx(styles.page, styles.single)}>
+        <div className={styles.state}>
+          <span className={styles.stateIcon} aria-hidden="true">🔗</span>
+          <h1 className={styles.heading}>Invalid or expired link</h1>
+          <p className={styles.sub}>
+            This invite link has already been used, has expired, or verification timed out on a
+            slow connection. Ask your administrator to send a fresh invite.
+          </p>
+          <a href="/login" className={styles.link}>← Back to sign in</a>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div style={{ minHeight: '100vh', background: '#0a0f1e', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem', fontFamily: 'var(--font-body)' }}>
-      <style>{`
-        input::placeholder { color: rgba(255,255,255,0.2); } 
-        input:focus, select:focus { border-color: #4472c4 !important; }
-        select option { color: #000; }
-      `}</style>
-      <div style={{ width: '100%', maxWidth: 500 }}>
-        <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-          <div style={{ background: '#4472c4', borderRadius: 10, width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 0.75rem' }}>
-            <RiMicroscopeLine size={24} color="white" />
+    <div className={cx(styles.page, styles.single)}>
+      <main className={styles.main}>
+        <div className={cx(styles.form, styles.wide)}>
+          <div className={styles.centred}>
+            <span className={styles.brandMark} aria-hidden="true">
+              <RiMicroscopeLine size={20} />
+            </span>
+            <h1 className={styles.heading}>You&apos;ve been invited</h1>
+            <p className={styles.invitedTo}>
+              Join <span className={styles.invitedOrg}>{org?.name}</span> as{' '}
+              {roleLabels[invite.role] || invite.role}
+            </p>
           </div>
-          <h1 style={{ color: 'white', fontSize: '1.4rem', fontWeight: 700 }}>You've been invited!</h1>
-          <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.85rem', marginTop: '0.3rem' }}>
-            Join <strong style={{ color: '#7fa3e0' }}>{org?.name}</strong> as {roleLabels[invite.role] || invite.role}
+
+          <p className={styles.notice}>
+            <span className={styles.noticeMark} aria-hidden="true">
+              <RiShieldCheckLine size={16} />
+            </span>
+            <span>Signing in as <strong>{invite.email}</strong></span>
           </p>
-        </div>
 
-        <div style={{ background: 'rgba(68,114,196,0.08)', border: '1px solid rgba(68,114,196,0.2)', borderRadius: 8, padding: '0.75rem 1rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.82rem', color: '#7fa3e0' }}>
-          <RiShieldCheckLine size={16} />
-          Signing in as: <strong>{invite.email}</strong>
-        </div>
+          <form onSubmit={handleAccept} className={styles.form} noValidate>
+            {errorBox}
 
-        <form onSubmit={handleAccept} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-          
-          <div style={{ display: 'grid', gridTemplateColumns: '100px 1fr', gap: '1rem' }}>
-            <div>
-              <label style={lbl}>Title <span style={{ color: '#f87171' }}>*</span></label>
-              <select style={inp} value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} required>
-                <option value="Mr.">Mr.</option>
-                <option value="Ms.">Ms.</option>
-                <option value="Mrs.">Mrs.</option>
-                <option value="Dr.">Dr.</option>
-                <option value="Prof.">Prof.</option>
-                <option value="MLS.">MLS.</option>
-                <option value="Pharm.">Pharm.</option>
-              </select>
-            </div>
-            <div>
-              <label style={lbl}>Surname <span style={{ color: '#f87171' }}>*</span></label>
-              <input style={inp} value={form.surname} onChange={e => setForm({ ...form, surname: e.target.value })} placeholder="e.g. Doe" required />
-            </div>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-            <div>
-              <label style={lbl}>First Name <span style={{ color: '#f87171' }}>*</span></label>
-              <input style={inp} value={form.firstName} onChange={e => setForm({ ...form, firstName: e.target.value })} placeholder="e.g. John" required />
-            </div>
-            <div>
-              <label style={lbl}>Last Name</label>
-              <input style={inp} value={form.lastName} onChange={e => setForm({ ...form, lastName: e.target.value })} placeholder="Optional" />
-            </div>
-          </div>
-
-          <div>
-            <label style={lbl}>Digital Signature (Optional)</label>
-            <div style={{ 
-              border: '1px dashed rgba(255,255,255,0.2)', borderRadius: 8, padding: '1rem', 
-              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem',
-              background: 'rgba(255,255,255,0.02)'
-            }}>
-              {signaturePreview ? (
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
-                  <img src={signaturePreview} alt="Signature Preview" style={{ maxHeight: 60, objectFit: 'contain', background: 'white', padding: '0.5rem', borderRadius: 4 }} />
-                  <label style={{ color: '#7fa3e0', fontSize: '0.75rem', cursor: 'pointer', fontWeight: 600 }}>
-                    Change Signature
-                    <input type="file" accept="image/*" onChange={handleFileChange} style={{ display: 'none' }} />
-                  </label>
-                </div>
-              ) : (
-                <label style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer', gap: '0.5rem' }}>
-                  <RiUploadCloud2Line size={24} color="rgba(255,255,255,0.4)" />
-                  <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.85rem' }}>Upload Signature Image</span>
-                  <input type="file" accept="image/*" onChange={handleFileChange} style={{ display: 'none' }} />
+            <div className={styles.titleRow}>
+              <div>
+                <label className={styles.label} htmlFor="inv-title">
+                  Title <span className={styles.req} aria-hidden="true">*</span>
                 </label>
-              )}
-            </div>
-          </div>
-
-          <div style={{ background: 'rgba(255,255,255,0.03)', padding: '1.25rem', borderRadius: 8, display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            <div>
-              <label style={lbl}>Create Password <span style={{ color: '#f87171' }}>*</span></label>
-              <div style={{ position: 'relative' }}>
-                <input 
-                  type={showPassword ? "text" : "password"} 
-                  style={{...inp, background: 'rgba(0,0,0,0.2)', paddingRight: '2.8rem'}} 
-                  value={form.password} 
-                  onChange={e => setForm({ ...form, password: e.target.value })} 
-                  placeholder="At least 8 characters" 
-                  required 
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  style={{
-                    position: 'absolute',
-                    right: '0.9rem',
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    background: 'none',
-                    border: 'none',
-                    color: 'rgba(255,255,255,0.25)',
-                    cursor: 'pointer',
-                    padding: 0,
-                    display: 'flex',
-                    alignItems: 'center'
-                  }}
+                <select
+                  id="inv-title"
+                  className={cx(styles.input, styles.inputPlain, styles.select)}
+                  value={form.title}
+                  onChange={(e) => setForm({ ...form, title: e.target.value })}
+                  required
                 >
-                  {showPassword ? <RiEyeOffLine size={16} /> : <RiEyeLine size={16} />}
-                </button>
+                  <option value="Mr.">Mr.</option>
+                  <option value="Ms.">Ms.</option>
+                  <option value="Mrs.">Mrs.</option>
+                  <option value="Dr.">Dr.</option>
+                  <option value="Prof.">Prof.</option>
+                  <option value="MLS.">MLS.</option>
+                  <option value="Pharm.">Pharm.</option>
+                </select>
+              </div>
+              <div>
+                <label className={styles.label} htmlFor="inv-surname">
+                  Surname <span className={styles.req} aria-hidden="true">*</span>
+                </label>
+                <input
+                  id="inv-surname"
+                  className={cx(styles.input, styles.inputPlain)}
+                  value={form.surname}
+                  onChange={(e) => setForm({ ...form, surname: e.target.value })}
+                  placeholder="e.g. Doe"
+                  autoComplete="family-name"
+                  required
+                />
               </div>
             </div>
-            <div>
-              <label style={lbl}>Confirm Password <span style={{ color: '#f87171' }}>*</span></label>
-              <div style={{ position: 'relative' }}>
-                <input 
-                  type={showConfirm ? "text" : "password"} 
-                  style={{...inp, background: 'rgba(0,0,0,0.2)', paddingRight: '2.8rem'}} 
-                  value={form.confirm} 
-                  onChange={e => setForm({ ...form, confirm: e.target.value })} 
-                  placeholder="Repeat password" 
-                  required 
+
+            <div className={styles.pair}>
+              <div>
+                <label className={styles.label} htmlFor="inv-first">
+                  First name <span className={styles.req} aria-hidden="true">*</span>
+                </label>
+                <input
+                  id="inv-first"
+                  className={cx(styles.input, styles.inputPlain)}
+                  value={form.firstName}
+                  onChange={(e) => setForm({ ...form, firstName: e.target.value })}
+                  placeholder="e.g. John"
+                  autoComplete="given-name"
+                  required
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowConfirm(!showConfirm)}
-                  style={{
-                    position: 'absolute',
-                    right: '0.9rem',
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    background: 'none',
-                    border: 'none',
-                    color: 'rgba(255,255,255,0.25)',
-                    cursor: 'pointer',
-                    padding: 0,
-                    display: 'flex',
-                    alignItems: 'center'
-                  }}
-                >
-                  {showConfirm ? <RiEyeOffLine size={16} /> : <RiEyeLine size={16} />}
-                </button>
+              </div>
+              <div>
+                <label className={styles.label} htmlFor="inv-last">Last name</label>
+                <input
+                  id="inv-last"
+                  className={cx(styles.input, styles.inputPlain)}
+                  value={form.lastName}
+                  onChange={(e) => setForm({ ...form, lastName: e.target.value })}
+                  placeholder="Optional"
+                  autoComplete="additional-name"
+                />
               </div>
             </div>
-          </div>
 
-          {error && <p style={{ color: '#f87171', fontSize: '0.82rem', background: 'rgba(248,113,113,0.1)', padding: '0.6rem 0.9rem', borderRadius: 6, margin: 0 }}>{error}</p>}
-          
-          <button type="submit" disabled={submitting} style={{ background: submitting ? '#2a4a8a' : '#4472c4', border: 'none', color: 'white', padding: '0.85rem', borderRadius: 8, fontWeight: 700, fontSize: '0.95rem', cursor: submitting ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
-            {submitting ? 'Creating account...' : <><RiCheckLine size={18} /> Accept Invite & Join Workspace</>}
-          </button>
-        </form>
-      </div>
+            <div>
+              <span className={styles.label} id="inv-sig-label">Digital signature (optional)</span>
+              <input
+                id="inv-sig"
+                type="file"
+                accept="image/*"
+                className={cx('sr-only', styles.fileInput)}
+                onChange={handleFileChange}
+                aria-labelledby="inv-sig-label"
+              />
+              <label htmlFor="inv-sig" className={styles.dropzone}>
+                {signaturePreview ? (
+                  <>
+                    <img src={signaturePreview} alt="Your signature" className={styles.sigPreview} />
+                    <span>Change signature</span>
+                  </>
+                ) : (
+                  <>
+                    <span className={styles.dropIcon} aria-hidden="true">
+                      <RiUploadCloud2Line size={24} />
+                    </span>
+                    <span>Upload signature image</span>
+                  </>
+                )}
+              </label>
+            </div>
+
+            <div className={styles.group}>
+              <div>
+                <label className={styles.label} htmlFor="inv-password">
+                  Create password <span className={styles.req} aria-hidden="true">*</span>
+                </label>
+                <div className={styles.inputWrap}>
+                  <input
+                    id="inv-password"
+                    className={cx(styles.input, styles.inputPlain)}
+                    type={showPassword ? 'text' : 'password'}
+                    value={form.password}
+                    onChange={(e) => setForm({ ...form, password: e.target.value })}
+                    placeholder="At least 8 characters"
+                    autoComplete="new-password"
+                    required
+                  />
+                  <button
+                    type="button"
+                    className={styles.reveal}
+                    onClick={() => setShowPassword(!showPassword)}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    aria-pressed={showPassword}
+                  >
+                    {showPassword ? <RiEyeOffLine size={16} /> : <RiEyeLine size={16} />}
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className={styles.label} htmlFor="inv-confirm">
+                  Confirm password <span className={styles.req} aria-hidden="true">*</span>
+                </label>
+                <div className={styles.inputWrap}>
+                  <input
+                    id="inv-confirm"
+                    className={cx(styles.input, styles.inputPlain)}
+                    type={showConfirm ? 'text' : 'password'}
+                    value={form.confirm}
+                    onChange={(e) => setForm({ ...form, confirm: e.target.value })}
+                    placeholder="Repeat password"
+                    autoComplete="new-password"
+                    required
+                  />
+                  <button
+                    type="button"
+                    className={styles.reveal}
+                    onClick={() => setShowConfirm(!showConfirm)}
+                    aria-label={showConfirm ? 'Hide password' : 'Show password'}
+                    aria-pressed={showConfirm}
+                  >
+                    {showConfirm ? <RiEyeOffLine size={16} /> : <RiEyeLine size={16} />}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <button type="submit" className={styles.submit} disabled={submitting} aria-busy={submitting}>
+              {submitting ? 'Creating account…' : 'Accept invite & join workspace'}
+            </button>
+          </form>
+        </div>
+      </main>
     </div>
   );
 }
