@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
 import { RiMicroscopeLine, RiCheckLine, RiShieldCheckLine, RiUploadCloud2Line, RiEyeLine, RiEyeOffLine } from '@remixicon/react';
+import { apiBase } from '@/lib/cloudOrigin';
 
 async function withTimeout(promise: any, ms: number, onWarning: () => void): Promise<any> {
   const timer = setTimeout(onWarning, ms);
@@ -122,10 +123,8 @@ export default function InviteAcceptPage() {
       const fullName = `${form.title} ${form.firstName} ${form.lastName ? form.lastName + ' ' : ''}${form.surname}`.trim();
 
       // 3. Call server-side invite acceptance API
-      const apiEndpoint = typeof window !== 'undefined' && window.location.origin.includes('localhost:1420') 
-        ? 'https://amanadiagnostics.com/api/invite/accept' 
-        : '/api/invite/accept';
-        
+      const apiEndpoint = `${apiBase()}/api/invite/accept`;
+
       const res = await fetch(apiEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

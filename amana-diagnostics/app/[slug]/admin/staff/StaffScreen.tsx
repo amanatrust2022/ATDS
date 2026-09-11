@@ -27,6 +27,7 @@ import {
 } from '@remixicon/react';
 import { useParams } from 'next/navigation';
 import { printHtml } from '@/lib/templates';
+import { apiBase, reachableOrigin } from '@/lib/cloudOrigin';
 
 async function withTimeout(promise: any, ms: number, onWarning: () => void): Promise<any> {
   const timer = setTimeout(onWarning, ms);
@@ -66,7 +67,18 @@ function StaffManagement() {
       const res = await fetch(`/api/admin/performance?organizationId=${organization.id}&localMode=${isLocalMode}`);
       if (res.ok) {
         const data = await res.json();
-        setPerfData(data);
+        // Four arrays, guaranteed here rather than assumed four hundred lines
+        // below. The dashboard reads `perfData.completedTests.filter(...)`
+        // directly, and the only guard was `!perfData` — so a response that
+        // came back missing any one of these (a partial failure in the route,
+        // an older deployment) threw during render and took the whole admin
+        // screen down to a blank page.
+        setPerfData({
+          completedTests: data?.completedTests ?? [],
+          ledgerTransactions: data?.ledgerTransactions ?? [],
+          externalCharges: data?.externalCharges ?? [],
+          patientBilling: data?.patientBilling ?? [],
+        });
       }
     } catch (e) {
       console.error('Failed to fetch performance data:', e);
@@ -241,20 +253,14 @@ function StaffManagement() {
     }
 
     // 2. Send Email via Brevo
-    let origin = window.location.origin;
-    if (origin.includes('tauri://') || origin.includes('localhost:1420')) {
-      origin = 'https://amanadiagnostics.com'; // Fallback to cloud URL for emails
-    }
-    const link = `${origin}/invite/${token}`;
+    const link = `${reachableOrigin()}/invite/${token}`;
     // Update UI immediately since DB insert was successful
     setInviteLink(link);
     setForm({ email: '', role: 'reception' });
     fetchData(true);
 
     try {
-      const apiEndpoint = origin.includes('tauri://') || origin.includes('localhost:1420') 
-        ? 'https://amanadiagnostics.com/api/invite' 
-        : '/api/invite';
+      const apiEndpoint = `${apiBase()}/api/invite`;
 
       const emailRes = await fetch(apiEndpoint, {
         method: 'POST',
@@ -290,10 +296,8 @@ function StaffManagement() {
 
   const updateRole = async (id: string, role: string) => {
     try {
-      const apiEndpoint = typeof window !== 'undefined' && window.location.origin.includes('localhost:1420') 
-        ? 'https://amanadiagnostics.com/api/staff/update' 
-        : '/api/staff/update';
-        
+      const apiEndpoint = `${apiBase()}/api/staff/update`;
+
       const res = await fetch(apiEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -346,10 +350,8 @@ function StaffManagement() {
     if (!await ask(`Remove ${s.full_name || 'this staff member'} from the workspace?`)) return;
 
     try {
-      const apiEndpoint = typeof window !== 'undefined' && window.location.origin.includes('localhost:1420') 
-        ? 'https://amanadiagnostics.com/api/staff/update' 
-        : '/api/staff/update';
-        
+      const apiEndpoint = `${apiBase()}/api/staff/update`;
+
       const res = await fetch(apiEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -676,12 +678,12 @@ function StaffManagement() {
                           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: '0.5rem' }}>
                             <input 
                               readOnly 
-                              value={`${typeof window !== 'undefined' && window.location.origin.includes('localhost') ? window.location.origin : 'https://amanadiagnostics.com'}/invite/${inv.token}`} 
+                              value={`${reachableOrigin()}/invite/${inv.token}`}
                               style={{ ...inp, fontSize: '0.7rem', flex: 1, padding: '0.35rem 0.5rem', background: 'var(--gray-50)', color: 'var(--gray-600)' }} 
                               onClick={e => (e.target as HTMLInputElement).select()} 
                             />
                             <button 
-                              onClick={() => handleCopyLink(`${typeof window !== 'undefined' && window.location.origin.includes('localhost') ? window.location.origin : 'https://amanadiagnostics.com'}/invite/${inv.token}`, inv.id)} 
+                              onClick={() => handleCopyLink(`${reachableOrigin()}/invite/${inv.token}`, inv.id)}
                               style={{ background: copiedId === inv.id ? '#10b981' : 'var(--gray-200)', color: copiedId === inv.id ? 'white' : 'var(--gray-700)', border: 'none', padding: '0.35rem 0.65rem', borderRadius: 'var(--radius)', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 700, transition: 'all 0.2s' }}
                             >
                               {copiedId === inv.id ? 'Copied' : 'Copy'}
