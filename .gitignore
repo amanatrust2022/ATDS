@@ -13,3 +13,15 @@ temp-releases-clone/
 
 # LibreOffice/OpenOffice lock files, created while a doc is open
 .~lock.*#
+
+# Personal business material, not part of the product. These were swept in
+# by `git add -A` more than once, the last time carrying a live Google Maps
+# API key into a public repo. Stage by name, never -A.
+amana-diagnostics/leads_kano.csv
+amana-diagnostics/sales_strategy.md
+amana-diagnostics/scripts/scrape-leads.js
+amana-diagnostics/scripts/scrape-leads-google.js
+
+# TypeScript incremental build cache: a build artifact that rewrites itself
+# on every typecheck, so it shows as dirty constantly and invites -A.
+*.tsbuildinfo

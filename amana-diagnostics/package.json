@@ -51,9 +51,7 @@
     "@tiptap/starter-kit": "^3.27.1",
     "bonjour-service": "^1.2.1",
     "esbuild": "^0.25.4",
-    "framer-motion": "^13.2.0",
     "html2pdf.js": "^0.14.0",
-    "lucide-react": "^1.45.0",
     "mammoth": "^1.12.0",
     "next": "^15.4.5",
     "nodemailer": "^8.0.7",
@@ -62,7 +60,6 @@
     "pg": "^8.22.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
-    "sonner": "^2.0.8",
     "zod": "^4.4.3",
     "zustand": "^5.0.14"
   },

@@ -42,8 +42,7 @@
   --n-200: #dfe2ea;
   --n-300: #c5c8d1;
   --n-400: #878da0;
-  --n-500: #5f6779;
-  /* 5.67:1 on white - lightest neutral legal as body text */
+  --n-500: #5f6779;  /* 5.67:1 on white - lightest neutral legal as body text */
   --n-600: #4c5266;
   --n-700: #3b4152;
   --n-800: #2f3441;
@@ -57,10 +56,8 @@
   --a-300: #a4c0f0;
   --a-400: #85a9eb;
   --a-500: #618dde;
-  --a-600: #4472c4;
-  /* white on this = 4.72:1 */
-  --a-700: #28448a;
-  /* white on this = 9.19:1 */
+  --a-600: #4472c4;  /* white on this = 4.72:1 */
+  --a-700: #28448a;  /* white on this = 9.19:1 */
   --a-800: #1c3062;
   --a-850: #16264d;
   --a-900: #111d3b;
@@ -92,8 +89,7 @@
   --d-line-2: #666f82;
   --d-text: #e6e9f0;
   --d-text-2: #a3abbd;
-  --d-text-3: #8b94a6;
-  /* 6.24:1 on page, 5.29:1 on sunken - the tightest pair */
+  --d-text-3: #8b94a6;  /* 6.24:1 on page, 5.29:1 on sunken - the tightest pair */
 
   /* ==========================================================================
    * 2. SEMANTIC - the only layer components may use
