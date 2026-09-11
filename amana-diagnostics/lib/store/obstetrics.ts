@@ -63,6 +63,66 @@ export const estimateGestationalAge = (
   };
 };
 
+/** One measurement's own answer, before they are averaged together. */
+export interface BiometryEstimate {
+  source: 'BPD' | 'FL' | 'CRL';
+  /** Millimetres, as measured. */
+  mm: number;
+  /** Gestational age in weeks, unrounded. */
+  weeks: number;
+}
+
+const FITS = {
+  BPD: (mm: number) => 0.0012 * (mm * mm) + 0.22 * mm + 7.5,
+  FL: (mm: number) => 0.0015 * (mm * mm) + 0.26 * mm + 10.2,
+  CRL: (mm: number) => -0.0006 * (mm * mm) + 0.15 * mm + 5.8,
+} as const;
+
+/**
+ * What each measurement says on its own.
+ *
+ * `estimateGestationalAge` averages these, which is right while they agree —
+ * they are three views of one fetus. The case it cannot see is CRL beside BPD
+ * or FL: crown-rump length is a first-trimester measurement, taken to about 14
+ * weeks and meaningless after, while BPD and FL belong to the second and third.
+ * They do not overlap in a real pregnancy, so a CRL sitting in the box next to
+ * a third-trimester BPD is a stale field rather than a reading — and the mean
+ * of the two is a gestational age belonging to no pregnancy at all.
+ *
+ * The average is left as it is. This is what lets the screen show the working,
+ * so a disagreement of that size is visible instead of folded away.
+ */
+export const gestationalAgeByMeasurement = (
+  measurements: RadiologyFormState['measurements'],
+): BiometryEstimate[] => {
+  const sources: [BiometryEstimate['source'], string | undefined][] = [
+    ['BPD', measurements.bpd],
+    ['FL', measurements.fl],
+    ['CRL', measurements.crl],
+  ];
+
+  return sources.flatMap(([source, raw]) => {
+    const mm = parseFloat(raw || '');
+    if (isNaN(mm) || mm <= 0) return [];
+    return [{ source, mm, weeks: FITS[source](mm) }];
+  });
+};
+
+/**
+ * How far apart the measurements are, in days.
+ *
+ * Two weeks is the point at which they are no longer describing one fetus.
+ * Biometry of the same gestation scatters by a few days; fifty does not
+ * happen, and means somebody typed into the wrong box.
+ */
+export const SPREAD_WARNING_DAYS = 14;
+
+export const spreadInDays = (parts: BiometryEstimate[]): number => {
+  if (parts.length < 2) return 0;
+  const weeks = parts.map((p) => p.weeks);
+  return Math.round((Math.max(...weeks) - Math.min(...weeks)) * 7);
+};
+
 /**
  * Replaces a labelled value in the report, keeping whatever follows it.
  *

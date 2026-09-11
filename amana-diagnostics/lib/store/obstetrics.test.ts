@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { estimateGestationalAge, applyObstetricEstimate } from './obstetrics';
+import {
+  estimateGestationalAge,
+  applyObstetricEstimate,
+  gestationalAgeByMeasurement,
+  spreadInDays,
+  SPREAD_WARNING_DAYS,
+} from './obstetrics';
 import { RADIOLOGY_TEMPLATES, convertTextToFormattedHtml } from '@/lib/radiology-templates';
 import type { RadiologyFormState } from '@/lib/radiology-templates';
 
@@ -45,6 +51,44 @@ describe('estimateGestationalAge', () => {
     expected.setDate(expected.getDate() + 163);
     expect(estimateGestationalAge({ bpd: '35' }, TODAY)!.edd)
       .toBe(expected.toLocaleDateString('en-NG'));
+  });
+});
+
+describe('gestationalAgeByMeasurement', () => {
+  it('gives each measurement its own answer and skips the blanks', () => {
+    const parts = gestationalAgeByMeasurement({ bpd: '85', fl: '65', crl: '' });
+    expect(parts.map(p => p.source)).toEqual(['BPD', 'FL']);
+    expect(parts[0]!.weeks).toBeCloseTo(34.87, 1);
+    expect(parts[1]!.weeks).toBeCloseTo(33.44, 1);
+  });
+
+  it('agrees with the average it is the working for', () => {
+    const parts = gestationalAgeByMeasurement({ bpd: '85', fl: '65' });
+    const mean = parts.reduce((t, p) => t + p.weeks, 0) / parts.length;
+    expect(Math.floor(mean)).toBe(estimateGestationalAge({ bpd: '85', fl: '65' })!.weeks);
+  });
+
+  /**
+   * The case the mean cannot see. CRL is first-trimester, BPD and FL are
+   * second and third, and they do not overlap in a real pregnancy — so a CRL
+   * left in the box beside a third-trimester BPD is a stale field, and the
+   * average of the two belongs to no gestation at all.
+   */
+  it('measures how far apart a stale CRL puts them', () => {
+    const measurements = { bpd: '85', fl: '65', crl: '50' };
+
+    expect(spreadInDays(gestationalAgeByMeasurement(measurements)))
+      .toBeGreaterThan(SPREAD_WARNING_DAYS);
+
+    // Near 34 weeks on the biometry that belongs to this trimester, and under
+    // 27 once the leftover CRL is averaged in: about two months on the EDD.
+    expect(estimateGestationalAge({ bpd: '85', fl: '65' })!.weeks).toBe(34);
+    expect(estimateGestationalAge(measurements)!.weeks).toBe(26);
+  });
+
+  it('reports no spread for a single measurement', () => {
+    expect(spreadInDays(gestationalAgeByMeasurement({ bpd: '85' }))).toBe(0);
+    expect(spreadInDays(gestationalAgeByMeasurement({}))).toBe(0);
   });
 });
 

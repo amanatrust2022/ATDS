@@ -507,7 +507,7 @@ describe('Specialised entry forms', () => {
       testId: 'us_pelvis', testName: 'Pelvic Ultrasound', department: 'radiology', specimen: '',
     }));
 
-    expect(screen.queryByText('Obstetrics Calculator (Hadlock Fit)')).toBeNull();
+    expect(screen.queryByText('Obstetric biometry')).toBeNull();
   });
 
   it('estimates gestational age from a single measurement', async () => {
@@ -516,14 +516,14 @@ describe('Specialised entry forms', () => {
       testId: 'us_obs', testName: 'Obstetric Ultrasound', department: 'radiology', specimen: '',
     }));
 
-    expect(screen.getByText('Obstetrics Calculator (Hadlock Fit)')).toBeDefined();
-    expect(screen.getByText(/Enter BPD, FL, or CRL/)).toBeDefined();
+    expect(screen.getByText('Obstetric biometry')).toBeDefined();
+    expect(screen.getByText(/Enter BPD, FL,? or CRL/)).toBeDefined();
 
-    fireEvent.change(screen.getByPlaceholderText('e.g. 35'), { target: { value: '35' } });
+    fireEvent.change(screen.getByRole('spinbutton', { name: /BPD/i }), { target: { value: '35' } });
 
     // 0.0012·35² + 0.22·35 + 7.5 = 16.67 weeks
-    expect(await screen.findByText('16 Weeks 4 Day(s)')).toBeDefined();
-    expect(screen.getByText('Apply & Insert into Report')).toBeDefined();
+    expect(await screen.findByText(/16 weeks 4 day\(s\)/)).toBeDefined();
+    expect(screen.getByText('Insert into report')).toBeDefined();
   });
 
   it('averages the estimates when several measurements are given', async () => {
@@ -532,11 +532,11 @@ describe('Specialised entry forms', () => {
       testId: 'us_obs', testName: 'Obstetric Ultrasound', department: 'radiology', specimen: '',
     }));
 
-    fireEvent.change(screen.getByPlaceholderText('e.g. 35'), { target: { value: '35' } });
-    fireEvent.change(screen.getByPlaceholderText('e.g. 24'), { target: { value: '24' } });
+    fireEvent.change(screen.getByRole('spinbutton', { name: /BPD/i }), { target: { value: '35' } });
+    fireEvent.change(screen.getByRole('spinbutton', { name: /FL/i }), { target: { value: '24' } });
 
     // BPD 16.67 and FL (0.0015·24² + 0.26·24 + 10.2) = 17.30 average to 16.98
-    expect(await screen.findByText('16 Weeks 6 Day(s)')).toBeDefined();
+    expect(await screen.findByText(/16 weeks 6 day\(s\)/)).toBeDefined();
   });
 
   it('writes the estimate into the findings and impression when applied', async () => {
@@ -546,8 +546,8 @@ describe('Specialised entry forms', () => {
     }));
     updateTestResult.mockClear();
 
-    fireEvent.change(screen.getByPlaceholderText('e.g. 35'), { target: { value: '35' } });
-    fireEvent.click(await screen.findByText('Apply & Insert into Report'));
+    fireEvent.change(screen.getByRole('spinbutton', { name: /BPD/i }), { target: { value: '35' } });
+    fireEvent.click(await screen.findByText('Insert into report'));
     fireEvent.click(screen.getByText(/Submit & Send to Reception/));
 
     await waitFor(() => expect(updateTestResult).toHaveBeenCalledTimes(1));
