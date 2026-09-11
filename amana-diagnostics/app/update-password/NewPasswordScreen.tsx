@@ -1,9 +1,27 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createClient } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import { RiMicroscopeLine, RiLockPasswordLine, RiCheckLine, RiEyeLine, RiEyeOffLine } from '@remixicon/react';
 
+import styles from '../login/login.module.css';
+
+/**
+ * Set new password: the last step of a reset, reached from an emailed link.
+ *
+ * Shares the sign-in screen's stylesheet — it is the same front door and
+ * commits to the same single dark treatment.
+ *
+ * What the old screen owed a keyboard user: two password fields with no label
+ * (a placeholder is not one), two reveal buttons with no name, an error painted
+ * red that nothing announced, and password fields that did not tell the browser
+ * they were new credentials. And its success redirect was a bare setTimeout
+ * with nothing to cancel it if the screen left first.
+ */
+
+const cx = (...names: Array<string | undefined | false>) => names.filter(Boolean).join(' ');
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function withTimeout(promise: any, ms: number, onWarning: () => void): Promise<any> {
   const timer = setTimeout(onWarning, ms);
   try {
@@ -23,6 +41,12 @@ export default function UpdatePasswordPage() {
   const [done, setDone] = useState(false);
   const supabase = createClient();
   const router = useRouter();
+  const redirectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // If the screen leaves before the redirect fires, cancel it.
+  useEffect(() => () => {
+    if (redirectTimer.current) clearTimeout(redirectTimer.current);
+  }, []);
 
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,111 +58,111 @@ export default function UpdatePasswordPage() {
       const { error } = await withTimeout(
         updatePromise,
         10000,
-        () => setError('Slow network connection detected. Still updating password... please wait.')
+        () => setError('Slow network connection detected. Still updating password… please wait.')
       );
       if (error) { setError(error.message); setLoading(false); return; }
       setDone(true);
-      setTimeout(() => router.push('/login'), 2500);
-    } catch (err: any) {
-      setError(err.message || 'An unexpected error occurred. Please try again.');
+      redirectTimer.current = setTimeout(() => router.push('/login'), 2500);
+    } catch (err) {
+      setError((err as { message?: string })?.message || 'An unexpected error occurred. Please try again.');
       setLoading(false);
     }
   };
 
-  const inp: React.CSSProperties = {
-    width: '100%', padding: '0.75rem 0.9rem 0.75rem 2.8rem',
-    background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)',
-    borderRadius: 8, color: 'white', fontSize: '0.9rem',  };
-
   return (
-    <div style={{ minHeight: '100vh', background: '#0a0f1e', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem', fontFamily: 'var(--font-body)' }}>
-      <style>{`input::placeholder { color: rgba(255,255,255,0.2); } input:focus { border-color: #4472c4 !important; }`}</style>
-      <div style={{ width: '100%', maxWidth: 420 }}>
-        <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-          <div style={{ background: '#4472c4', borderRadius: 10, width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 0.75rem' }}>
-            <RiMicroscopeLine size={24} color="white" />
+    <div className={cx(styles.page, styles.single)}>
+      <main className={styles.main}>
+        <div className={styles.form}>
+          <div className={styles.centred}>
+            <span className={styles.brandMark} aria-hidden="true">
+              <RiMicroscopeLine size={20} />
+            </span>
+            <h1 className={styles.heading}>Set new password</h1>
+            <p className={styles.sub}>Choose a strong password for your account.</p>
           </div>
-          <h1 style={{ color: 'white', fontSize: '1.4rem', fontWeight: 700 }}>Set new password</h1>
-          <p style={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.85rem', marginTop: '0.3rem' }}>Choose a strong password for your account.</p>
-        </div>
 
-        {done ? (
-          <div style={{ textAlign: 'center', color: 'white' }}>
-            <div style={{ width: 56, height: 56, background: 'rgba(16,185,129,0.15)', border: '2px solid #34d399', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem' }}>
-              <RiCheckLine size={28} color="#34d399" />
+          {done ? (
+            <div className={styles.sent} role="status">
+              <span className={styles.sentMark} aria-hidden="true">
+                <RiCheckLine size={22} />
+              </span>
+              <p className={styles.heading}>Password updated</p>
+              <p className={styles.sub}>Redirecting you to sign in…</p>
             </div>
-            <p style={{ fontWeight: 700 }}>Password updated!</p>
-            <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.85rem', marginTop: '0.4rem' }}>Redirecting you to sign in...</p>
-          </div>
-        ) : (
-          <form onSubmit={handleUpdate} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            <div style={{ position: 'relative' }}>
-              <RiLockPasswordLine size={16} color="rgba(255,255,255,0.25)" style={{ position: 'absolute', left: '0.9rem', top: '50%', transform: 'translateY(-50%)' }} />
-              <input 
-                type={showPassword ? "text" : "password"} 
-                value={password} 
-                onChange={e => setPassword(e.target.value)} 
-                required 
-                placeholder="New password (min 8 chars)" 
-                style={{ ...inp, paddingRight: '2.8rem' }} 
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                style={{
-                  position: 'absolute',
-                  right: '0.9rem',
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  background: 'none',
-                  border: 'none',
-                  color: 'rgba(255,255,255,0.25)',
-                  cursor: 'pointer',
-                  padding: 0,
-                  display: 'flex',
-                  alignItems: 'center'
-                }}
-              >
-                {showPassword ? <RiEyeOffLine size={16} /> : <RiEyeLine size={16} />}
+          ) : (
+            <form onSubmit={handleUpdate} className={styles.form} noValidate>
+              {error && (
+                <p className={styles.error} role="alert">
+                  <span className={styles.errorMark} aria-hidden="true">!</span>
+                  <span>{error}</span>
+                </p>
+              )}
+
+              <div>
+                <label className={styles.label} htmlFor="np-password">New password</label>
+                <div className={styles.inputWrap}>
+                  <span className={styles.inputIcon} aria-hidden="true">
+                    <RiLockPasswordLine size={16} />
+                  </span>
+                  <input
+                    id="np-password"
+                    className={styles.input}
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="At least 8 characters"
+                    autoComplete="new-password"
+                    aria-invalid={error ? true : undefined}
+                    required
+                  />
+                  <button
+                    type="button"
+                    className={styles.reveal}
+                    onClick={() => setShowPassword(!showPassword)}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    aria-pressed={showPassword}
+                  >
+                    {showPassword ? <RiEyeOffLine size={16} /> : <RiEyeLine size={16} />}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className={styles.label} htmlFor="np-confirm">Confirm new password</label>
+                <div className={styles.inputWrap}>
+                  <span className={styles.inputIcon} aria-hidden="true">
+                    <RiLockPasswordLine size={16} />
+                  </span>
+                  <input
+                    id="np-confirm"
+                    className={styles.input}
+                    type={showConfirm ? 'text' : 'password'}
+                    value={confirm}
+                    onChange={(e) => setConfirm(e.target.value)}
+                    placeholder="Repeat new password"
+                    autoComplete="new-password"
+                    aria-invalid={error ? true : undefined}
+                    required
+                  />
+                  <button
+                    type="button"
+                    className={styles.reveal}
+                    onClick={() => setShowConfirm(!showConfirm)}
+                    aria-label={showConfirm ? 'Hide password' : 'Show password'}
+                    aria-pressed={showConfirm}
+                  >
+                    {showConfirm ? <RiEyeOffLine size={16} /> : <RiEyeLine size={16} />}
+                  </button>
+                </div>
+              </div>
+
+              <button type="submit" className={styles.submit} disabled={loading} aria-busy={loading}>
+                {loading ? 'Updating…' : 'Update password'}
               </button>
-            </div>
-            <div style={{ position: 'relative' }}>
-              <RiLockPasswordLine size={16} color="rgba(255,255,255,0.25)" style={{ position: 'absolute', left: '0.9rem', top: '50%', transform: 'translateY(-50%)' }} />
-              <input 
-                type={showConfirm ? "text" : "password"} 
-                value={confirm} 
-                onChange={e => setConfirm(e.target.value)} 
-                required 
-                placeholder="Confirm new password" 
-                style={{ ...inp, paddingRight: '2.8rem' }} 
-              />
-              <button
-                type="button"
-                onClick={() => setShowConfirm(!showConfirm)}
-                style={{
-                  position: 'absolute',
-                  right: '0.9rem',
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  background: 'none',
-                  border: 'none',
-                  color: 'rgba(255,255,255,0.25)',
-                  cursor: 'pointer',
-                  padding: 0,
-                  display: 'flex',
-                  alignItems: 'center'
-                }}
-              >
-                {showConfirm ? <RiEyeOffLine size={16} /> : <RiEyeLine size={16} />}
-              </button>
-            </div>
-            {error && <p style={{ color: '#f87171', fontSize: '0.82rem', background: 'rgba(248,113,113,0.1)', padding: '0.6rem 0.9rem', borderRadius: 6 }}>{error}</p>}
-            <button type="submit" disabled={loading} style={{ background: loading ? '#2a4a8a' : '#4472c4', border: 'none', color: 'white', padding: '0.8rem', borderRadius: 8, fontWeight: 700, fontSize: '0.95rem', cursor: loading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
-              {loading ? 'Updating...' : <><RiCheckLine size={18} /> Update Password</>}
-            </button>
-          </form>
-        )}
-      </div>
+            </form>
+          )}
+        </div>
+      </main>
     </div>
   );
 }
