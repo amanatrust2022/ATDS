@@ -7,7 +7,12 @@
  * names into a string, and neither escaped anything.
  */
 
+import { csvCell, toCsv } from './csv';
 import type { CommissionEntry } from './store';
+
+// Re-exported so the existing tests and call sites keep working; the rule
+// itself now lives in lib/csv.ts, shared with the patient export.
+export { csvCell };
 
 export type TypeFilter = 'all' | 'doctor' | 'facility';
 export type StatusFilter = 'all' | 'pending' | 'paid';
@@ -116,27 +121,6 @@ export function rateLabel(e: CommissionEntry): string {
  * Exports
  * ==================================================================== */
 
-/**
- * One CSV cell.
- *
- * Two separate problems, both live before this:
- *
- * 1. Quoting was `"${value}"` with nothing escaped, so a patient recorded as
- *    O"Brien, or a settlement note containing a quote, ended the field early
- *    and shifted every following column on that row.
- *
- * 2. A cell beginning =, +, - or @ is read as a formula by Excel, Sheets and
- *    LibreOffice, and executes when the accountant opens the file. Patient
- *    names and settlement notes are typed by staff, so this is reachable. The
- *    leading apostrophe is the standard defence: spreadsheets treat the cell
- *    as text and do not show the apostrophe.
- */
-export function csvCell(value: unknown): string {
-  let s = String(value ?? '');
-  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
-  return `"${s.replace(/"/g, '""')}"`;
-}
-
 export const CSV_HEADERS = [
   'Slip No',
   'Patient',
@@ -173,8 +157,7 @@ export function buildCommissionCsv(entries: CommissionEntry[]): string {
     ]),
   ];
 
-  // \r\n, because that is what the CSV spec says and what Excel expects.
-  return rows.map((r) => r.map(csvCell).join(',')).join('\r\n');
+  return toCsv(rows);
 }
 
 /** Nothing typed by a person reaches the printed statement unescaped. */
