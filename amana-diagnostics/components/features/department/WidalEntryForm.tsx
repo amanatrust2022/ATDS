@@ -1,7 +1,8 @@
 'use client';
 
 import { WidalFormState } from '@/lib/store/labResults';
-import { Card, CardBody, CardHeader, Select } from '@/components/ui';
+import { Card, CardBody, CardHeader, Select, Table } from '@/components/ui';
+import type { TableColumn } from '@/components/ui';
 
 import styles from './entryForm.module.css';
 
@@ -48,32 +49,66 @@ function TiterCell({
   const significant = isSignificant(titer);
 
   return (
-    <td>
-      <div className={styles['titreCell']}>
-        <Select
-          aria-label={`${antigen} ${limb} titre`}
-          value={titer}
-          onChange={(e) => onSelect(e.target.value)}
-        >
-          {titerOptions.map((t) => (
-            <option key={t} value={t}>
-              {t}
-            </option>
-          ))}
-        </Select>
+    <div className={styles['titreCell']}>
+      <Select
+        aria-label={`${antigen} ${limb} titre`}
+        value={titer}
+        onChange={(e) => onSelect(e.target.value)}
+      >
+        {titerOptions.map((t) => (
+          <option key={t} value={t}>
+            {t}
+          </option>
+        ))}
+      </Select>
 
-        {/* The old cell went red and bold and said nothing. Red is not a
-          * reading: it does not survive a monochrome print, it does not read
-          * aloud, and roughly one man in twelve cannot rely on it. */}
-        {significant && <span className={styles['significant']}>Significant</span>}
-      </div>
-    </td>
+      {/* The old cell went red and bold and said nothing. Red is not a
+        * reading: it does not survive a monochrome print, it does not read
+        * aloud, and roughly one man in twelve cannot rely on it. */}
+      {significant && <span className={styles['significant']}>Significant</span>}
+    </div>
   );
 }
 
 export default function WidalEntryForm({ value, onChange }: Props) {
   const setTiter = (key: keyof WidalFormState, val: string) =>
     onChange({ ...value, [key]: val });
+
+  /* The antigen names the row, so a reader hears which organism a titre is
+   * against before it hears the titre. */
+  const columns: TableColumn<(typeof antigens)[number]>[] = [
+    {
+      key: 'antigen',
+      header: 'Antigen',
+      rowHeader: true,
+      cellClassName: styles['antigen'],
+      render: (a) => a.name,
+    },
+    {
+      key: 'O',
+      header: 'O titre',
+      render: (a) => (
+        <TiterCell
+          antigen={a.name}
+          limb="O"
+          titer={value[a.keys.O]}
+          onSelect={(val) => setTiter(a.keys.O, val)}
+        />
+      ),
+    },
+    {
+      key: 'H',
+      header: 'H titre',
+      render: (a) => (
+        <TiterCell
+          antigen={a.name}
+          limb="H"
+          titer={value[a.keys.H]}
+          onSelect={(val) => setTiter(a.keys.H, val)}
+        />
+      ),
+    },
+  ];
 
   return (
     <Card>
@@ -82,39 +117,13 @@ export default function WidalEntryForm({ value, onChange }: Props) {
         subtitle="Salmonella agglutination titres. 1:80 and above is reported as significant."
       />
       <CardBody>
-        <table className={styles['widalTable']}>
-          <caption className="sr-only">
-            Widal agglutination titres. One row per salmonella antigen, with its O and H titres.
-          </caption>
-          <thead>
-            <tr>
-              <th scope="col">Antigen</th>
-              <th scope="col">O titre</th>
-              <th scope="col">H titre</th>
-            </tr>
-          </thead>
-          <tbody>
-            {antigens.map((a) => (
-              <tr key={a.name}>
-                <th scope="row" className={styles['antigen']}>
-                  {a.name}
-                </th>
-                <TiterCell
-                  antigen={a.name}
-                  limb="O"
-                  titer={value[a.keys.O]}
-                  onSelect={(val) => setTiter(a.keys.O, val)}
-                />
-                <TiterCell
-                  antigen={a.name}
-                  limb="H"
-                  titer={value[a.keys.H]}
-                  onSelect={(val) => setTiter(a.keys.H, val)}
-                />
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <Table
+          caption="Widal agglutination titres. One row per salmonella antigen, with its O and H titres."
+          className={styles['widalTable']}
+          columns={columns}
+          rows={[...antigens]}
+          rowKey={(a) => a.name}
+        />
       </CardBody>
     </Card>
   );

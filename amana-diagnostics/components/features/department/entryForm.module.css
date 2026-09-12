@@ -178,7 +178,7 @@
   font-size: var(--text-md);
 }
 
-.widalTable th[scope='col'] {
+.widalTable thead th {
   text-align: left;
   padding: var(--space-2);
   font-size: var(--text-xs);
@@ -189,8 +189,8 @@
   border-bottom: 1px solid var(--border-default);
 }
 
-.widalTable td,
-.widalTable th[scope='row'] {
+.widalTable tbody td,
+.widalTable tbody th {
   padding: var(--space-2);
   border-bottom: 1px solid var(--border-subtle);
   vertical-align: middle;
