@@ -1,7 +1,8 @@
 'use client';
 
 import { McsFormState } from '@/lib/store/labResults';
-import { Alert, Button, Card, CardBody, CardHeader, Input } from '@/components/ui';
+import { Alert, Button, Card, CardBody, CardHeader, Input, Table } from '@/components/ui';
+import type { TableColumn } from '@/components/ui';
 
 import styles from './entryForm.module.css';
 
@@ -67,84 +68,91 @@ function AntibioticColumn({
     }
   };
 
+  /* Two columns: the drug is the row's header, so a reader moving across hears
+   * which antibiotic a score belongs to before it hears the score. */
+  const columns: TableColumn<Sensitivity[number]>[] = [
+    {
+      key: 'antibiotic',
+      header: 'Antibiotic',
+      rowHeader: true,
+      render: (s) => (
+        <>
+          <span className={styles['drug']}>{s.antibiotic}</span>{' '}
+          <span className={styles['code']}>({s.code})</span>
+        </>
+      ),
+    },
+    {
+      key: 'result',
+      header: 'Result',
+      render: (s, idx) => {
+        const globalIdx = offset + idx;
+        const scored = s.result !== '';
+
+        return (
+          <div className={styles['scoreCell']}>
+            <Input
+              id={`anti-input-${globalIdx}`}
+              // Named after the drug. Thirty identical one-character boxes
+              // were thirty of "edit text", and scoring the wrong row is a
+              // wrong prescription.
+              aria-label={`${s.antibiotic} result`}
+              className={styles['scoreBox']}
+              value={s.result}
+              onChange={(e) => {
+                const val = e.target.value.toUpperCase();
+                if (['S', 'I', 'R', ''].includes(val)) onResult(globalIdx, val as Result);
+              }}
+              onKeyDown={(e) => handleKeyDown(globalIdx, e)}
+              placeholder="—"
+              maxLength={1}
+            />
+
+            {scored && (
+              <span className={`${styles['scoreWord']} ${WORD_CLASS[s.result as 'S']}`}>
+                {MEANING[s.result as 'S']}
+              </span>
+            )}
+
+            <span className={styles['scoreButtons']}>
+              {(['S', 'I', 'R'] as const).map((res) => (
+                <Button
+                  key={res}
+                  size="sm"
+                  intent={s.result === res ? 'primary' : 'secondary'}
+                  aria-pressed={s.result === res}
+                  aria-label={`${s.antibiotic}: ${MEANING[res]}`}
+                  onClick={() => onResult(globalIdx, res)}
+                >
+                  {res}
+                </Button>
+              ))}
+              {scored && (
+                <Button
+                  size="sm"
+                  intent="ghost"
+                  aria-label={`Clear the ${s.antibiotic} result`}
+                  onClick={() => onResult(globalIdx, '')}
+                >
+                  Clear
+                </Button>
+              )}
+            </span>
+          </div>
+        );
+      },
+    },
+  ];
+
   return (
-    <table className={styles['astTable']}>
-      <caption className="sr-only">
-        Antibiotic sensitivity. Type S, I or R in a result box to score it and move to the next.
-      </caption>
-      <thead>
-        <tr>
-          <th scope="col">Antibiotic</th>
-          <th scope="col">Result</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((s, idx) => {
-          const globalIdx = offset + idx;
-          const scored = s.result !== '';
-
-          return (
-            <tr key={s.code} className={scored ? styles['scored'] : undefined}>
-              <td>
-                <span className={styles['drug']}>{s.antibiotic}</span>{' '}
-                <span className={styles['code']}>({s.code})</span>
-              </td>
-              <td>
-                <div className={styles['scoreCell']}>
-                  <Input
-                    id={`anti-input-${globalIdx}`}
-                    // Named after the drug. Thirty identical one-character
-                    // boxes were thirty of "edit text", and scoring the wrong
-                    // row is a wrong prescription.
-                    aria-label={`${s.antibiotic} result`}
-                    className={styles['scoreBox']}
-                    value={s.result}
-                    onChange={(e) => {
-                      const val = e.target.value.toUpperCase();
-                      if (['S', 'I', 'R', ''].includes(val)) onResult(globalIdx, val as Result);
-                    }}
-                    onKeyDown={(e) => handleKeyDown(globalIdx, e)}
-                    placeholder="—"
-                    maxLength={1}
-                  />
-
-                  {scored && (
-                    <span className={`${styles['scoreWord']} ${WORD_CLASS[s.result as 'S']}`}>
-                      {MEANING[s.result as 'S']}
-                    </span>
-                  )}
-
-                  <span className={styles['scoreButtons']}>
-                    {(['S', 'I', 'R'] as const).map((res) => (
-                      <Button
-                        key={res}
-                        size="sm"
-                        intent={s.result === res ? 'primary' : 'secondary'}
-                        aria-pressed={s.result === res}
-                        aria-label={`${s.antibiotic}: ${MEANING[res]}`}
-                        onClick={() => onResult(globalIdx, res)}
-                      >
-                        {res}
-                      </Button>
-                    ))}
-                    {scored && (
-                      <Button
-                        size="sm"
-                        intent="ghost"
-                        aria-label={`Clear the ${s.antibiotic} result`}
-                        onClick={() => onResult(globalIdx, '')}
-                      >
-                        Clear
-                      </Button>
-                    )}
-                  </span>
-                </div>
-              </td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
+    <Table
+      caption="Antibiotic sensitivity. Type S, I or R in a result box to score it and move to the next."
+      className={styles['astTable']}
+      columns={columns}
+      rows={rows}
+      rowKey={(s) => s.code}
+      rowClassName={(s) => (s.result !== '' ? styles['scored'] : undefined)}
+    />
   );
 }
 

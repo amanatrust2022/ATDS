@@ -87,7 +87,9 @@
   font-size: var(--text-md);
 }
 
-.astTable th {
+/* Scoped to the head: the drug is a row header now, and must not be
+ * uppercased and greyed like a column label. */
+.astTable thead th {
   text-align: left;
   padding: var(--space-2);
   font-size: var(--text-xs);
@@ -98,9 +100,12 @@
   border-bottom: 1px solid var(--border-default);
 }
 
-.astTable td {
+.astTable tbody td,
+.astTable tbody th {
   padding: var(--space-1) var(--space-2);
   border-bottom: 1px solid var(--border-subtle);
+  text-align: left;
+  font-weight: inherit;
 }
 
 .drug {
@@ -116,7 +121,8 @@
 /* A scored row. The tint is a hint; the word beside the letter is the answer.
  * Each takes its ground and its text from the same token set, so the pair
  * stays legible in both themes — the old rgba-over-white did not. */
-.scored {
+.scored td,
+.scored th {
   background: var(--surface-hover);
 }
 
