@@ -1,8 +1,10 @@
 import React from 'react';
-import { RiErrorWarningLine } from '@remixicon/react';
+import { RiCheckLine, RiAddLine } from '@remixicon/react';
 import { Test } from '@/lib/store';
 import { useRegistrationStore } from '@/lib/store/useRegistrationStore';
-import { inputStyle } from './styles';
+import { Alert, Badge, Field, Input } from '@/components/ui';
+
+import styles from './testSearchPicker.module.css';
 
 interface TestSearchPickerProps {
   catalogue: Test[];
@@ -34,49 +36,44 @@ export default function TestSearchPicker({ catalogue, search, setSearch, error }
 
   return (
     <>
-      <div style={{ borderTop: '1px solid var(--gray-200)', paddingTop: '0.9rem', display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
-        <div>
-          <h3 style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--gray-800)', marginBottom: '0.2rem' }}>Search Tests</h3>
-          <p style={{ fontSize: '0.7rem', color: 'var(--gray-500)' }}>Type to find a test, then click it to add it to the selected list.</p>
-        </div>
-        <input
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          placeholder="Search by test name, specimen, or department..."
-          style={inputStyle(false)}
-        />
-        <div style={{ maxHeight: 280, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+      <div className={styles.panel}>
+        <Field
+          label="Search tests"
+          hint="Type to find a test, then click it to add it to the selected list."
+        >
+          <Input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search by test name, specimen, or department..."
+          />
+        </Field>
+
+        <div className={styles.list}>
           {filteredTests.length === 0 ? (
-            <div style={{ padding: '0.9rem', border: '1px dashed var(--gray-300)', color: 'var(--gray-500)', fontSize: '0.75rem' }}>
-              No tests match your search.
-            </div>
+            <div className={styles.empty}>No tests match your search.</div>
           ) : (
             filteredTests.map(test => {
               const isSelected = selectedTests.includes(test.id);
+              const isLab = test.department === 'lab';
               return (
                 <button
                   key={test.id}
                   type="button"
+                  aria-pressed={isSelected}
                   onClick={() => toggleTest(test.id)}
-                  style={{
-                    width: '100%',
-                    textAlign: 'left',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: '0.75rem',
-                    padding: '0.7rem 0.8rem',
-                    borderRadius: 0,
-                    border: `1px solid ${isSelected ? (test.department === 'lab' ? 'var(--teal-200)' : '#c4b5fd') : 'var(--gray-200)'}`,
-                    background: isSelected ? (test.department === 'lab' ? 'var(--teal-50)' : '#f5f3ff') : 'white',
-                    cursor: 'pointer',
-                  }}
+                  className={`${styles.row} ${isSelected ? styles.rowChosen : ''}`}
                 >
-                  <span style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
-                    <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--gray-900)' }}>{test.name}</span>
-                    <span style={{ fontSize: '0.68rem', color: 'var(--gray-500)' }}>{test.category} • {test.specimen}</span>
+                  <span className={styles.rowMain}>
+                    <span className={styles.rowName}>{test.name}</span>
+                    <span className={styles.rowMeta}>
+                      <Badge tone={isLab ? 'accent' : 'info'}>{isLab ? 'Lab' : 'Radiology'}</Badge>
+                      <span>{test.category} • {test.specimen}</span>
+                    </span>
                   </span>
-                  <span style={{ fontSize: '0.68rem', fontWeight: 700, color: test.department === 'lab' ? 'var(--teal-700)' : '#7c3aed' }}>
+                  <span className={styles.action}>
+                    {isSelected
+                      ? <RiCheckLine size={14} aria-hidden="true" />
+                      : <RiAddLine size={14} aria-hidden="true" />}
                     {isSelected ? 'Selected' : 'Add'}
                   </span>
                 </button>
@@ -85,10 +82,11 @@ export default function TestSearchPicker({ catalogue, search, setSearch, error }
           )}
         </div>
       </div>
+
       {error && (
-        <div style={{ color: 'var(--red)', fontSize: '0.75rem', background: 'var(--red-light)', padding: '0.5rem 0.75rem', borderRadius: 'var(--radius)', border: '1px solid #f5c6cb', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-          <RiErrorWarningLine size={14} /> {error}
-        </div>
+        <Alert tone="critical" live>
+          {error}
+        </Alert>
       )}
     </>
   );

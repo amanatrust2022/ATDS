@@ -1,0 +1,106 @@
+/* The catalogue picker on the registration form.
+ *
+ * Each row is a toggle, and the old markup said so nowhere: no aria-pressed,
+ * and the only visual sign was a change of fill — teal for a chosen lab test,
+ * violet for a chosen radiology one — with the department carried by that
+ * colour and nothing else. The word is on the row now, the toggle reports its
+ * state, and the two hard-coded violets become one accent token. */
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-default);
+}
+
+.heading {
+  margin: 0 0 var(--space-1);
+  font-size: var(--text-md);
+  font-weight: var(--weight-bold);
+  color: var(--text-primary);
+}
+
+.hint {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-3);
+  text-align: left;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-default);
+  cursor: pointer;
+}
+
+.row:hover {
+  border-color: var(--border-strong);
+}
+
+.row:focus-visible {
+  outline: 2px solid var(--focus-color);
+  outline-offset: 1px;
+}
+
+.rowChosen {
+  background: var(--accent-subtle);
+  border-color: var(--accent-border);
+}
+
+.rowMain {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.rowName {
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+}
+
+.rowMeta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.action {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-shrink: 0;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+  color: var(--text-secondary);
+}
+
+.rowChosen .action {
+  color: var(--accent-text);
+}
+
+.empty {
+  padding: var(--space-4);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  border: 1px dashed var(--border-strong);
+}

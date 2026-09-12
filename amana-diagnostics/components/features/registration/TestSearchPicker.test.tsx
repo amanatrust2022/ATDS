@@ -93,4 +93,50 @@ describe('Feature: Adding tests to a registration', () => {
 
     expect(screen.getByText('Select at least one test')).toBeInTheDocument();
   });
+  /**
+   * The search box had a placeholder and nothing else. The "Search Tests"
+   * heading above it was a bare <h3>, wired to nothing, so a screen reader
+   * reached the box with no name for it.
+   */
+  it('names the search box', () => {
+    setup();
+
+    expect(screen.getByRole('textbox', { name: /search tests/i })).toBeInTheDocument();
+  });
+
+  /**
+   * Each row is a toggle, but nothing said so. The only sign a test was already
+   * chosen was the word "Selected" where "Add" had been, and a change of fill —
+   * teal for lab, violet for radiology — that a colour-blind receptionist could
+   * not read and a screen reader never heard as a pressed state.
+   */
+  it('reports a chosen test as a pressed toggle', () => {
+    useRegistrationStore.getState().addTest('fbc');
+    setup();
+
+    expect(screen.getByRole('button', { name: /full blood count/i, pressed: true })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /abdominal ultrasound/i, pressed: false })).toBeInTheDocument();
+  });
+
+  /**
+   * Which department a test belongs to was carried by the row's colour alone —
+   * teal for lab, violet for radiology. Nothing said the word.
+   */
+  it('names the department of each test', () => {
+    setup();
+
+    expect(screen.getAllByText(/^lab$/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/^radiology$/i)).toBeInTheDocument();
+  });
+
+  /**
+   * The validation message appears after a failed submit, at the far end of a
+   * long form. Nothing announced it, so a receptionist working by keyboard was
+   * told nothing at all about why the registration would not go through.
+   */
+  it('announces the validation message', () => {
+    setup({ error: 'Select at least one test' });
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Select at least one test');
+  });
 });
