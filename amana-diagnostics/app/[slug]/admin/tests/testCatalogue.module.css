@@ -1,0 +1,18 @@
+/* The frame around the catalogue editor.
+ *
+ * The screen drew its own <h1> under the shell's (decision #30) and stretched
+ * itself to minHeight 100vh inside a shell that already fills the window,
+ * which put a second scrollbar on the admin area. Both are gone, and the
+ * frozen legacy grey and teal names with them. */
+
+.page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: var(--space-6);
+}
+
+.waiting {
+  padding: var(--space-8);
+  text-align: center;
+  color: var(--text-secondary);
+}
