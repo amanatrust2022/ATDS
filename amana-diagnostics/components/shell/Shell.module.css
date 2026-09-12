@@ -437,6 +437,26 @@
 
 /* --- Command palette ------------------------------------------------------ */
 
+/* The palette is a Dialog Content, which centres itself. It sits high on the
+ * screen instead, so the list below it has room and so the eye finds it where
+ * every other command palette puts it. */
+.palette {
+  top: 12vh;
+  transform: translateX(-50%);
+}
+
+.paletteInputIcon {
+  flex-shrink: 0;
+  opacity: 0.5;
+}
+
+/* The results are grouped: one <ul> per heading, inside the outer listbox. */
+.paletteGroupList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
 .paletteInputWrap {
   display: flex;
   align-items: center;

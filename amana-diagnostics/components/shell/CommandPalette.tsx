@@ -155,9 +155,8 @@ export function CommandPalette({
       <RadixDialog.Portal>
         <RadixDialog.Overlay className={dialogStyles['overlay']} />
         <RadixDialog.Content
-          className={[dialogStyles['content'], dialogStyles['md']].join(' ')}
+          className={[dialogStyles['content'], dialogStyles['md'], styles['palette']].join(' ')}
           aria-label="Search and commands"
-          style={{ top: '12vh', transform: 'translateX(-50%)' }}
         >
           <RadixDialog.Title className="sr-only">Search and commands</RadixDialog.Title>
           <RadixDialog.Description className="sr-only">
@@ -166,7 +165,7 @@ export function CommandPalette({
           </RadixDialog.Description>
 
           <div className={styles['paletteInputWrap']}>
-            <RiSearchLine size={18} aria-hidden="true" style={{ flexShrink: 0, opacity: 0.5 }} />
+            <RiSearchLine size={18} aria-hidden="true" className={styles['paletteInputIcon']} />
             <input
               className={styles['paletteInput']}
               placeholder="Search patients, screens and actions…"
@@ -174,6 +173,9 @@ export function CommandPalette({
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={onKeyDown}
               autoFocus
+              // The dialog around it is named, but the box a screen reader
+              // lands in needs its own name: a placeholder is not one.
+              aria-label="Search patients, screens and actions"
               role="combobox"
               aria-expanded="true"
               aria-controls="command-palette-list"
@@ -202,7 +204,7 @@ export function CommandPalette({
                 <p className={styles['paletteGroup']} role="presentation">
                   {group}
                 </p>
-                <ul role="presentation" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+                <ul role="presentation" className={styles['paletteGroupList']}>
                   {items.map((command) => {
                     runningIndex += 1;
                     const index = runningIndex;
