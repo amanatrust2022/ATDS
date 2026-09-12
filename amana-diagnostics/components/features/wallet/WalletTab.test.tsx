@@ -258,4 +258,17 @@ describe('the store can hold what the screens need', () => {
     useWalletStore.getState().setAccountOwners([OWNER]);
     expect(useWalletStore.getState().accountOwners).toEqual([OWNER]);
   });
+  /**
+   * An account in debt was told apart from one in credit by the colour of its
+   * figure alone — green against red — with the minus buried mid-string after
+   * the naira sign ("₦-500.00"). Colour is never the only channel (rule 5),
+   * and a receptionist who cannot separate the two had to read the hyphen.
+   */
+  it('says in words that an account is overdrawn', () => {
+    seed([{ ...DEPLETED, balance: -500 }]);
+    renderTab();
+
+    const row = screen.getByText('Okafor Individual').closest('tr')!;
+    expect(within(row).getByText(/owing/i)).toBeTruthy();
+  });
 });

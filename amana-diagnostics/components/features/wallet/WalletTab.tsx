@@ -15,6 +15,8 @@ import {
   Table,
   TableToolbar,
 } from '@/components/ui';
+import styles from './walletTab.module.css';
+
 import BillingAccountModal from './BillingAccountModal';
 import LedgerModal from './LedgerModal';
 
@@ -101,7 +103,7 @@ export default function WalletTab({
                 : `${billingAccounts.length} account${billingAccounts.length === 1 ? '' : 's'}`
             }
           >
-            <div style={{ minWidth: 240 }}>
+            <div className={styles.search}>
               <Field label="Search accounts" labelHidden>
                 <Input
                   type="search"
@@ -139,9 +141,7 @@ export default function WalletTab({
               {
                 key: 'name',
                 header: 'Account',
-                render: (acc) => (
-                  <span style={{ fontWeight: 'var(--weight-semibold)' }}>{acc.name}</span>
-                ),
+                render: (acc) => <span className={styles.accountName}>{acc.name}</span>,
               },
               { key: 'owner', header: 'Owner', render: ownerNameFor },
               {
@@ -171,16 +171,18 @@ export default function WalletTab({
                 key: 'balance',
                 header: 'Balance',
                 numeric: true,
-                render: (acc) => (
-                  <span
-                    style={{
-                      fontWeight: 'var(--weight-semibold)',
-                      color: acc.balance >= 0 ? 'var(--success-text)' : 'var(--critical-text)',
-                    }}
-                  >
-                    {naira(acc.balance)}
-                  </span>
-                ),
+                render: (acc) => {
+                  // Red on its own said nothing to anyone who cannot see red,
+                  // and the minus sat mid-string after the naira sign. The
+                  // word carries it (rule 5); the colour only reinforces it.
+                  const owing = acc.balance < 0;
+                  return (
+                    <span className={owing ? `${styles.balance} ${styles.balanceOwing}` : styles.balance}>
+                      {naira(Math.abs(acc.balance))}
+                      {owing && <span className={styles.owing}>owing</span>}
+                    </span>
+                  );
+                },
               },
               {
                 key: 'credit',

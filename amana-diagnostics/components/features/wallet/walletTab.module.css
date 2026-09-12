@@ -1,0 +1,33 @@
+/* The wallet list.
+ *
+ * An account in debt used to be told from one in credit by the colour of its
+ * figure alone — green against red — with the minus sign buried mid-string
+ * after the naira sign. The word is on the row now, and the two weights that
+ * were typed into the table's cells are here. */
+
+.search {
+  min-width: 240px;
+}
+
+.accountName {
+  font-weight: var(--weight-semibold);
+}
+
+.balance {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  font-weight: var(--weight-semibold);
+  color: var(--success-text);
+}
+
+.balanceOwing {
+  color: var(--critical-text);
+}
+
+.owing {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+}
