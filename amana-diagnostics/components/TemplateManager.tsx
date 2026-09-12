@@ -1,10 +1,9 @@
 'use client';
 import { useNotices } from '@/components/Notices';
 import { useState, useEffect, useRef } from 'react';
-import { 
-  RiCloseLine, RiUploadCloud2Line, RiFileWordLine, RiFileTextLine, 
+import {
+  RiUploadCloud2Line,
   RiSearchLine, RiDeleteBin6Line, RiEdit2Line, RiAddLine, RiCheckLine,
-  RiLoader4Line
 } from '@remixicon/react';
 import { 
   RadiologyTemplate, fetchCustomTemplates, addCustomTemplate, 
@@ -13,6 +12,22 @@ import {
 import { RADIOLOGY_TEMPLATES, convertTextToFormattedHtml, splitTemplateContent } from '@/lib/radiology-templates';
 import dynamic from 'next/dynamic';
 const RichTextEditor = dynamic(() => import('./RichTextEditor'), { ssr: false });
+
+import {
+  Alert, Badge, Button, Dialog, EmptyState, Field, Input, LoadingPanel,
+} from '@/components/ui';
+import type { AlertTone } from '@/components/ui';
+
+import styles from './templateManager.module.css';
+
+const cx = (...names: Array<string | false | undefined>) => names.filter(Boolean).join(' ');
+
+/** An import either failed, is running, or worked. Each gets its own voice. */
+const IMPORT_TONE: Record<'success' | 'error' | 'loading', AlertTone> = {
+  success: 'success',
+  error: 'critical',
+  loading: 'info',
+};
 
 interface TemplateManagerProps {
   isOpen: boolean;
@@ -259,585 +274,169 @@ export default function TemplateManager({
   };
 
   return (
-    <div style={modalOverlay}>
-      <div style={modalContainer}>
-        {/* Header */}
-        <div style={modalHeader}>
-          <div>
-            <h2 style={modalTitle}>Radiology Templates Manager</h2>
-            <p style={modalSubtitle}>Create, import, and customize report templates for your organization</p>
+    <Dialog
+      open={isOpen}
+      onOpenChange={(next) => { if (!next) onClose(); }}
+      title="Radiology Templates Manager"
+      description="Create, import, and customize report templates for your organization"
+      size="lg"
+      tall
+    >
+      {editingTemplate ? (
+        /* ADD/EDIT FORM VIEW */
+        <form onSubmit={handleSave} className={styles.form}>
+          <div className={styles.formHead}>
+            <h3 className={styles.formTitle}>
+              {editingTemplate.id ? 'Edit Template' : 'Add New Template'}
+            </h3>
+            <Button type="button" size="sm" onClick={() => setEditingTemplate(null)}>
+              Back to List
+            </Button>
           </div>
-          <button onClick={onClose} style={closeButton} aria-label="Close modal">
-            <RiCloseLine size={20} />
-          </button>
-        </div>
 
-        {/* Content Area */}
-        <div style={modalBody}>
-          {editingTemplate ? (
-            /* ADD/EDIT FORM VIEW */
-            <form onSubmit={handleSave} style={formContainer}>
-              <div style={formHeader}>
-                <h3 style={formTitle}>
-                  {editingTemplate.id ? 'Edit Template' : 'Add New Template'}
-                </h3>
-                <button 
-                  type="button" 
-                  onClick={() => setEditingTemplate(null)}
-                  style={cancelFormButton}
-                >
-                  Back to List
-                </button>
-              </div>
-
-              {/* Drag and Drop Zone */}
-              {!editingTemplate.id && (
-                <div 
-                  onDragEnter={handleDrag} 
-                  onDragOver={handleDrag} 
-                  onDragLeave={handleDrag} 
-                  onDrop={handleDrop}
-                  onClick={triggerFileSelect}
-                  style={{
-                    ...dropzoneStyle,
-                    borderColor: dragActive ? '#7c3aed' : '#d1d5db',
-                    backgroundColor: dragActive ? '#f5f3ff' : '#f9fafb',
-                  }}
-                >
-                  <input 
-                    ref={fileInputRef} 
-                    type="file" 
-                    onChange={onFileInputChange} 
-                    accept=".docx,.txt" 
-                    style={{ display: 'none' }} 
-                  />
-                  <RiUploadCloud2Line size={32} style={{ color: dragActive ? '#7c3aed' : '#9ca3af', marginBottom: '0.5rem' }} />
-                  <p style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--gray-700)', margin: '0 0 0.25rem 0' }}>
-                    Drag & drop your Word (.docx) or Text (.txt) template here
-                  </p>
-                  <p style={{ fontSize: '0.7rem', color: 'var(--gray-500)', margin: 0 }}>
-                    or click to browse your files
-                  </p>
-                  <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
-                    <span style={fileTypeBadge}><RiFileWordLine size={12} /> Word</span>
-                    <span style={fileTypeBadge}><RiFileTextLine size={12} /> Plain Text</span>
-                  </div>
-                </div>
-              )}
-
-              {/* Import status message */}
-              {importStatus && (
-                <div style={{
-                  ...statusMessageStyle,
-                  borderColor: importStatus.type === 'error' ? '#f5c6cb' : importStatus.type === 'loading' ? '#bee5eb' : '#c3e6cb',
-                  backgroundColor: importStatus.type === 'error' ? '#f8d7da' : importStatus.type === 'loading' ? '#d1ecf1' : '#d4edda',
-                  color: importStatus.type === 'error' ? '#721c24' : importStatus.type === 'loading' ? '#0c5460' : '#155724'
-                }}>
-                  {importStatus.type === 'loading' && <span style={{ marginRight: '0.4rem', display: 'inline-block' }}>⌛</span>}
-                  <span style={{ fontSize: '0.75rem', fontWeight: 500 }}>{importStatus.message}</span>
-                </div>
-              )}
-
-              <div style={formInputs}>
-                <div style={fieldGroup}>
-                  <label style={labelStyle}>Template Name *</label>
-                  <input
-                    required
-                    value={formName}
-                    onChange={e => setFormName(e.target.value)}
-                    placeholder="e.g. Normal Pelvis (Female)"
-                    style={inputStyle}
-                  />
-                </div>
-
-                <div style={fieldGroup}>
-                  <label style={labelStyle}>Findings / Organ-by-Organ Description *</label>
-                  <RichTextEditor
-                    value={formFindings}
-                    onChange={setFormFindings}
-                    placeholder="Describe findings in detail (e.g. LIVER: Normal in size...)"
-                  />
-                </div>
-
-                <div style={fieldGroup}>
-                  <label style={labelStyle}>Impression / Conclusion (Optional)</label>
-                  <RichTextEditor
-                    value={formImpression}
-                    onChange={setFormImpression}
-                    placeholder="e.g. IMPRESSION: Normal pelvic ultrasound findings."
-                    minHeight="120px"
-                  />
-                </div>
-              </div>
-
-              <div style={formActions}>
-                <button 
-                  type="button" 
-                  onClick={() => setEditingTemplate(null)}
-                  style={secondaryButton}
-                >
-                  Cancel
-                </button>
-                <button 
-                  type="submit" 
-                  disabled={saving}
-                  style={primaryButton}
-                >
-                  {saving ? 'Saving...' : <><RiCheckLine size={16} /> Save Template</>}
-                </button>
-              </div>
-            </form>
-          ) : (
-            /* LIST VIEW */
-            <div style={listContainer}>
-              <div style={listHeader}>
-                {/* Search */}
-                <div style={searchWrapper}>
-                  <RiSearchLine size={16} style={searchIcon} />
-                  <input
-                    value={searchQuery}
-                    onChange={e => setSearchQuery(e.target.value)}
-                    placeholder="Search templates..."
-                    style={searchInput}
-                  />
-                </div>
-
-                {/* Add Button */}
-                <button onClick={startAddTemplate} style={addButton}>
-                  <RiAddLine size={16} /> Add Custom Template
-                </button>
-              </div>
-
-              {/* Templates List */}
-              <div style={templatesList}>
-                {loading ? (
-                  <div style={loadingState}>
-                    <p style={{ fontSize: '0.8rem', color: 'var(--gray-500)' }}>Loading templates...</p>
-                  </div>
-                ) : filteredTemplates.length === 0 ? (
-                  <div style={emptyState}>
-                    <p style={{ fontSize: '0.85rem', color: 'var(--gray-500)' }}>No templates found matching your search.</p>
-                  </div>
-                ) : (
-                  filteredTemplates.map(t => (
-                    <div 
-                      key={t.id} 
-                      style={{
-                        ...templateCard,
-                        borderLeftColor: t.isSystem ? 'var(--gray-300)' : '#7c3aed'
-                      }}
-                    >
-                      <div style={templateInfo}>
-                        <div style={templateHeaderRow}>
-                          <h4 style={templateName}>{t.name}</h4>
-                          {t.isSystem ? (
-                            <span style={systemBadge}>System Default</span>
-                          ) : (
-                            <span style={customBadge}>Custom Template</span>
-                          )}
-                        </div>
-                        <p style={templatePreviewText}>
-                          {getTextPreview(t.findings)}...
-                        </p>
-                      </div>
-                      
-                      {/* Action buttons */}
-                      {!t.isSystem && (
-                        <div style={cardActions}>
-                          <button 
-                            onClick={() => startEditTemplate(t as RadiologyTemplate)}
-                            style={cardIconButton}
-                            title="Edit template"
-                          >
-                            <RiEdit2Line size={14} />
-                          </button>
-                          <button 
-                            onClick={() => handleDelete(t.id)}
-                            style={{ ...cardIconButton, color: '#dc2626' }}
-                            title="Delete template"
-                          >
-                            <RiDeleteBin6Line size={14} />
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  ))
-                )}
-              </div>
+          {/* Drag and Drop Zone */}
+          {!editingTemplate.id && (
+            <div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                onChange={onFileInputChange}
+                accept=".docx,.txt"
+                className={styles.fileInput}
+                aria-label="Template file to import"
+              />
+              <button
+                type="button"
+                onDragEnter={handleDrag}
+                onDragOver={handleDrag}
+                onDragLeave={handleDrag}
+                onDrop={handleDrop}
+                onClick={triggerFileSelect}
+                className={cx(styles.dropzone, dragActive && styles.dropzoneActive)}
+              >
+                <RiUploadCloud2Line size={32} className={styles.dropIcon} aria-hidden="true" />
+                <p className={styles.dropLead}>
+                  Drag &amp; drop your Word (.docx) or Text (.txt) template here
+                </p>
+                <p className={styles.dropHint}>or click to browse your files</p>
+                <span className={styles.dropKinds}>
+                  <Badge tone="neutral">Word</Badge>
+                  <Badge tone="neutral">Plain Text</Badge>
+                </span>
+              </button>
             </div>
           )}
+
+          {/* Import status message */}
+          {importStatus && (
+            <Alert tone={IMPORT_TONE[importStatus.type]} live>
+              {importStatus.message}
+            </Alert>
+          )}
+
+          <div className={styles.fields}>
+            <Field label="Template name" required>
+              <Input
+                required
+                value={formName}
+                onChange={e => setFormName(e.target.value)}
+                placeholder="e.g. Normal Pelvis (Female)"
+              />
+            </Field>
+
+            <RichTextEditor
+              value={formFindings}
+              onChange={setFormFindings}
+              ariaLabel="Findings, organ by organ (required)"
+              placeholder="Describe findings in detail (e.g. LIVER: Normal in size...)"
+            />
+
+            <RichTextEditor
+              value={formImpression}
+              onChange={setFormImpression}
+              ariaLabel="Impression or conclusion (optional)"
+              placeholder="e.g. IMPRESSION: Normal pelvic ultrasound findings."
+              minHeight="120px"
+            />
+          </div>
+
+          <div className={styles.formActions}>
+            <Button type="button" onClick={() => setEditingTemplate(null)}>
+              Cancel
+            </Button>
+            <Button type="submit" intent="primary" disabled={saving} icon={<RiCheckLine size={16} />}>
+              {saving ? 'Saving…' : 'Save Template'}
+            </Button>
+          </div>
+        </form>
+      ) : (
+        /* LIST VIEW */
+        <div className={styles.list}>
+          <div className={styles.listHeader}>
+            <div className={styles.search}>
+              <Field label="Search templates">
+                <Input
+                  prefix={<RiSearchLine size={16} />}
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  placeholder="Search templates..."
+                />
+              </Field>
+            </div>
+
+            <Button intent="primary" icon={<RiAddLine size={16} />} onClick={startAddTemplate}>
+              Add Custom Template
+            </Button>
+          </div>
+
+          <div className={styles.cards}>
+            {loading ? (
+              <LoadingPanel label="Loading templates…" />
+            ) : filteredTemplates.length === 0 ? (
+              <div className={styles.empty}>
+                <EmptyState title="No templates found matching your search.">
+                  Clear the search, or add a template of your own.
+                </EmptyState>
+              </div>
+            ) : (
+              filteredTemplates.map(t => (
+                <div key={t.id} className={cx(styles.card, !t.isSystem && styles.cardCustom)}>
+                  <div className={styles.cardInfo}>
+                    <div className={styles.cardHead}>
+                      <h4 className={styles.cardName}>{t.name}</h4>
+                      {t.isSystem ? (
+                        <Badge tone="neutral">System Default</Badge>
+                      ) : (
+                        <Badge tone="accent">Custom Template</Badge>
+                      )}
+                    </div>
+                    <p className={styles.cardPreview}>{getTextPreview(t.findings)}...</p>
+                  </div>
+
+                  {/* Action buttons */}
+                  {!t.isSystem && (
+                    <div className={styles.cardActions}>
+                      <Button
+                        size="sm"
+                        icon={<RiEdit2Line size={14} />}
+                        aria-label={`Edit ${t.name}`}
+                        onClick={() => startEditTemplate(t as RadiologyTemplate)}
+                      />
+                      <Button
+                        size="sm"
+                        intent="dangerQuiet"
+                        icon={<RiDeleteBin6Line size={14} />}
+                        aria-label={`Delete ${t.name}`}
+                        onClick={() => handleDelete(t.id)}
+                      />
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
         </div>
-      </div>
-    </div>
+      )}
+    </Dialog>
   );
 }
-
-// Inline Styles (Strictly square edges to match design system)
-const modalOverlay: React.CSSProperties = {
-  position: 'fixed',
-  top: 0,
-  left: 0,
-  right: 0,
-  bottom: 0,
-  backgroundColor: 'rgba(15, 23, 42, 0.5)',
-  backdropFilter: 'blur(4px)',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  zIndex: 1000,
-  padding: '1.5rem',
-};
-
-const modalContainer: React.CSSProperties = {
-  backgroundColor: 'white',
-  borderRadius: 0,
-  width: '100%',
-  maxWidth: '850px',
-  maxHeight: '95vh',
-  boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
-  display: 'flex',
-  flexDirection: 'column',
-  overflow: 'hidden',
-  border: '1px solid var(--gray-300)',
-};
-
-const modalHeader: React.CSSProperties = {
-  padding: '1.25rem 1.5rem',
-  borderBottom: '1px solid #e2e8f0',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  backgroundColor: '#f8fafc',
-  borderRadius: 0,
-};
-
-const modalTitle: React.CSSProperties = {
-  fontSize: '1.2rem',
-  fontWeight: 700,
-  color: '#0f172a',
-  margin: 0,
-};
-
-const modalSubtitle: React.CSSProperties = {
-  fontSize: '0.78rem',
-  color: '#64748b',
-  margin: '0.15rem 0 0 0',
-};
-
-const closeButton: React.CSSProperties = {
-  background: 'none',
-  border: 'none',
-  color: '#94a3b8',
-  cursor: 'pointer',
-  padding: '4px',
-  borderRadius: 0,
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  transition: 'all 0.1s',
-};
-
-const modalBody: React.CSSProperties = {
-  padding: '1.5rem',
-  overflowY: 'auto',
-  flex: 1,
-};
-
-const listContainer: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: '1.25rem',
-  height: '100%',
-};
-
-const listHeader: React.CSSProperties = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  gap: '1rem',
-  alignItems: 'center',
-  flexWrap: 'wrap',
-};
-
-const searchWrapper: React.CSSProperties = {
-  position: 'relative',
-  flex: 1,
-  minWidth: '240px',
-};
-
-const searchIcon: React.CSSProperties = {
-  position: 'absolute',
-  left: '12px',
-  top: '50%',
-  transform: 'translateY(-50%)',
-  color: '#94a3b8',
-  pointerEvents: 'none',
-};
-
-const searchInput: React.CSSProperties = {
-  width: '100%',
-  padding: '0.55rem 0.75rem 0.55rem 2.25rem',
-  border: '1px solid #cbd5e1',
-  borderRadius: 0,
-  fontSize: '0.85rem',
-  color: '#0f172a',
-   transition: 'border-color 0.15s',
-};
-
-const addButton: React.CSSProperties = {
-  backgroundColor: '#7c3aed',
-  color: 'white',
-  border: 'none',
-  borderRadius: 0,
-  padding: '0.55rem 1rem',
-  fontSize: '0.82rem',
-  fontWeight: 600,
-  cursor: 'pointer',
-  display: 'flex',
-  alignItems: 'center',
-  gap: '0.4rem',
-  boxShadow: '0 4px 6px -1px rgba(124, 58, 237, 0.2)',
-};
-
-const templatesList: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: '0.75rem',
-  maxHeight: '55vh',
-  overflowY: 'auto',
-  paddingRight: '4px',
-};
-
-const templateCard: React.CSSProperties = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'flex-start',
-  padding: '1rem',
-  border: '1px solid #e2e8f0',
-  borderRadius: 0,
-  borderLeftWidth: '4px',
-  transition: 'all 0.15s',
-  backgroundColor: '#fff',
-};
-
-const templateInfo: React.CSSProperties = {
-  flex: 1,
-  minWidth: 0,
-  paddingRight: '1rem',
-};
-
-const templateHeaderRow: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: '0.5rem',
-  marginBottom: '0.35rem',
-  flexWrap: 'wrap',
-};
-
-const templateName: React.CSSProperties = {
-  fontSize: '0.88rem',
-  fontWeight: 700,
-  color: '#1e293b',
-  margin: 0,
-};
-
-const systemBadge: React.CSSProperties = {
-  fontSize: '0.62rem',
-  fontWeight: 600,
-  padding: '1px 6px',
-  borderRadius: 0,
-  backgroundColor: '#f1f5f9',
-  color: '#475569',
-  border: '1px solid #e2e8f0',
-};
-
-const customBadge: React.CSSProperties = {
-  fontSize: '0.62rem',
-  fontWeight: 600,
-  padding: '1px 6px',
-  borderRadius: 0,
-  backgroundColor: '#f5f3ff',
-  color: '#6d28d9',
-  border: '1px solid #ddd6fe',
-};
-
-const templatePreviewText: React.CSSProperties = {
-  fontSize: '0.75rem',
-  color: '#64748b',
-  margin: 0,
-  lineHeight: '1.4',
-};
-
-const cardActions: React.CSSProperties = {
-  display: 'flex',
-  gap: '0.25rem',
-};
-
-const cardIconButton: React.CSSProperties = {
-  background: 'none',
-  border: '1px solid #e2e8f0',
-  borderRadius: 0,
-  width: '28px',
-  height: '28px',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  color: '#64748b',
-  cursor: 'pointer',
-  transition: 'all 0.1s',
-};
-
-const loadingState: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  alignItems: 'center',
-  justifyContent: 'center',
-  padding: '3rem 0',
-};
-
-const emptyState: React.CSSProperties = {
-  textAlign: 'center',
-  padding: '2.5rem 0',
-  border: '1px dashed #cbd5e1',
-  borderRadius: 0,
-  backgroundColor: '#f8fafc',
-};
-
-// Form styles
-const formContainer: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: '1.25rem',
-};
-
-const formHeader: React.CSSProperties = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  borderBottom: '1px dashed #e2e8f0',
-  paddingBottom: '0.75rem',
-};
-
-const formTitle: React.CSSProperties = {
-  fontSize: '1rem',
-  fontWeight: 700,
-  color: '#0f172a',
-  margin: 0,
-};
-
-const cancelFormButton: React.CSSProperties = {
-  background: 'none',
-  border: '1px solid #cbd5e1',
-  borderRadius: 0,
-  padding: '0.35rem 0.75rem',
-  fontSize: '0.75rem',
-  fontWeight: 600,
-  color: '#475569',
-  cursor: 'pointer',
-};
-
-const dropzoneStyle: React.CSSProperties = {
-  border: '2px dashed #cbd5e1',
-  borderRadius: 0,
-  padding: '1.5rem',
-  textAlign: 'center',
-  cursor: 'pointer',
-  transition: 'all 0.15s ease-in-out',
-  display: 'flex',
-  flexDirection: 'column',
-  alignItems: 'center',
-  justifyContent: 'center',
-};
-
-const fileTypeBadge: React.CSSProperties = {
-  fontSize: '0.65rem',
-  fontWeight: 600,
-  padding: '2px 8px',
-  borderRadius: 0,
-  backgroundColor: '#e2e8f0',
-  color: '#475569',
-  display: 'flex',
-  alignItems: 'center',
-  gap: '0.25rem',
-};
-
-const statusMessageStyle: React.CSSProperties = {
-  padding: '0.75rem 1rem',
-  borderRadius: 0,
-  border: '1px solid',
-  display: 'flex',
-  alignItems: 'center',
-  gap: '0.5rem',
-};
-
-const formInputs: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: '1rem',
-};
-
-const fieldGroup: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: '0.35rem',
-};
-
-const labelStyle: React.CSSProperties = {
-  fontSize: '0.75rem',
-  fontWeight: 700,
-  color: '#334155',
-  textTransform: 'uppercase',
-  letterSpacing: '0.02em',
-};
-
-const inputStyle: React.CSSProperties = {
-  padding: '0.55rem 0.75rem',
-  border: '1px solid #cbd5e1',
-  borderRadius: 0,
-  fontSize: '0.85rem',
-  color: '#0f172a',
-   };
-
-const textareaStyle: React.CSSProperties = {
-  padding: '0.65rem 0.85rem',
-  border: '1px solid #cbd5e1',
-  borderRadius: 0,
-  fontSize: '0.85rem',
-  color: '#0f172a',
-   resize: 'vertical',
-  lineHeight: '1.5',
-};
-
-const formActions: React.CSSProperties = {
-  display: 'flex',
-  justifyContent: 'flex-end',
-  gap: '0.75rem',
-  borderTop: '1px solid #e2e8f0',
-  paddingTop: '1.25rem',
-  marginTop: '0.5rem',
-};
-
-const primaryButton: React.CSSProperties = {
-  backgroundColor: '#7c3aed',
-  color: 'white',
-  border: 'none',
-  borderRadius: 0,
-  padding: '0.6rem 1.25rem',
-  fontSize: '0.85rem',
-  fontWeight: 700,
-  cursor: 'pointer',
-  display: 'flex',
-  alignItems: 'center',
-  gap: '0.4rem',
-  boxShadow: '0 4px 6px -1px rgba(124, 58, 237, 0.2)',
-};
-
-const secondaryButton: React.CSSProperties = {
-  backgroundColor: '#f1f5f9',
-  color: '#334155',
-  border: '1px solid #cbd5e1',
-  borderRadius: 0,
-  padding: '0.6rem 1.25rem',
-  fontSize: '0.85rem',
-  fontWeight: 600,
-  cursor: 'pointer',
-};
