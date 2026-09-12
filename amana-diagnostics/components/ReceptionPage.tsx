@@ -63,8 +63,15 @@ export default function ReceptionPage() {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [patientProfiles, setPatientProfiles] = useState<PatientProfile[]>([]);
 
-  /** Which document is open over the desk, if any. */
-  const [showSlipModal, setShowSlipModal] = useState<Patient | null>(null);
+  /**
+   * Which document is open over the desk, if any. Registration opens the
+   * pair the patient walks out with; the queue opens one at a time, for a
+   * reprint.
+   */
+  const [showSlipModal, setShowSlipModal] = useState<{
+    patient: Patient;
+    purpose: 'register' | 'reprint';
+  } | null>(null);
   const [showResultModal, setShowResultModal] = useState<Patient | null>(null);
 
   /** Reference data for the registration form. */
@@ -217,7 +224,7 @@ export default function ReceptionPage() {
               catalogue={catalogue}
               billingAccounts={billingAccounts}
               organization={organization}
-              setShowSlipModal={setShowSlipModal}
+              setShowSlipModal={(p) => setShowSlipModal({ patient: p, purpose: 'register' })}
               onRegistered={(p) => setPatients((prev) => [p, ...prev])}
             />
           </ErrorBoundary>
@@ -227,7 +234,7 @@ export default function ReceptionPage() {
           <ErrorBoundary area="patient queue">
             <QueueTab
               patients={patients}
-              onViewSlip={(p: any) => setShowSlipModal(p)}
+              onViewSlip={(p: any) => setShowSlipModal({ patient: p, purpose: 'reprint' })}
               onViewResult={(p: any) => setShowResultModal(p)}
             />
           </ErrorBoundary>
@@ -237,7 +244,7 @@ export default function ReceptionPage() {
           <ErrorBoundary area="results list">
             <ResultsTab
               patients={patients}
-              onViewSlip={(p: any) => setShowSlipModal(p)}
+              onViewSlip={(p: any) => setShowSlipModal({ patient: p, purpose: 'reprint' })}
               onViewResult={(p: any) => setShowResultModal(p)}
             />
           </ErrorBoundary>
@@ -257,7 +264,8 @@ export default function ReceptionPage() {
 
       {showSlipModal && (
         <SlipModal
-          patient={showSlipModal}
+          patient={showSlipModal.patient}
+          purpose={showSlipModal.purpose}
           org={organization}
           onClose={() => {
             setShowSlipModal(null);

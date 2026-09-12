@@ -608,15 +608,85 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
     </body></html>`;
 };
 
-/**
- * Generates the HTML for the Patient Investigation Request Slip (Waiting Slip).
- * Used at registration to provide patients with a summary of their ordered tests.
+/* --- Thermal tickets ---------------------------------------------------
  *
- * @param patient The patient object with registered tests.
- * @param org The organisation object for letterhead data.
- * @returns A complete HTML string for printing.
+ * The request slip and the payment receipt are 80mm tickets, and a visit
+ * needs both: the patient keeps the receipt and hands the slip in at the
+ * department. They used to be two separate documents with two copies of the
+ * same CSS, printed one at a time through two trips to the print dialog. Now
+ * one renderer draws a ticket, and a document is a list of tickets with a
+ * page break between them, so both come out of one print job — an
+ * auto-cutter cuts between them and a manual-tear printer leaves a gap. */
+
+const TICKET_CSS = `
+      @page { margin: 0; }
+      body { margin: 0; padding: 0; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 12px; color: #000; }
+      .ticket { width: 80mm; margin: 0 auto; padding: 15px 10px; box-sizing: border-box; }
+      .ticket + .ticket { break-before: page; page-break-before: always; }
+      .header { text-align: center; border-bottom: 1px dashed #000; padding-bottom: 8px; margin-bottom: 10px; }
+      .org-name-1 { font-size: 16px; font-weight: bold; margin: 0; line-height: 1.2; }
+      .org-name-2 { font-size: 11px; font-weight: bold; margin: 0; margin-bottom: 4px; }
+      .org-addr { font-size: 10px; margin: 2px 0; }
+      .org-contact { font-size: 10px; margin: 0; }
+      .slip-title { font-size: 14px; font-weight: bold; text-align: center; margin: 10px 0; padding-bottom: 5px; }
+      .slip-title.ruled { border-bottom: 1px solid #000; }
+      .copy-tag { border: 1px solid #000; padding: 3px 6px; margin: 0 0 10px; font-size: 10px; font-weight: bold; letter-spacing: 0.06em; text-align: center; text-transform: uppercase; }
+      .patient-info { margin-bottom: 10px; font-size: 12px; line-height: 1.5; }
+      .patient-info.ruled { border-bottom: 1px dashed #000; padding-bottom: 8px; }
+      .pi-row { display: flex; justify-content: space-between; }
+      .pi-label { font-weight: bold; }
+      .tests-header { font-weight: bold; border-bottom: 1px solid #000; padding-bottom: 2px; margin-top: 10px; }
+      table { width: 100%; border-collapse: collapse; margin-top: 5px; font-size: 12px; }
+      th { border-bottom: 1px solid #000; text-align: left; padding: 4px 0; }
+      td { padding: 4px 0; border-bottom: 1px dashed #ccc; }
+      .summary-section { margin-top: 10px; border-top: 1px solid #000; padding-top: 6px; font-size: 12px; line-height: 1.6; }
+      .summary-row { display: flex; justify-content: space-between; }
+      .summary-row.bold { font-weight: bold; font-size: 13px; }
+      .footer { margin-top: 15px; border-top: 1px dashed #000; padding-top: 10px; font-size: 10px; text-align: center; line-height: 1.4; }
+`;
+
+/** Printed on the receipt, so the patient knows which of the pair to keep. */
+export const RECEIPT_COPY_TAG = 'Patient copy — please keep';
+
+/**
+ * Where the slip goes, from the tests on it: "Lab", "Radiology", or both.
+ * Printed on the slip so the patient can be told where to take it without
+ * having to ask.
  */
-export const getSlipTemplate = (patient: Patient, org?: OrgForTemplate) => {
+export const slipDestination = (tests: PatientTest[]): string => {
+  const depts = new Set<string>(tests.map((t) => (t.department === 'lab' ? 'Lab' : 'Radiology')));
+  return ['Lab', 'Radiology'].filter((d) => depts.has(d)).join(' & ') || 'the department';
+};
+
+export const slipCopyTag = (tests: PatientTest[]): string =>
+  `Department copy — hand in at ${slipDestination(tests)}`;
+
+/**
+ * The order the tickets come out of the printer when both are printed: the
+ * receipt first, so the proof of payment is on top of the pair the patient is
+ * handed, then the slip, ready to be passed on. The preview shows them in
+ * this order too, so it is the one place the order is decided.
+ */
+export const RECEIPT_AND_SLIP_ORDER = ['receipt', 'slip'] as const;
+
+const ticketLetterhead = (org?: OrgForTemplate) => {
+  const head = letterheadFor(org);
+  return `
+    <div class="header">
+      <div class="org-name-1">${head.name.toUpperCase()}</div>
+      ${head.line2 ? `<div class="org-name-2">${head.line2.toUpperCase()}</div>` : ''}
+      ${head.address ? `<div class="org-addr">${head.address.replace(/\n/g, '<br>')}</div>` : ''}
+      ${head.phone ? `<div class="org-contact">${head.phone}</div>` : ''}
+    </div>`;
+};
+
+const ticketDocument = (title: string, tickets: string[]) => `
+    <!DOCTYPE html><html><head><title>${title}</title>
+    <style>${TICKET_CSS}</style></head><body>
+    ${tickets.map((t) => `<div class="ticket">${t}</div>`).join('\n')}
+    </body></html>`;
+
+const slipTicket = (patient: Patient, org?: OrgForTemplate) => {
   const regDate = new Date(patient.registeredAt).toLocaleDateString('en-NG');
   const specimens = Array.from(new Set(patient.tests.map(specimenOf))).filter(Boolean).join(', ') || '—';
   const testRows = patient.tests.map(t => `
@@ -624,41 +694,12 @@ export const getSlipTemplate = (patient: Patient, org?: OrgForTemplate) => {
       <td>${t.testName} ${specimenOf(t) ? `<span style="font-size:10px; color:#666">(${specimenOf(t)})</span>` : ''}</td>
       <td style="text-align:right">${t.department === 'lab' ? 'Lab' : 'Radio'}</td>
     </tr>`).join('');
-
-  // Letterhead values
-  const head = letterheadFor(org);
-  const orgName = head.name;
-  const orgLine2 = head.line2;
-  const orgAddress = head.address;
-  const orgPhone = head.phone;
+  const orgName = letterheadFor(org).name;
 
   return `
-    <!DOCTYPE html><html><head><title>Patient Slip - ${patient.slipNumber}</title>
-    <style>
-      @page { margin: 0; }
-      body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; margin: 0 auto; padding: 15px 10px; width: 80mm; font-size: 12px; color: #000; box-sizing: border-box; }
-      .header { text-align: center; border-bottom: 1px dashed #000; padding-bottom: 8px; margin-bottom: 10px; }
-      .org-name-1 { font-size: 16px; font-weight: bold; margin: 0; line-height: 1.2; }
-      .org-name-2 { font-size: 11px; font-weight: bold; margin: 0; margin-bottom: 4px; }
-      .org-addr { font-size: 10px; margin: 2px 0; }
-      .org-contact { font-size: 10px; margin: 0; }
-      .slip-title { font-size: 14px; font-weight: bold; text-align: center; margin: 10px 0; padding-bottom: 5px; }
-      .patient-info { margin-bottom: 10px; font-size: 12px; line-height: 1.5; }
-      .pi-row { display: flex; justify-content: space-between; }
-      .pi-label { font-weight: bold; }
-      .tests-header { font-weight: bold; border-bottom: 1px solid #000; padding-bottom: 2px; margin-top: 10px; }
-      table { width: 100%; border-collapse: collapse; margin-top: 5px; font-size: 12px; }
-      th { border-bottom: 1px solid #000; text-align: left; padding: 4px 0; }
-      td { padding: 4px 0; border-bottom: 1px dashed #ccc; }
-      .footer { margin-top: 15px; border-top: 1px dashed #000; padding-top: 10px; font-size: 10px; text-align: center; line-height: 1.4; }
-    </style></head><body>
-    <div class="header">
-      <div class="org-name-1">${orgName.toUpperCase()}</div>
-      ${orgLine2 ? `<div class="org-name-2">${orgLine2.toUpperCase()}</div>` : ''}
-      ${orgAddress ? `<div class="org-addr">${orgAddress.replace(/\n/g, '<br>')}</div>` : ''}
-      ${orgPhone ? `<div class="org-contact">${orgPhone}</div>` : ''}
-    </div>
+    ${ticketLetterhead(org)}
     <div class="slip-title">INVESTIGATION SLIP</div>
+    <div class="copy-tag">${slipCopyTag(patient.tests)}</div>
     <div class="patient-info">
       <div class="pi-row"><span class="pi-label">ID:</span> <span>${patient.slipNumber}</span></div>
       <div class="pi-row"><span class="pi-label">Name:</span> <span>${patientDisplayName(patient)}</span></div>
@@ -674,21 +715,12 @@ export const getSlipTemplate = (patient: Patient, org?: OrgForTemplate) => {
     <div class="footer">
       Please proceed to the respective department with this slip<br>
       ${orgName} &copy; ${new Date().getFullYear()}
-    </div>
-    </body></html>`;
+    </div>`;
 };
 
-/**
- * Generates the HTML for the Patient Thermal Receipt/Invoice.
- * Contains subtotal, discount, net bill, amount paid, balance and payment details.
- */
-export const getInvoiceTemplate = (patient: Patient, org?: OrgForTemplate) => {
+const receiptTicket = (patient: Patient, org?: OrgForTemplate) => {
   const regDate = new Date(patient.registeredAt).toLocaleDateString('en-NG');
-  const head = letterheadFor(org);
-  const orgName = head.name;
-  const orgLine2 = head.line2;
-  const orgAddress = head.address;
-  const orgPhone = head.phone;
+  const orgName = letterheadFor(org).name;
 
   const testRows = (patient.tests || []).map(t => `
     <tr>
@@ -702,41 +734,17 @@ export const getInvoiceTemplate = (patient: Patient, org?: OrgForTemplate) => {
   const netAmount = patient.netAmount || 0;
   const paidAmount = patient.paidAmount || 0;
   const balance = netAmount - paidAmount;
-  const discountText = patient.discountType === 'percentage' 
-    ? `Discount (${patient.discountValue}%)` 
-    : patient.discountType === 'flat' 
-      ? 'Discount (Flat)' 
+  const discountText = patient.discountType === 'percentage'
+    ? `Discount (${patient.discountValue}%)`
+    : patient.discountType === 'flat'
+      ? 'Discount (Flat)'
       : 'Discount';
 
   return `
-    <!DOCTYPE html><html><head><title>Invoice - ${patient.slipNumber}</title>
-    <style>
-      @page { margin: 0; }
-      body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; margin: 0 auto; padding: 15px 10px; width: 80mm; font-size: 12px; color: #000; box-sizing: border-box; }
-      .header { text-align: center; border-bottom: 1px dashed #000; padding-bottom: 8px; margin-bottom: 10px; }
-      .org-name-1 { font-size: 16px; font-weight: bold; margin: 0; line-height: 1.2; }
-      .org-name-2 { font-size: 11px; font-weight: bold; margin: 0; margin-bottom: 4px; }
-      .org-addr { font-size: 10px; margin: 2px 0; }
-      .org-contact { font-size: 10px; margin: 0; }
-      .slip-title { font-size: 14px; font-weight: bold; text-align: center; margin: 10px 0; padding-bottom: 5px; border-bottom: 1px solid #000; }
-      .patient-info { margin-bottom: 10px; font-size: 12px; line-height: 1.5; border-bottom: 1px dashed #000; padding-bottom: 8px; }
-      .pi-row { display: flex; justify-content: space-between; }
-      .pi-label { font-weight: bold; }
-      table { width: 100%; border-collapse: collapse; margin-top: 5px; font-size: 12px; }
-      th { border-bottom: 1px solid #000; text-align: left; padding: 4px 0; }
-      .summary-section { margin-top: 10px; border-top: 1px solid #000; padding-top: 6px; font-size: 12px; line-height: 1.6; }
-      .summary-row { display: flex; justify-content: space-between; }
-      .summary-row.bold { font-weight: bold; font-size: 13px; }
-      .footer { margin-top: 15px; border-top: 1px dashed #000; padding-top: 10px; font-size: 10px; text-align: center; line-height: 1.4; }
-    </style></head><body>
-    <div class="header">
-      <div class="org-name-1">${orgName.toUpperCase()}</div>
-      ${orgLine2 ? `<div class="org-name-2">${orgLine2.toUpperCase()}</div>` : ''}
-      ${orgAddress ? `<div class="org-addr">${orgAddress.replace(/\n/g, '<br>')}</div>` : ''}
-      ${orgPhone ? `<div class="org-contact">${orgPhone}</div>` : ''}
-    </div>
-    <div class="slip-title">PAYMENT RECEIPT / INVOICE</div>
-    <div class="patient-info">
+    ${ticketLetterhead(org)}
+    <div class="slip-title ruled">PAYMENT RECEIPT / INVOICE</div>
+    <div class="copy-tag">${RECEIPT_COPY_TAG}</div>
+    <div class="patient-info ruled">
       <div class="pi-row"><span class="pi-label">Invoice No:</span> <span>${patient.slipNumber}</span></div>
       <div class="pi-row"><span class="pi-label">Patient Name:</span> <span>${patientDisplayName(patient)}</span></div>
       <div class="pi-row"><span class="pi-label">Age/Sex:</span> <span>${patient.age} / ${patient.sex}</span></div>
@@ -770,8 +778,34 @@ export const getInvoiceTemplate = (patient: Patient, org?: OrgForTemplate) => {
       Thank you for your patronage.<br>
       Please retain this receipt for your records.<br>
       ${orgName} &copy; ${new Date().getFullYear()}
-    </div>
-    </body></html>`;
+    </div>`;
+};
+
+/**
+ * The Patient Investigation Request Slip on its own — a reprint for when the
+ * department copy is lost. Registration prints it together with the receipt
+ * through getReceiptAndSlipTemplate.
+ */
+export const getSlipTemplate = (patient: Patient, org?: OrgForTemplate) =>
+  ticketDocument(`Patient Slip - ${patient.slipNumber}`, [slipTicket(patient, org)]);
+
+/**
+ * The Patient Thermal Receipt/Invoice on its own: subtotal, discount, net
+ * bill, amount paid, balance and payment details.
+ */
+export const getInvoiceTemplate = (patient: Patient, org?: OrgForTemplate) =>
+  ticketDocument(`Invoice - ${patient.slipNumber}`, [receiptTicket(patient, org)]);
+
+/**
+ * Both tickets in one print job, in RECEIPT_AND_SLIP_ORDER, so the desk goes
+ * through the print dialog once per visit rather than once per document.
+ */
+export const getReceiptAndSlipTemplate = (patient: Patient, org?: OrgForTemplate) => {
+  const tickets = { receipt: receiptTicket(patient, org), slip: slipTicket(patient, org) };
+  return ticketDocument(
+    `Receipt and Slip - ${patient.slipNumber}`,
+    RECEIPT_AND_SLIP_ORDER.map((k) => tickets[k]),
+  );
 };
 
 /**

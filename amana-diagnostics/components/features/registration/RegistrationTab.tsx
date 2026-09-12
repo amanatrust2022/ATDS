@@ -31,7 +31,8 @@ interface RegistrationTabProps {
   catalogue: Test[];
   billingAccounts: BillingAccount[];
   organization: Organization | null;
-  setShowSlipModal: React.Dispatch<React.SetStateAction<Patient | null>>;
+  /** Opens the receipt-and-slip preview for the patient just registered. */
+  setShowSlipModal: (patient: Patient) => void;
   /**
    * Called with the patient that was just saved, so the queue can show them at
    * once. Registration must not wait on a refetch to feel finished.
