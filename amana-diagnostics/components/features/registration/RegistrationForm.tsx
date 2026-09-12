@@ -1,7 +1,8 @@
 import React from 'react';
 import { useRegistrationStore } from '@/lib/store/useRegistrationStore';
-import Field from './Field';
-import { inputStyle } from './styles';
+import { Field, Input, Select } from '@/components/ui';
+
+import styles from './registrationForm.module.css';
 
 interface RegistrationFormProps {
   errors: Record<string, string>;
@@ -14,38 +15,38 @@ export default function RegistrationForm({ errors }: RegistrationFormProps) {
 
   return (
     <>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
-        <Field label="First Name *" error={errors.firstName}>
-          <input style={inputStyle(!!errors.firstName)} value={form.firstName} onChange={e => setForm({ firstName: e.target.value })} placeholder="e.g. Musa" />
+      <div className={styles.three}>
+        <Field label="First name" required error={errors.firstName}>
+          <Input value={form.firstName} onChange={e => setForm({ firstName: e.target.value })} placeholder="e.g. Musa" />
         </Field>
-        <Field label="Surname *" error={errors.surname}>
-          <input style={inputStyle(!!errors.surname)} value={form.surname} onChange={e => setForm({ surname: e.target.value })} placeholder="e.g. Bello" />
+        <Field label="Surname" required error={errors.surname}>
+          <Input value={form.surname} onChange={e => setForm({ surname: e.target.value })} placeholder="e.g. Bello" />
         </Field>
-        <Field label="Middle Name" error={errors.middleName}>
-          <input style={inputStyle(!!errors.middleName)} value={form.middleName} onChange={e => setForm({ middleName: e.target.value })} placeholder="e.g. Ibrahim" />
+        <Field label="Middle name" error={errors.middleName}>
+          <Input value={form.middleName} onChange={e => setForm({ middleName: e.target.value })} placeholder="e.g. Ibrahim" />
         </Field>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-        <Field label="Age *" error={errors.age}>
-          <input style={inputStyle(!!errors.age)} value={form.age} onChange={e => setForm({ age: e.target.value })} placeholder="e.g. 35yrs" />
+      <div className={styles.two}>
+        <Field label="Age" required error={errors.age}>
+          <Input value={form.age} onChange={e => setForm({ age: e.target.value })} placeholder="e.g. 35yrs" />
         </Field>
         <Field label="Sex">
-          <select style={inputStyle(false)} value={form.sex} onChange={e => setForm({ sex: e.target.value as 'Male' | 'Female' })}>
+          <Select value={form.sex} onChange={e => setForm({ sex: e.target.value as 'Male' | 'Female' })}>
             <option>Male</option>
             <option>Female</option>
-          </select>
+          </Select>
         </Field>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-        <Field label="Phone Number *" error={errors.phone}>
-          <input style={inputStyle(!!errors.phone)} value={form.phone} onChange={e => setForm({ phone: e.target.value })} placeholder="+234 803 000 0000" />
+      <div className={styles.two}>
+        <Field label="Phone number" required error={errors.phone}>
+          <Input value={form.phone} onChange={e => setForm({ phone: e.target.value })} placeholder="+234 803 000 0000" />
         </Field>
-        <Field label="Patient Email (for results)">
-          <input style={inputStyle(false)} type="email" value={form.email} onChange={e => setForm({ email: e.target.value })} placeholder="patient@example.com" />
+        <Field label="Patient email" hint="Where the result is sent, if they want it by email.">
+          <Input type="email" value={form.email} onChange={e => setForm({ email: e.target.value })} placeholder="patient@example.com" />
         </Field>
       </div>
       <Field label="Address">
-        <input style={inputStyle(false)} value={form.address} onChange={e => setForm({ address: e.target.value })} placeholder="Patient address" />
+        <Input value={form.address} onChange={e => setForm({ address: e.target.value })} placeholder="Patient address" />
       </Field>
     </>
   );

@@ -1,0 +1,26 @@
+/* Patient biodata.
+ *
+ * Every box on this form used to go through registration/Field.tsx, whose
+ * <label> was wired to nothing, over an input from registration/styles.ts that
+ * removed its own focus ring. They are components/ui Fields now, which name
+ * the control, tie the error to it and mark what is required. What is left
+ * here is how the boxes sit in rows. */
+
+.three {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: var(--space-3);
+}
+
+.two {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+}
+
+@media (max-width: 560px) {
+  .three,
+  .two {
+    grid-template-columns: 1fr;
+  }
+}
