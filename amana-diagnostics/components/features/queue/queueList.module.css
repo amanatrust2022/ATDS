@@ -1,0 +1,14 @@
+/* The queue list — the container around the patient cards.
+ *
+ * The waiting patients were a plain div of cards, so nothing told a screen
+ * reader how many were in it. They are a named list now; the cards are its
+ * items. */
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}

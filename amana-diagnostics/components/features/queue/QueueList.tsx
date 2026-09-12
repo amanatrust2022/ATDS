@@ -2,6 +2,9 @@ import React from 'react';
 import { RiMailOpenLine, RiFolderOpenLine } from '@remixicon/react';
 import { PatientCard } from './PatientCard';
 import { Patient } from '@/lib/store';
+import { EmptyState } from '@/components/ui';
+
+import styles from './queueList.module.css';
 
 interface QueueListProps {
   patients: Patient[];
@@ -11,31 +14,36 @@ interface QueueListProps {
 }
 
 export const QueueList: React.FC<QueueListProps> = ({ patients, mode, onViewSlip, onViewResult }) => {
+  const isResults = mode === 'results';
+
   if (patients.length === 0) {
     return (
-      <div style={{ textAlign: 'center', padding: '4rem', color: 'var(--gray-500)' }}>
-        <div style={{ fontSize: '3rem', marginBottom: '1rem', color: 'var(--gray-400)' }}>
-          {mode === 'results' ? <RiMailOpenLine size={64} /> : <RiFolderOpenLine size={64} />}
-        </div>
-        <p style={{ fontWeight: 600 }}>{mode === 'results' ? 'No results available yet' : 'No patients in queue'}</p>
-        <p style={{ fontSize: '0.78rem', marginTop: '0.25rem' }}>
-          {mode === 'results' ? 'Results will appear here when departments complete tests.' : 'Register a patient to get started.'}
-        </p>
-      </div>
+      <EmptyState
+        title={isResults ? 'No results available yet' : 'No patients in queue'}
+        icon={isResults ? <RiMailOpenLine size={48} /> : <RiFolderOpenLine size={48} />}
+      >
+        {isResults
+          ? 'Results will appear here when departments complete tests.'
+          : 'Register a patient to get started.'}
+      </EmptyState>
     );
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+    <ul
+      className={styles.list}
+      aria-label={isResults ? 'Patients with a result ready' : 'Patients waiting in the queue'}
+    >
       {patients.map(p => (
-        <PatientCard
-          key={p.id}
-          patient={p}
-          mode={mode}
-          onViewSlip={() => onViewSlip(p)}
-          onViewResult={() => onViewResult(p)}
-        />
+        <li key={p.id}>
+          <PatientCard
+            patient={p}
+            mode={mode}
+            onViewSlip={() => onViewSlip(p)}
+            onViewResult={() => onViewResult(p)}
+          />
+        </li>
       ))}
-    </div>
+    </ul>
   );
 };
