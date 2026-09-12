@@ -1,0 +1,24 @@
+/* The queue's filter bar.
+ *
+ * Both rows of filters used to carry their selection in fill alone — a white
+ * pill for the date window, a solid teal one for the department — with nothing
+ * pressed, nothing grouped, and no name on the search box beside them. They are
+ * two named groups of toggles now, and the teal and grey literals are gone. */
+
+.bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.search {
+  flex: 1;
+  min-width: 200px;
+  max-width: 300px;
+}
+
+.departments {
+  margin-left: auto;
+}

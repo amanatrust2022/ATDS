@@ -98,7 +98,7 @@ export function SegmentedControl<T extends string>({
 }: {
   value: T;
   onValueChange: (value: T) => void;
-  options: { value: T; label: string }[];
+  options: { value: T; label: string; icon?: ReactNode }[];
   ariaLabel: string;
 }) {
   return (
@@ -112,6 +112,7 @@ export function SegmentedControl<T extends string>({
           aria-pressed={value === option.value}
           onClick={() => onValueChange(option.value)}
         >
+          {option.icon && <span aria-hidden="true">{option.icon}</span>}
           {option.label}
         </button>
       ))}
