@@ -1,0 +1,33 @@
+/* The two quick-register overlays on the registration desk.
+ *
+ * Both used to be hand-rolled from the fixed div in registration/styles.ts —
+ * no role, no focus trap, no Escape — over fields drawn by that folder's own
+ * Field.tsx, whose <label> was wired to nothing. Radix owns the overlay now and
+ * components/ui owns the fields; what is left here is the pairing of two boxes
+ * on one row. */
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+}
+
+@media (max-width: 480px) {
+  .pair {
+    grid-template-columns: 1fr;
+  }
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border-default);
+}
