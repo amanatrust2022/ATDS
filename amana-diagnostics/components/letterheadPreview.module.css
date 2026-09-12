@@ -1,0 +1,78 @@
+/* The chrome around the A4 letterhead preview.
+ *
+ * The paper itself is paper — white ground, black ink, the same geometry the
+ * printer uses — and its measurements stay inline in the TSX because they are
+ * the design, not styling (decision #31). What is here is everything that is
+ * not paper: the desk the sheet lies on, the shadow under it, and the
+ * draughtsman's guides drawn over it. Decision #31 asks that chrome follow the
+ * theme; it used to be a fixed slate grey with pale blue guides that stayed
+ * light while the settings card around it went dark. */
+
+.figure {
+  margin: 0;
+}
+
+.desk {
+  display: flex;
+  justify-content: center;
+  padding: var(--space-5);
+  overflow: auto;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-default);
+}
+
+/* White because it is paper. The shadow is chrome, so it is a token. */
+.sheet {
+  position: relative;
+  box-sizing: border-box;
+  background: #fff;
+  box-shadow: var(--shadow-lg);
+}
+
+.guide {
+  position: absolute;
+  pointer-events: none;
+  border-color: var(--border-strong);
+  border-style: dashed;
+}
+
+.guideLabel {
+  position: absolute;
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.clearArea {
+  position: absolute;
+  border: 1px dashed var(--accent-solid);
+  pointer-events: none;
+}
+
+.clearAreaLabel {
+  position: absolute;
+  top: -18px;
+  left: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  color: var(--accent-solid);
+}
+
+/* Sits on the paper, so it is ink: a printed note in the printed face. */
+.continues {
+  text-align: center;
+  font-size: 9pt;
+  margin-top: 18px;
+  font-family: var(--font-sans);
+  color: #64748b;
+}
+
+.caption {
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-default);
+  border-top: none;
+}
