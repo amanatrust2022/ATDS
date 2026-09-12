@@ -97,4 +97,51 @@ describe('Feature: Returning patient lookup', () => {
 
     expect(screen.queryByRole('button', { name: 'Clear / Register New' })).not.toBeInTheDocument();
   });
+  /**
+   * The lookup's label was a bare <label> with no htmlFor, over an input with
+   * no id and no aria-label. A screen reader reached the box and had only the
+   * placeholder to go on — and a placeholder is not a name.
+   */
+  it('names the search box for a screen reader', () => {
+    setup();
+
+    expect(screen.getByRole('combobox', { name: /returning patient lookup/i })).toBeInTheDocument();
+  });
+
+  /**
+   * Every suggestion was a <div onClick>. A receptionist working the desk with
+   * the keyboard — which is most of them, most of the time — could not reach a
+   * single one, and nothing announced that a list of matches had appeared.
+   */
+  it('offers each suggestion as an option a keyboard can reach', () => {
+    setup({ showDrop: true, query: 'Musa' });
+
+    const options = screen.getAllByRole('option');
+    expect(options).toHaveLength(1);
+    expect(screen.getByRole('button', { name: /Musa Ibrahim Bello/ })).toBeInTheDocument();
+  });
+
+  it('walks the suggestions with the arrow keys and picks one with Enter', () => {
+    const onSelectProfile = vi.fn();
+    setup({ showDrop: true, query: '0803', onSelectProfile });
+
+    const box = screen.getByRole('combobox', { name: /returning patient lookup/i });
+    fireEvent.keyDown(box, { key: 'ArrowDown' });
+    fireEvent.keyDown(box, { key: 'Enter' });
+
+    expect(onSelectProfile).toHaveBeenCalledWith(amina);
+  });
+
+  /**
+   * The button that empties the search box held a close icon and nothing else,
+   * so its accessible name was the empty string.
+   */
+  it('names the button that empties the search box', () => {
+    const setQuery = vi.fn();
+    setup({ query: 'Musa', setQuery });
+
+    fireEvent.click(screen.getByRole('button', { name: /clear search/i }));
+
+    expect(setQuery).toHaveBeenCalledWith('');
+  });
 });

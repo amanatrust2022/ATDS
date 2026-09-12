@@ -1,0 +1,128 @@
+/* The returning-patient lookup at the top of the registration form.
+ *
+ * The old box was painted in a raw mint literal and the frozen legacy teal and
+ * grey names, so it had no dark counterpart at all. Its suggestions were
+ * <div onClick>: a mouse could reach them and nothing else could. They are a
+ * listbox of buttons now, and every colour is a semantic token. */
+
+.panel {
+  position: relative;
+  padding: var(--space-3);
+  background: var(--accent-subtle);
+  border: 1px dashed var(--accent-border);
+  border-radius: var(--radius-md);
+}
+
+.box {
+  position: relative;
+}
+
+/* Room for the clear button sitting over the right-hand end of the input. */
+.withClear {
+  padding-right: var(--space-8);
+}
+
+.clear {
+  position: absolute;
+  right: var(--space-2);
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  padding: var(--space-1);
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.clear:hover {
+  color: var(--text-primary);
+}
+
+.clear:focus-visible {
+  outline: 2px solid var(--focus-color);
+  outline-offset: 1px;
+}
+
+.results {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: var(--space-1);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: var(--z-dropdown);
+}
+
+.resultList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.result {
+  display: block;
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border-subtle);
+  cursor: pointer;
+}
+
+.resultActive {
+  background: var(--accent-subtle);
+}
+
+.result:focus-visible {
+  outline: 2px solid var(--focus-color);
+  outline-offset: -2px;
+}
+
+.resultName {
+  display: block;
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+}
+
+.resultMeta {
+  display: block;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.resultEmpty {
+  padding: var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.loaded {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-xs);
+  background: var(--success-subtle);
+  border: 1px solid var(--success-border);
+  border-radius: var(--radius-md);
+  color: var(--success-text);
+}
+
+.loadedMark {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}

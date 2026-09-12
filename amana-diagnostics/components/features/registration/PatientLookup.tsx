@@ -1,7 +1,9 @@
-import React from 'react';
-import { RiSearchLine, RiCloseLine } from '@remixicon/react';
+import React, { useEffect, useState } from 'react';
+import { RiSearchLine, RiCloseLine, RiUserFollowLine } from '@remixicon/react';
 import { PatientProfile } from '@/lib/store';
-import { inputStyle, dropItemStyle } from './styles';
+import { Button, Field, Input } from '@/components/ui';
+
+import styles from './patientLookup.module.css';
 
 interface PatientLookupProps {
   patientProfiles: PatientProfile[];
@@ -30,78 +32,120 @@ export default function PatientLookup({
   loadedPatientName, selectedPatientProfileId, onSelectProfile, onClear, containerRef,
 }: PatientLookupProps) {
   const matches = matchPatientProfiles(patientProfiles, query);
+  const shown = matches.slice(0, 10);
+  const expanded = showDrop && query.trim().length > 0;
+
+  const [active, setActive] = useState(0);
+
+  // The highlight belongs to the search that produced it.
+  useEffect(() => {
+    setActive(0);
+  }, [query]);
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      setShowDrop(false);
+      return;
+    }
+    if (!expanded || shown.length === 0) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActive(i => (i + 1) % shown.length);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActive(i => (i - 1 + shown.length) % shown.length);
+    } else if (e.key === 'Enter') {
+      // Enter inside the registration form would otherwise submit it, with
+      // whatever half-filled state the desk had reached.
+      e.preventDefault();
+      const pick = shown[active];
+      if (pick) onSelectProfile(pick);
+    }
+  };
 
   return (
     <>
-      <div ref={containerRef} style={{ background: '#f0fdfa', border: '1px dashed var(--teal-200)', padding: '0.75rem', borderRadius: 'var(--radius)', position: 'relative' }}>
-        <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--teal-800)', marginBottom: '0.25rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-          Returning Patient Lookup
-        </label>
-        <div style={{ position: 'relative' }}>
-          <RiSearchLine size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--teal-600)' }} />
-          <input
-            style={{ ...inputStyle(false), paddingLeft: 30, borderColor: 'var(--teal-200)' }}
-            placeholder="Search by name, phone, or slip number..."
-            value={query}
-            onChange={e => {
-              setQuery(e.target.value);
-              setShowDrop(true);
-            }}
-            onFocus={() => setShowDrop(true)}
-          />
-          {query && (
-            <button
-              onClick={() => {
-                setQuery('');
-                setShowDrop(false);
+      <div ref={containerRef} className={styles.panel}>
+        <Field label="Returning patient lookup">
+          <div className={styles.box}>
+            <Input
+              role="combobox"
+              aria-expanded={expanded}
+              aria-controls="patient-lookup-results"
+              aria-autocomplete="list"
+              prefix={<RiSearchLine size={14} />}
+              className={query ? styles.withClear : undefined}
+              placeholder="Search by name, phone, or slip number..."
+              value={query}
+              onChange={e => {
+                setQuery(e.target.value);
+                setShowDrop(true);
               }}
-              style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray-400)', display: 'flex' }}
-            >
-              <RiCloseLine size={16} />
-            </button>
-          )}
-        </div>
-
-        {showDrop && query.trim().length > 0 && (
-          <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'white', border: '1px solid var(--gray-300)', zIndex: 60, maxHeight: 200, overflowY: 'auto', boxShadow: '0 4px 12px rgba(0,0,0,0.15)', borderRadius: 'var(--radius)', marginTop: '0.25rem' }}>
-            {matches.slice(0, 10).map(p => (
-              <div
-                key={p.id}
-                onClick={() => onSelectProfile(p)}
-                style={dropItemStyle}
-                onMouseEnter={e => e.currentTarget.style.background = 'var(--teal-50)'}
-                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              onFocus={() => setShowDrop(true)}
+              onKeyDown={onKeyDown}
+            />
+            {query && (
+              <button
+                type="button"
+                className={styles.clear}
+                aria-label="Clear search"
+                onClick={() => {
+                  setQuery('');
+                  setShowDrop(false);
+                }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
-                    <div style={{ fontWeight: 600, fontSize: '0.8rem', color: 'var(--gray-900)' }}>
-                      {p.firstName} {p.middleName} {p.surname}
-                    </div>
-                    <div style={{ fontSize: '0.68rem', color: 'var(--gray-500)' }}>
-                      {p.phone} • {p.sex} • Patient ID: {p.id}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
-            {matches.length === 0 && (
-              <div style={{ padding: '0.75rem', color: 'var(--gray-400)', fontSize: '0.75rem', textAlign: 'center' }}>
-                No matching patient profiles found.
+                <RiCloseLine size={16} aria-hidden="true" />
+              </button>
+            )}
+
+            {expanded && (
+              <div className={styles.results}>
+                <ul
+                  id="patient-lookup-results"
+                  role="listbox"
+                  aria-label="Matching patient profiles"
+                  className={styles.resultList}
+                >
+                  {shown.map((p, i) => (
+                    <li key={p.id} role="option" aria-selected={i === active}>
+                      <button
+                        type="button"
+                        className={[styles.result, i === active ? styles.resultActive : '']
+                          .filter(Boolean)
+                          .join(' ')}
+                        onMouseEnter={() => setActive(i)}
+                        onClick={() => onSelectProfile(p)}
+                      >
+                        <span className={styles.resultName}>
+                          {[p.firstName, p.middleName, p.surname].filter(Boolean).join(' ')}
+                        </span>
+                        <span className={styles.resultMeta}>
+                          {p.phone} • {p.sex} • Patient ID: {p.id}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                  {matches.length === 0 && (
+                    <li className={styles.resultEmpty}>No matching patient profiles found.</li>
+                  )}
+                </ul>
               </div>
             )}
           </div>
-        )}
+        </Field>
       </div>
 
       {loadedPatientName && (
-        <div style={{ background: 'var(--teal-50)', border: '1px solid var(--teal-200)', padding: '0.5rem 0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', color: 'var(--teal-800)', borderRadius: 'var(--radius)' }}>
-          <span>Loaded returning patient: <b>{loadedPatientName}</b> (Patient ID: {selectedPatientProfileId})</span>
-          <button
-            onClick={onClear}
-            style={{ background: 'none', border: 'none', color: 'var(--red)', fontWeight: 600, cursor: 'pointer' }}
-          >
+        <div className={styles.loaded}>
+          <span className={styles.loadedMark}>
+            <RiUserFollowLine size={14} aria-hidden="true" />
+            <span>
+              Loaded returning patient: <b>{loadedPatientName}</b> (Patient ID: {selectedPatientProfileId})
+            </span>
+          </span>
+          <Button size="sm" intent="dangerQuiet" onClick={onClear}>
             Clear / Register New
-          </button>
+          </Button>
         </div>
       )}
     </>
