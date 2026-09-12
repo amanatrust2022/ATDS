@@ -3,7 +3,9 @@
 Measured against the nine-phase plan. Counts come from `npm run check:ui`, not
 from memory.
 
-Last updated: 11 September 2026, evening (department forms, marketing pages, bench, sign-up, editors and checkout rebuilt). See `docs/HANDOFF.md` for how to continue.
+Last updated: 12 September 2026 — **the screen migration is finished.** The
+queue in `docs/HANDOFF.md` is empty; what remains of each ratchet metric is
+listed there with the reason it stays.
 
 ---
 
@@ -14,10 +16,10 @@ Last updated: 11 September 2026, evening (department forms, marketing pages, ben
 | P0 | Stop the bleeding | **Done** |
 | P1 | Tokens and the styling layer | **Done** |
 | P2 | Application shell | **Done** |
-| P3 | Component library | **Built. 347 inline styles left of 2,100; the remaining screens are listed in `docs/HANDOFF.md`.** |
-| P4 | WCAG 2.1 AA | **Floor in place. Screen-by-screen sweep outstanding.** |
+| P3 | Component library | **Done.** 35 inline styles left of 2,100, and every one of them is a value — a coordinate, a page measurement, a swatch in its own colour — not styling. |
+| P4 | WCAG 2.1 AA | **Every screen rebuilt against role-and-name tests. A hand sweep with the mouse unplugged is still owed.** |
 | P5 | Clinical safety | **Done** |
-| P6 | Responsive, density, dark | **Shipped for shell and new screens. Legacy screens outstanding.** |
+| P6 | Responsive, density, dark | **Shipped.** No legacy screens remain; the frozen `--gray-*`/`--teal-*` names are gone from every `.tsx`, so every workspace surface reaches dark mode. |
 | P7 | Performance | **Started.** Error boundaries, code-splitting, the shell in the layout and server route shells done; server-side *data* outstanding. |
 | P8 | Brand and patient surfaces | **Done.** Sign-in, and the portal rebuilt on the system. |
 
@@ -29,20 +31,22 @@ Last updated: 11 September 2026, evening (department forms, marketing pages, ben
 
 | Metric | Start | Now |
 | --- | --- | --- |
-| Inline `style={{…}}` objects | 2,100 | 347 |
-| Hard-coded hex colours | 832 | 201 |
-| Hard-coded `rgb()`/`rgba()` | 470 | 79 |
-| Legacy `--gray-*` / `--teal-*` uses | 1,122 | 145 |
-| JS hover handlers | 42 | 12 |
+| Inline `style={{…}}` objects | 2,100 | 35 |
+| Hard-coded hex colours | 832 | 69 |
+| Hard-coded `rgb()`/`rgba()` | 470 | 3 |
+| Legacy `--gray-*` / `--teal-*` uses | 1,122 | **0** |
+| JS pointer handlers | 42 | 5 |
 | Inline `outline: 'none'` | 48 | **0** |
-| `!important` in components | 23 | 6 |
-| Hand-rolled overlays | 18 | 1 |
-| Raw `<table>` | 23 | 5 |
-| Hard-coded numeric `zIndex` | 46 | 8 |
+| `!important` in components | 23 | 3 |
+| Hand-rolled overlays | 18 | **0** |
+| Raw `<table>` | 23 | 2 |
+| Hard-coded numeric `zIndex` | 46 | 4 |
 
-The large numbers move when screens migrate, which is the bulk of P3 and is the
-work that remains. Every one of them can only go down: `npm run check:ui` fails
-the build otherwise.
+These have stopped moving because the screens have run out, not because the
+work stalled. What is left of each is a deliberate exception, listed file by
+file with its reason in `docs/HANDOFF.md` — paper geometry, a swatch in its own
+colour, a combobox highlight following the pointer. Every one can still only go
+down: `npm run check:ui` fails the build otherwise.
 
 ---
 
@@ -122,14 +126,36 @@ their chrome follows the theme.
 **Organisation settings, checkout, sign-up.** Every field labelled, every save
 result announced, the default letterhead escaped, the wallet shortfall an alert.
 
+**The screen migration is finished.** Twenty-six screens and components, one
+per commit, tests written against the old screen first. What the tests found,
+beyond the styling: the last three hand-rolled overlays, with no role, no focus
+trap and a dead Escape key; nineteen form fields whose `<label>` was wired to
+nothing, seven of them on the patient's own details; three lists of
+`<div onClick>` that no keyboard could reach; a promise with no `.catch` that
+left four figures on an em dash for ever; a made-up patient on the letterhead
+preview announced as though it were a record; an antibiotic that was not the
+header of its own row, on the one grid in the product where confusing two rows
+is a wrong prescription; and six states carried by colour alone — a test's
+status, a test's department twice, two rows of queue filters and an overdrawn
+wallet. Three screens turned out to have no defect at all, and their commits
+say so rather than dressing structural work up as a fix. One turned out to be
+dead code and was deleted.
+
+**Two files retired.** `registration/styles.ts`, the last shared inline-style
+helper, whose `inputStyle()` removed the focus ring from every registration
+field without ever being counted; and `registration/Field.tsx`, the `<label>`
+with no `htmlFor` that put that whole folder beyond a screen reader.
+
+**The system grew twice rather than the screens reaching around it.**
+`SegmentedControl` takes an icon per option, and `Table` takes `rowHeader`,
+`cellClassName`, `className` and `rowClassName` — so a clinical data-entry grid
+can be a system table without being flattened into a listing. The panic-row
+treatment moved into `Surface.module.css` with it, and now covers a row header
+as well as a cell, which the rule it replaced silently did not.
+
 ---
 
 ## What is not done
-
-**The screen migration.** 347 inline style objects remain, in the screens listed
-in `docs/HANDOFF.md` — the invite, onboarding, profile and password screens, the
-admin overview, and the smaller registration and queue components. The recipe
-that has worked for every screen so far is written down there too.
 
 **Two content decisions the owner has not made.** The landing page carries three
 named testimonials and a "100+ diagnostic centres" figure whose provenance is
@@ -158,9 +184,14 @@ default panic thresholds in code. That belongs with the test catalogue screen.
 
 ## Next three things
 
-1. **Finish the screen migration** from the queue in `docs/HANDOFF.md`, one
-   screen per commit, tests first.
-2. **Walk every workspace screen once** with the mouse unplugged, in dark mode,
-   at 390px. The primitives are clean; the product has not been walked.
-3. **Decide the two content questions above** — testimonials and legal pages —
-   and then push. Nine commits sit unpushed at the time of writing.
+1. **Walk every workspace screen once** with the mouse unplugged, in dark mode,
+   at 390px. This is now the largest remaining gap between what the tests prove
+   and what the product does. The primitives are clean and every screen is on
+   them, but nobody has tabbed through one.
+2. **Decide the content questions the code cannot** — the landing page's
+   testimonials and the missing legal pages — and the four others listed under
+   "Things the code cannot decide" in `docs/HANDOFF.md`. None was touched in
+   this round; all six are still open.
+3. **Get the session onto the server**, which is what unlocks the rest of P7.
+   Today the route boundary is server-rendered and each screen is a separate
+   client island.
