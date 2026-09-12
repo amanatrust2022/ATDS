@@ -1,0 +1,43 @@
+/* The registration desk: the patient on the left, the basket on the right.
+ *
+ * Neither column was a landmark, so anyone working down the left had to tab
+ * through every field to reach the right. Both are components/ui Cards now,
+ * which makes them named regions. The panels came from panelStyle in
+ * registration/styles.ts — a translucent white with a slate border that stayed
+ * white in dark mode — under a header bar of solid legacy teal with its
+ * subtitle in a raw rgba whose contrast nothing checked.
+ *
+ * The grid also breaks to one column on a tablet held in portrait, which the
+ * fixed 1fr 0.9fr never did. */
+
+.desk {
+  display: grid;
+  grid-template-columns: 1fr 0.9fr;
+  gap: var(--space-6);
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .desk {
+    grid-template-columns: 1fr;
+  }
+}
+
+.basket {
+  display: flex;
+  flex-direction: column;
+  position: sticky;
+  top: var(--space-6);
+}
+
+@media (max-width: 900px) {
+  .basket {
+    position: static;
+  }
+}
+
+.fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}

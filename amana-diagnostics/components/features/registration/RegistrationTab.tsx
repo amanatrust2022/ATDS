@@ -12,7 +12,9 @@ import TestSelection from './TestSelection';
 import BillingSummary from './BillingSummary';
 import QuickDoctorModal, { QuickDoctorForm } from './QuickDoctorModal';
 import QuickFacilityModal, { QuickFacilityForm } from './QuickFacilityModal';
-import { panelStyle } from './styles';
+import { Card, CardBody, CardHeader } from '@/components/ui';
+
+import styles from './registrationTab.module.css';
 import {
   buildSelectedTestDetails, calculateSubtotal, calculateDiscountAmount,
   calculateTotalCommission, commissionForTest, paymentStatusFor, isReferralVisit,
@@ -382,15 +384,17 @@ export default function RegistrationTab({
   }, [selectedPatientBillingAccountId, billingAccounts, paymentMethod, setPaymentMethod]);
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 0.9fr', gap: '1.5rem', alignItems: 'start' }}>
+    <div className={styles.desk}>
 
       {/* Patient Form */}
-      <div style={panelStyle}>
-        <div style={{ background: 'var(--teal-800)', padding: '1rem 1.25rem' }}>
-          <h2 style={{ color: 'white', fontFamily: 'var(--font-display)', fontSize: '1rem', fontWeight: 600 }}>Patient Information</h2>
-          <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.72rem', marginTop: '0.2rem' }}>Enter patient biodata</p>
-        </div>
-        <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
+      <Card raised aria-labelledby="registration-patient-panel">
+        <CardHeader
+          id="registration-patient-panel"
+          title="Patient Information"
+          subtitle="Enter patient biodata"
+        />
+        <CardBody>
+          <div className={styles.fields}>
           <PatientLookup
             patientProfiles={patientProfiles}
             query={patientSearchQuery}
@@ -442,11 +446,12 @@ export default function RegistrationTab({
             setSearch={setTestSearch}
             error={errors.tests}
           />
-        </div>
-      </div>
+          </div>
+        </CardBody>
+      </Card>
 
       {/* Selected Tests */}
-      <div style={{ ...panelStyle, display: 'flex', flexDirection: 'column', position: 'sticky', top: '1.5rem' }}>
+      <Card raised className={styles.basket} aria-label="Selected tests">
         <TestSelection catalogue={catalogue} selectedTestDetails={selectedTestDetails} />
 
         {/* Checkout & Billing Panel */}
@@ -466,7 +471,7 @@ export default function RegistrationTab({
             onRegister={handleRegister}
           />
         )}
-      </div>
+      </Card>
 
       {showQuickDoctor && (
         <QuickDoctorModal
