@@ -130,6 +130,16 @@ export interface TableColumn<Row> {
   sortable?: boolean;
   /** Announced instead of `header` when the header is an icon or a symbol. */
   headerLabel?: string;
+  /**
+   * Renders this column's cells as `<th scope="row">` rather than `<td>`.
+   *
+   * For a grid whose rows are named things — a blood parameter, an antibiotic,
+   * an antigen — so a reader moving across a row hears what the row is about
+   * before it hears the value in it. At most one column should set it.
+   */
+  rowHeader?: boolean;
+  /** Extra class on this column's cells, for a grid that tunes its own widths. */
+  cellClassName?: string;
 }
 
 export interface TableProps<Row> {
@@ -150,6 +160,10 @@ export interface TableProps<Row> {
   empty?: ReactNode;
   /** Caps the height and lets the sticky header do its job. */
   maxHeight?: number | string;
+  /** Extra class on the <table>, so a screen can layer its own grid rules. */
+  className?: string;
+  /** Extra class on a row — for a treatment the three row flags do not cover. */
+  rowClassName?: (row: Row, index: number) => string | undefined;
 }
 
 export function Table<Row>({
@@ -165,6 +179,8 @@ export function Table<Row>({
   onSortChange,
   empty,
   maxHeight,
+  className,
+  rowClassName,
 }: TableProps<Row>) {
   if (rows.length === 0 && empty) {
     return <>{empty}</>;
@@ -175,7 +191,7 @@ export function Table<Row>({
       className={styles['tableWrap']}
       style={maxHeight ? { maxHeight } : undefined}
     >
-      <table className={styles['table']}>
+      <table className={[styles['table'], className ?? ''].filter(Boolean).join(' ')}>
         <caption className={showCaption ? undefined : 'sr-only'}>{caption}</caption>
         <thead>
           <tr>
@@ -252,6 +268,7 @@ export function Table<Row>({
                   selected ? styles['rowSelected'] : '',
                   critical ? styles['rowCritical'] : '',
                   clickable ? styles['rowClickable'] : '',
+                  rowClassName?.(row, index) ?? '',
                 ]
                   .filter(Boolean)
                   .join(' ')}
@@ -271,19 +288,24 @@ export function Table<Row>({
                     : undefined
                 }
               >
-                {columns.map((column) => (
-                  <td
-                    key={column.key}
-                    className={[
-                      column.numeric ? styles['numeric'] : '',
-                      column.actions ? styles['actions'] : '',
-                    ]
-                      .filter(Boolean)
-                      .join(' ')}
-                  >
-                    {column.render(row, index)}
-                  </td>
-                ))}
+                {columns.map((column) => {
+                  const Cell = column.rowHeader ? 'th' : 'td';
+                  return (
+                    <Cell
+                      key={column.key}
+                      scope={column.rowHeader ? 'row' : undefined}
+                      className={[
+                        column.numeric ? styles['numeric'] : '',
+                        column.actions ? styles['actions'] : '',
+                        column.cellClassName ?? '',
+                      ]
+                        .filter(Boolean)
+                        .join(' ')}
+                    >
+                      {column.render(row, index)}
+                    </Cell>
+                  );
+                })}
               </tr>
             );
           })}

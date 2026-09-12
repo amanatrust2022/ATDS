@@ -1,7 +1,8 @@
 'use client';
 
 import { useMemo } from 'react';
-import { Field, Input, ResultFlag, ResultDelta, Select } from '@/components/ui';
+import { Field, Input, ResultFlag, ResultDelta, Select, Table } from '@/components/ui';
+import type { TableColumn } from '@/components/ui';
 import {
   deriveFlag,
   isCritical,
@@ -62,106 +63,127 @@ export default function ParameterTable({ results, onUpdate, sex = 'unknown' }: P
     [results, sex],
   );
 
+  /* One column per thing the technologist reads across a row. The parameter is
+   * the row's header, so a reader moving along hears what the row is about
+   * before it hears the value in it. */
+  const columns: TableColumn<EditableResult>[] = [
+    {
+      key: 'parameter',
+      header: 'Parameter',
+      rowHeader: true,
+      cellClassName: styles['parameter'],
+      render: (row) => row.parameter,
+    },
+    {
+      key: 'result',
+      header: 'Result',
+      cellClassName: styles['resultCell'],
+      render: (row, i) => {
+        const previous = row.previous;
+        const current = Number(row.result);
+        const showDelta =
+          previous !== null &&
+          previous !== undefined &&
+          Number.isFinite(current) &&
+          row.result.trim() !== '';
+
+        return (
+          <>
+            <Field label={`${row.parameter} result`} labelHidden>
+              <Input
+                value={row.result}
+                onChange={(e) => onUpdate(i, 'result', e.target.value)}
+                placeholder="Enter result"
+                inputMode="decimal"
+                className={styles['resultInput']}
+              />
+            </Field>
+            {showDelta && (
+              <ResultDelta
+                previous={previous}
+                current={current}
+                unit={row.unit}
+                significant={isSignificantDelta(previous, current)}
+              />
+            )}
+          </>
+        );
+      },
+    },
+    {
+      key: 'unit',
+      header: 'Unit',
+      cellClassName: styles['unit'],
+      render: (row) => row.unit || '—',
+    },
+    {
+      key: 'range',
+      header: 'Reference range',
+      cellClassName: styles['range'],
+      render: (row) => row.range || '—',
+    },
+    {
+      key: 'flag',
+      header: 'Flag',
+      cellClassName: styles['flagCell'],
+      render: (row, i) => {
+        const suggested = derived[i] ?? null;
+        const effective = (row.flag || suggested || '') as Flag;
+        const overridden = row.flag !== '' && suggested !== null && row.flag !== suggested;
+
+        return (
+          <>
+            <ResultFlag value={effective} />
+            {overridden && (
+              <span className={styles['overrideNote']}>
+                set by hand
+                <span className="sr-only">
+                  , overriding the {suggested === '' ? 'in-range' : suggested} result
+                  derived from the reference range
+                </span>
+              </span>
+            )}
+          </>
+        );
+      },
+    },
+    {
+      key: 'override',
+      header: 'Override',
+      cellClassName: styles['overrideCell'],
+      render: (row, i) => {
+        const suggested = derived[i] ?? null;
+        return (
+          <Field label={`Override the flag for ${row.parameter}`} labelHidden>
+            <Select
+              value={row.flag}
+              onChange={(e) => onUpdate(i, 'flag', e.target.value)}
+              className={styles['overrideSelect']}
+            >
+              <option value="">{suggested === null ? 'No range' : 'From range'}</option>
+              <option value="H">H — high</option>
+              <option value="L">L — low</option>
+              <option value="HH">HH — critical high</option>
+              <option value="LL">LL — critical low</option>
+            </Select>
+          </Field>
+        );
+      },
+    },
+  ];
+
   return (
-    <div className={styles['wrap']}>
-      <table className={styles['table']}>
-        <caption className="sr-only">
-          Test parameters, with each result flagged against its reference range
-        </caption>
-        <thead>
-          <tr>
-            <th scope="col">Parameter</th>
-            <th scope="col">Result</th>
-            <th scope="col">Unit</th>
-            <th scope="col">Reference range</th>
-            <th scope="col">Flag</th>
-            <th scope="col">Override</th>
-          </tr>
-        </thead>
-        <tbody>
-          {results.map((row, i) => {
-            const suggested = derived[i] ?? null;
-            // What the row actually carries: the override if one was set,
-            // otherwise what the range says.
-            const effective = (row.flag || suggested || '') as Flag;
-            const critical = isCritical(effective);
-            const overridden =
-              row.flag !== '' && suggested !== null && row.flag !== suggested;
-
-            const previous = row.previous;
-            const current = Number(row.result);
-            const showDelta =
-              previous !== null &&
-              previous !== undefined &&
-              Number.isFinite(current) &&
-              row.result.trim() !== '';
-
-            return (
-              <tr key={`${row.parameter}-${i}`} className={critical ? styles['critical'] : ''}>
-                <th scope="row" className={styles['parameter']}>
-                  {row.parameter}
-                </th>
-
-                <td className={styles['resultCell']}>
-                  <Field label={`${row.parameter} result`} labelHidden>
-                    <Input
-                      value={row.result}
-                      onChange={(e) => onUpdate(i, 'result', e.target.value)}
-                      placeholder="Enter result"
-                      inputMode="decimal"
-                      className={styles['resultInput']}
-                    />
-                  </Field>
-                  {showDelta && (
-                    <ResultDelta
-                      previous={previous}
-                      current={current}
-                      unit={row.unit}
-                      significant={isSignificantDelta(previous, current)}
-                    />
-                  )}
-                </td>
-
-                <td className={styles['unit']}>{row.unit || '—'}</td>
-
-                <td className={styles['range']}>{row.range || '—'}</td>
-
-                <td className={styles['flagCell']}>
-                  <ResultFlag value={effective} />
-                  {overridden && (
-                    <span className={styles['overrideNote']}>
-                      set by hand
-                      <span className="sr-only">
-                        , overriding the {suggested === '' ? 'in-range' : suggested} result
-                        derived from the reference range
-                      </span>
-                    </span>
-                  )}
-                </td>
-
-                <td className={styles['overrideCell']}>
-                  <Field label={`Override the flag for ${row.parameter}`} labelHidden>
-                    <Select
-                      value={row.flag}
-                      onChange={(e) => onUpdate(i, 'flag', e.target.value)}
-                      className={styles['overrideSelect']}
-                    >
-                      <option value="">
-                        {suggested === null ? 'No range' : 'From range'}
-                      </option>
-                      <option value="H">H — high</option>
-                      <option value="L">L — low</option>
-                      <option value="HH">HH — critical high</option>
-                      <option value="LL">LL — critical low</option>
-                    </Select>
-                  </Field>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
+    <Table
+      caption="Test parameters, with each result flagged against its reference range"
+      className={styles['table']}
+      columns={columns}
+      rows={results}
+      rowKey={(row, i) => `${row.parameter}-${i}`}
+      isRowCritical={(row) => {
+        const i = results.indexOf(row);
+        return isCritical((row.flag || derived[i] || '') as Flag);
+      }}
+    />
   );
 }
 

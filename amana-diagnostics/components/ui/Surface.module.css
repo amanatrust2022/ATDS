@@ -170,15 +170,24 @@
 
 /* A row the user picked, distinguished by a left edge as well as the tint,
  * so it survives greyscale and does not rely on the accent alone. */
-.rowSelected td {
+.rowSelected td,
+.rowSelected th {
   background: var(--surface-selected);
 }
-.rowSelected td:first-child {
+.rowSelected td:first-child,
+.rowSelected th:first-child {
   box-shadow: inset 3px 0 0 var(--accent-solid);
 }
 
-/* A row that needs attention — an unacknowledged critical result. */
-.rowCritical td:first-child {
+/* A row that needs attention — an unacknowledged critical result. The edge is
+ * what makes it findable when scanning twenty rows, and it is a shape as well
+ * as a tint, so it survives greyscale and a colour-blind reader. */
+.rowCritical td,
+.rowCritical th {
+  background: var(--critical-subtle);
+}
+.rowCritical td:first-child,
+.rowCritical th:first-child {
   box-shadow: inset 3px 0 0 var(--critical-solid);
 }
 

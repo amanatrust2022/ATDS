@@ -1,11 +1,6 @@
 /* The result grid. Dense on purpose — a technologist works down twenty rows
  * of it — but every row still has to survive a monochrome printout. */
 
-.wrap {
-  width: 100%;
-  overflow-x: auto;
-}
-
 .table {
   width: 100%;
   border-collapse: separate;
@@ -43,16 +38,10 @@
   vertical-align: middle;
 }
 
-/* A row carrying a panic value. The left edge is what makes it findable when
- * scanning, and it is a shape rather than only a tint, so it survives both
- * greyscale and a colour-blind reader. */
-.critical td,
-.critical th {
-  background: var(--critical-subtle);
-}
-.critical th:first-child {
-  box-shadow: inset 3px 0 0 var(--critical-solid);
-}
+/* The panic-value row treatment — an edge as well as a tint, so it survives
+ * greyscale and a colour-blind reader — now belongs to the system's Table,
+ * which draws it from isRowCritical. See components/ui/Surface.module.css.
+ */
 
 .parameter {
   text-align: left;
