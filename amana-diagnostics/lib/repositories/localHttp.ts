@@ -6,7 +6,14 @@
  * answer with `{ error }`. Reads GET and return the rows directly.
  */
 
-/** POSTs a write envelope, raising the hub's own message when it refuses. */
+import { nudgeSync } from '@/lib/sync/nudge';
+
+/**
+ * POSTs a write envelope, raising the hub's own message when it refuses.
+ *
+ * A write the hub accepted is a write the cloud does not have yet, so it
+ * also asks the sync to run now rather than on its next tick.
+ */
 export const postJson = async (
   url: string,
   body: Record<string, unknown>,
@@ -21,6 +28,7 @@ export const postJson = async (
     const err = await res.json();
     throw new Error(err.error || failureMessage);
   }
+  nudgeSync();
   return res;
 };
 

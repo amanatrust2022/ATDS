@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import dynamic from 'next/dynamic';
-import { Alert, Button, Card, Dialog, Field, Input, LoadingPanel, Textarea } from '@/components/ui';
+import { Alert, Button, Dialog, Field, Input, LoadingPanel, Textarea } from '@/components/ui';
 import { useNotices } from '@/components/Notices';
 import styles from './DepartmentPage.module.css';
 import { Department, Patient, PatientTest, getTestById, fetchPatients, updateTestResult, subscribeToPatients, fetchCustomTemplates, RadiologyTemplate, fetchCustomTests, setCustomCatalogueCache } from '@/lib/store';
@@ -14,6 +14,7 @@ import ParameterTable, { criticalRows } from '@/components/features/department/P
 import { CriticalValueDialog } from '@/components/features/department/CriticalValueDialog';
 import { normaliseSex } from '@/lib/clinical/referenceRange';
 import { useNewTestAlerts } from '@/components/features/department/useNewTestAlerts';
+import { loadDraft, saveDraft, clearDraft, draftTestIds } from '@/lib/store/resultDrafts';
 const TemplateManager = dynamic(() => import('@/components/TemplateManager'), {
   loading: () => <LoadingPanel label="Opening templates…" />,
 });
@@ -61,6 +62,11 @@ export default function DepartmentPage({ department }: Props) {
   const [customTemplates, setCustomTemplates] = useState<RadiologyTemplate[]>([]);
   const [showTemplateManager, setShowTemplateManager] = useState(false);
   const [showTestManager, setShowTestManager] = useState(false);
+  /** Tests with a half-typed result kept on this machine. Shown in the queue. */
+  const [drafts, setDrafts] = useState<Set<string>>(() => new Set());
+  useEffect(() => {
+    if (organization?.id) setDrafts(draftTestIds(organization.id));
+  }, [organization?.id]);
 
   const loadCustomTemplates = useCallback(async () => {
     if (!organization?.id) return;
@@ -155,7 +161,12 @@ export default function DepartmentPage({ department }: Props) {
     n + p.tests.filter(t => t.department === department && t.status !== 'completed').length, 0
   );
 
-  const openEntry = async (patient: Patient, test: PatientTest) => {
+  /**
+   * Fills the form for a test: from its saved result if it has one, from the
+   * catalogue's parameters if not — and then from the draft kept on this
+   * machine, which is newer than either. Returns whether a draft was used.
+   */
+  const loadForm = (test: PatientTest): boolean => {
     const testDef = getTestById(test.testId);
     const mcsCheck = isMcsTest(test.testId, test.testName);
     const widalCheck = isWidalTest(test.testId, test.testName);
@@ -238,6 +249,23 @@ export default function DepartmentPage({ department }: Props) {
     }
 
     setNotes(test.notes || '');
+
+    // Whatever was typed last time this test was open, on this machine, is
+    // newer than anything above. See lib/store/resultDrafts.ts.
+    const draft = organization?.id && test.id ? loadDraft(organization.id, test.id) : null;
+    if (draft) {
+      setResults(draft.results.map(r => ({ ...r, flag: r.flag || '' })));
+      setNotes(draft.notes);
+      if (mcsCheck && draft.mcsState) setMcsState(draft.mcsState);
+      if (widalCheck && draft.widalState) setWidalState(draft.widalState);
+      if (mpsCheck && draft.mpsState) setMpsState(draft.mpsState);
+      if (isFreeText && draft.radiologyState) setRadiologyState(draft.radiologyState);
+    }
+    return draft !== null;
+  };
+
+  const openEntry = async (patient: Patient, test: PatientTest) => {
+    restoredFromDraft.current = loadForm(test);
     setSelected({ patient, test });
     if (test.status === 'pending') {
       // Same reason as in handleSubmit: the "in progress" marker is what stops
@@ -313,6 +341,11 @@ export default function DepartmentPage({ department }: Props) {
       // a duplicate fetch a moment early; when it is not, it is the difference
       // between the queue being right and being wrong.
       await refresh();
+      if (organization?.id && selected.test.id) {
+        const sentId = selected.test.id;
+        clearDraft(organization.id, sentId);
+        setDrafts(prev => { const next = new Set(prev); next.delete(sentId); return next; });
+      }
       showToast(`"${selected.test.testName}" result sent to reception ✓`);
       setSelected(null);
       setResults([]);
@@ -332,13 +365,14 @@ export default function DepartmentPage({ department }: Props) {
   };
 
   /**
-   * What the panel looked like when it opened, so Cancel can tell whether
-   * anything has been typed since. It used to throw it all away — twenty
-   * parameters of a full blood count — without asking.
+   * What the form looked like when it opened, so a form nobody has typed in
+   * is not written down as a draft.
    */
   const snapshot = () =>
     JSON.stringify({ results, notes, mcsState, widalState, mpsState, radiologyState });
   const openedAs = useRef('');
+  /** Whether the form opened from a draft — then it is one, typed in or not. */
+  const restoredFromDraft = useRef(false);
   useEffect(() => {
     if (selected) openedAs.current = snapshot();
     // Only when a test is opened; every setState in openEntry lands in the
@@ -346,10 +380,32 @@ export default function DepartmentPage({ department }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected]);
 
-  const closePanel = async () => {
-    const dirty = snapshot() !== openedAs.current;
-    if (dirty && !(await ask('Close without saving? What you have typed here will be lost.'))) return;
+  // Every keystroke is kept. Closing the form — by choice, by Escape, by the
+  // browser being shut — used to lose all of it, first silently and then
+  // behind a question; now it loses nothing, and the same test opens where it
+  // was left. The draft is deleted when the result is sent.
+  const draftId = selected?.test.id;
+  useEffect(() => {
+    if (!selected || !organization?.id || !draftId) return;
+    if (!restoredFromDraft.current && snapshot() === openedAs.current) return;
+    const kept = saveDraft(organization.id, draftId, { results, notes, mcsState, widalState, mpsState, radiologyState });
+    if (kept) setDrafts(prev => (prev.has(draftId) ? prev : new Set(prev).add(draftId)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [results, notes, mcsState, widalState, mpsState, radiologyState, selected, organization?.id, draftId]);
+
+  const hasDraftOpen = !!draftId && drafts.has(draftId);
+
+  const closePanel = () => {
     setSelected(null);
+  };
+
+  const discardDraft = async () => {
+    if (!selected || !organization?.id || !draftId) return;
+    if (!(await ask('Discard this draft? What you have typed for this test will be gone.'))) return;
+    clearDraft(organization.id, draftId);
+    setDrafts(prev => { const next = new Set(prev); next.delete(draftId); return next; });
+    restoredFromDraft.current = false;
+    loadForm(selected.test);
   };
 
   const updateResult = (i: number, field: string, value: string) =>
@@ -366,8 +422,11 @@ export default function DepartmentPage({ department }: Props) {
   return (
     <>
       {/* Said out loud, not only painted. A result going to reception — or
-        * failing to — is the one thing this screen must tell you. */}
-      {toast && (
+        * failing to — is the one thing this screen must tell you. While the
+        * entry dialog is open the message is shown inside it instead: a modal
+        * hides the rest of the page from assistive technology, so a toast out
+        * here would be painted but never announced. */}
+      {toast && !selected && (
         <div
           className={`${styles['toast']} ${toast.type === 'success' ? styles['toastSuccess'] : styles['toastError']}`}
           role={toast.type === 'success' ? 'status' : 'alert'}
@@ -403,100 +462,6 @@ export default function DepartmentPage({ department }: Props) {
       </div>
 
       <div className={styles['main']}>
-        {selected && (
-          <Card className={styles['panel']} aria-labelledby="entry-title">
-            <div className={styles['panelHead']}>
-              <div>
-                <h2 id="entry-title" className={styles['panelTitle']}>
-                  Entering Results: {selected.test.testName}
-                </h2>
-                <p className={styles['panelMeta']}>
-                  {patientName} &nbsp;•&nbsp; {selected.patient.slipNumber} &nbsp;•&nbsp; Specimen:{' '}
-                  <b>{selected.test.specimen || 'Not Specified'}</b>
-                </p>
-              </div>
-              <Button intent="ghost" size="sm" onClick={() => void closePanel()}>Cancel</Button>
-            </div>
-
-            <div className={styles['panelBody']}>
-              <div className={styles['signRow']}>
-                <Field
-                  label={canEditProfessional ? 'Professional name / staff ID' : 'Signed by'}
-                  required={canEditProfessional}
-                  hint={canEditProfessional ? undefined : 'Results are signed by the account entering them.'}
-                >
-                  <Input
-                    value={professional}
-                    onChange={(e) => canEditProfessional && setProfessional(e.target.value)}
-                    readOnly={!canEditProfessional}
-                    placeholder={isLab ? 'e.g. MLS ABDULLAHI SHEHU' : 'e.g. Dr. Fatima Abdullahi'}
-                  />
-                </Field>
-                <div className={styles['specimen']}>
-                  <span className="sr-only">Specimen: </span>
-                  {selected.test.specimen || '—'}
-                </div>
-              </div>
-
-              {isWidal && widalState && isMPs && mpsState ? (
-                <>
-                  <MpsEntryForm value={mpsState} onChange={setMpsState} />
-                  <hr className={styles['split']} />
-                  <WidalEntryForm value={widalState} onChange={setWidalState} />
-                </>
-              ) : isWidal && widalState ? (
-                <WidalEntryForm value={widalState} onChange={setWidalState} />
-              ) : isMPs && mpsState ? (
-                <MpsEntryForm value={mpsState} onChange={setMpsState} />
-              ) : isMcs && mcsState ? (
-                <McsEntryForm value={mcsState} onChange={setMcsState} />
-              ) : radiologyState ? (
-                <RadiologyEntryForm
-                  value={radiologyState}
-                  onChange={setRadiologyState}
-                  department={department}
-                  testId={selected.test.testId}
-                  customTemplates={customTemplates}
-                  onManageTemplates={() => setShowTemplateManager(true)}
-                />
-              ) : (
-                <div className={styles['scroll']}>
-                  <ParameterTable results={results} onUpdate={updateResult} sex={normaliseSex(selected.patient.sex)} />
-                </div>
-              )}
-
-              {((isWidal && widalState) || (isMPs && mpsState)) && results.length > 0 && (
-                <section className={styles['extra']} aria-labelledby="extra-title">
-                  <h3 id="extra-title" className={styles['extraTitle']}>Additional parameters</h3>
-                  <div className={styles['extraTable']}>
-                    <ParameterTable results={results} onUpdate={updateResult} sex={normaliseSex(selected.patient.sex)} />
-                  </div>
-                </section>
-              )}
-
-              <Field label="Comments / remarks" optional>
-                <Textarea
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  rows={3}
-                  placeholder="Additional clinical comments or interpretation..."
-                />
-              </Field>
-
-              <div className={styles['submitRow']}>
-                <Button
-                  intent="primary"
-                  loading={saving}
-                  icon={<RiCheckLine size={16} />}
-                  onClick={() => handleSubmit()}
-                >
-                  {saving ? 'Sending…' : 'Submit & Send to Reception'}
-                </Button>
-              </div>
-            </div>
-          </Card>
-        )}
-
         <DepartmentQueue
           department={department}
           pending={deptPatients}
@@ -504,8 +469,120 @@ export default function DepartmentPage({ department }: Props) {
           pendingCount={pendingCount}
           loading={loadingData}
           onOpenTest={openEntry}
+          draftTestIds={drafts}
         />
       </div>
+
+      {/* The entry form is a dialog over the bench rather than a card pushed
+        * in above the queue. As a card, a long form — a full blood count, a
+        * radiology report — shoved the queue off the bottom of the screen,
+        * and the queue kept taking clicks while a result was half-typed.
+        * Here the work is held in one place and focus stays inside it.
+        * Closing it, by any route, keeps what was typed as a draft. */}
+      <Dialog
+        open={!!selected}
+        onOpenChange={(open) => { if (!open) closePanel(); }}
+        title={selected ? `Entering Results: ${selected.test.testName}` : 'Entering Results'}
+        description={selected ? (
+          <>
+            {patientName} &nbsp;•&nbsp; {selected.patient.slipNumber} &nbsp;•&nbsp; Specimen:{' '}
+            <b>{selected.test.specimen || 'Not Specified'}</b>
+          </>
+        ) : undefined}
+        size="xl"
+        footerNote={hasDraftOpen ? 'Draft kept on this computer until the result is sent.' : undefined}
+        footer={
+          <>
+            {hasDraftOpen && (
+              <Button intent="ghost" onClick={() => void discardDraft()} disabled={saving}>Discard draft</Button>
+            )}
+            <Button intent="ghost" onClick={closePanel} disabled={saving} aria-label="Close and keep draft">Close</Button>
+            <Button
+              intent="primary"
+              loading={saving}
+              icon={<RiCheckLine size={16} />}
+              onClick={() => handleSubmit()}
+            >
+              {saving ? 'Sending…' : 'Submit & Send to Reception'}
+            </Button>
+          </>
+        }
+      >
+        {selected && (
+          <div className={styles['entryBody']}>
+            {toast && (
+              <Alert tone={toast.type === 'error' ? 'critical' : 'success'} live>
+                {toast.msg}
+              </Alert>
+            )}
+
+            <div className={styles['signRow']}>
+              <Field
+                label={canEditProfessional ? 'Professional name / staff ID' : 'Signed by'}
+                required={canEditProfessional}
+                hint={canEditProfessional ? undefined : 'Results are signed by the account entering them.'}
+              >
+                <Input
+                  value={professional}
+                  onChange={(e) => canEditProfessional && setProfessional(e.target.value)}
+                  readOnly={!canEditProfessional}
+                  placeholder={isLab ? 'e.g. MLS ABDULLAHI SHEHU' : 'e.g. Dr. Fatima Abdullahi'}
+                />
+              </Field>
+              <div className={styles['specimen']}>
+                <span className="sr-only">Specimen: </span>
+                {selected.test.specimen || '—'}
+              </div>
+            </div>
+
+            {isWidal && widalState && isMPs && mpsState ? (
+              <>
+                <MpsEntryForm value={mpsState} onChange={setMpsState} />
+                <hr className={styles['split']} />
+                <WidalEntryForm value={widalState} onChange={setWidalState} />
+              </>
+            ) : isWidal && widalState ? (
+              <WidalEntryForm value={widalState} onChange={setWidalState} />
+            ) : isMPs && mpsState ? (
+              <MpsEntryForm value={mpsState} onChange={setMpsState} />
+            ) : isMcs && mcsState ? (
+              <McsEntryForm value={mcsState} onChange={setMcsState} />
+            ) : radiologyState ? (
+              <RadiologyEntryForm
+                value={radiologyState}
+                onChange={setRadiologyState}
+                department={department}
+                testId={selected.test.testId}
+                customTemplates={customTemplates}
+                onManageTemplates={() => setShowTemplateManager(true)}
+              />
+            ) : (
+              <div className={styles['scroll']}>
+                <ParameterTable results={results} onUpdate={updateResult} sex={normaliseSex(selected.patient.sex)} />
+              </div>
+            )}
+
+            {((isWidal && widalState) || (isMPs && mpsState)) && results.length > 0 && (
+              <section className={styles['extra']} aria-labelledby="extra-title">
+                <h3 id="extra-title" className={styles['extraTitle']}>Additional parameters</h3>
+                <div className={styles['extraTable']}>
+                  <ParameterTable results={results} onUpdate={updateResult} sex={normaliseSex(selected.patient.sex)} />
+                </div>
+              </section>
+            )}
+
+            <Field label="Comments / remarks" optional>
+              <Textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                rows={3}
+                placeholder="Additional clinical comments or interpretation..."
+              />
+            </Field>
+          </div>
+        )}
+      </Dialog>
+
 
       <TemplateManager
         isOpen={showTemplateManager}

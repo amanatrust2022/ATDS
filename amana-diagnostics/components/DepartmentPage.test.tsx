@@ -31,8 +31,7 @@ vi.mock('@/components/TemplateManager', () => ({
   default: ({ isOpen }: any) => (isOpen ? <div data-testid="template-manager" /> : null),
 }));
 
-// Cancel asks before throwing away typed results. Say yes unless a test
-// says otherwise.
+// Discarding a draft asks first. Say yes unless a test says otherwise.
 const ask = vi.hoisted(() => vi.fn(async (_message: string) => true));
 vi.mock('@/components/Notices', () => ({
   useNotices: () => ({ ask, notify: vi.fn(), askFor: vi.fn() }),
@@ -112,6 +111,7 @@ const renderPage = async (department: 'lab' | 'radiology' = 'lab') => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  localStorage.clear();
   authState = {
     profile: { id: 'user-1', full_name: 'MLS Aisha Bello', title: 'MLS', signature_url: 'sig.png' },
     organization: { id: 'org-1', name: 'Amana Diagnostics' },
@@ -312,12 +312,12 @@ describe('Opening a test for result entry', () => {
       .toBe('MLS Aisha Bello');
   });
 
-  it('closes the panel on Cancel without saving', async () => {
+  it('closes the panel on Close without saving', async () => {
     await renderPage('lab');
     fireEvent.click(screen.getByRole('button', { name: /^Enter results for / }));
     await screen.findByText('Entering Results: Full Blood Count');
 
-    fireEvent.click(screen.getByText('Cancel'));
+    fireEvent.click(screen.getByRole('button', { name: /close and keep draft/i }));
     expect(screen.queryByText('Entering Results: Full Blood Count')).toBeNull();
   });
 });
@@ -735,28 +735,64 @@ describe('The bench, rebuilt', () => {
   });
 
   /**
-   * Cancel threw away whatever had been typed — twenty parameters of a full
-   * blood count — with no question asked. It asks now, and only when there
-   * is something to lose.
+   * Closing the form used to throw away whatever had been typed — twenty
+   * parameters of a full blood count — first silently, then behind a
+   * "close without saving?" question. Neither was the right answer: the
+   * scientist closes the form to check a specimen or answer reception, and
+   * wants to come back to it. What was typed is kept on this machine and is
+   * there when the same test is opened again.
    */
-  it('asks before Cancel discards typed results', async () => {
-    ask.mockResolvedValueOnce(false);
+  it('keeps typed results as a draft when closed, and restores them on reopen', async () => {
     await openFbc();
 
     const [first] = screen.getAllByRole('textbox', { name: /result/i });
     fireEvent.change(first!, { target: { value: '12.5' } });
-    fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
-
-    await waitFor(() => expect(ask).toHaveBeenCalled());
-    expect(screen.getByText('Entering Results: Full Blood Count')).toBeInTheDocument();
-  });
-
-  it('does not ask when nothing has been typed', async () => {
-    await openFbc();
-    fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+    fireEvent.change(screen.getByRole('textbox', { name: /comments/i }), { target: { value: 'haemolysed' } });
+    fireEvent.click(screen.getByRole('button', { name: /close and keep draft/i }));
 
     await waitFor(() => expect(screen.queryByText('Entering Results: Full Blood Count')).toBeNull());
     expect(ask).not.toHaveBeenCalled();
+
+    // The queue says so, so a draft is not forgotten in the list.
+    expect(screen.getByText('Draft saved')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /^(Enter results|Continue) / }));
+    await screen.findByText('Entering Results: Full Blood Count');
+    const [restored] = screen.getAllByRole('textbox', { name: /result/i });
+    expect(restored).toHaveValue('12.5');
+    expect(screen.getByRole('textbox', { name: /comments/i })).toHaveValue('haemolysed');
+  });
+
+  it('forgets the draft once the result has been sent', async () => {
+    await openFbc();
+    const [first] = screen.getAllByRole('textbox', { name: /result/i });
+    fireEvent.change(first!, { target: { value: '12.5' } });
+    fireEvent.click(screen.getByText(/Submit & Send to Reception/));
+
+    await waitFor(() => expect(screen.queryByText('Entering Results: Full Blood Count')).toBeNull());
+    expect(screen.queryByText('Draft saved')).toBeNull();
+    expect(localStorage.length).toBe(0);
+  });
+
+  it('can throw a draft away, but only after asking', async () => {
+    await openFbc();
+    const [first] = screen.getAllByRole('textbox', { name: /result/i });
+    fireEvent.change(first!, { target: { value: '12.5' } });
+
+    ask.mockResolvedValueOnce(false);
+    fireEvent.click(screen.getByRole('button', { name: /discard draft/i }));
+    await waitFor(() => expect(ask).toHaveBeenCalledTimes(1));
+    expect(screen.getAllByRole('textbox', { name: /result/i })[0]).toHaveValue('12.5');
+
+    ask.mockResolvedValueOnce(true);
+    fireEvent.click(screen.getByRole('button', { name: /discard draft/i }));
+    await waitFor(() => expect(screen.getAllByRole('textbox', { name: /result/i })[0]).toHaveValue(''));
+    expect(localStorage.length).toBe(0);
+  });
+
+  it('does not offer to discard when there is nothing typed', async () => {
+    await openFbc();
+    expect(screen.queryByRole('button', { name: /discard draft/i })).toBeNull();
   });
 
   /**
@@ -770,5 +806,34 @@ describe('The bench, rebuilt', () => {
 
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByTestId('test-manager')).toBeInTheDocument();
+  });
+
+  /**
+   * The entry form used to be a card pushed in above the queue, so a long
+   * panel — a full blood count, a radiology report — shoved the queue off the
+   * bottom of the screen, and a click anywhere in the list while typing went
+   * unnoticed. It is a dialog now: over the bench, focus held inside it, the
+   * queue where it was when it closes.
+   */
+  it('opens the entry form as a dialog over the bench', async () => {
+    await openFbc();
+
+    const dialog = screen.getByRole('dialog', { name: 'Entering Results: Full Blood Count' });
+    expect(within(dialog).getByRole('button', { name: /Submit & Send to Reception/ })).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: /close and keep draft/i })).toBeInTheDocument();
+    expect(within(dialog).getAllByRole('textbox', { name: /result/i }).length).toBeGreaterThan(0);
+  });
+
+  it('closes on Escape and keeps what was typed as a draft', async () => {
+    await openFbc();
+
+    const dialog = screen.getByRole('dialog', { name: 'Entering Results: Full Blood Count' });
+    const [first] = within(dialog).getAllByRole('textbox', { name: /result/i });
+    fireEvent.change(first!, { target: { value: '12.5' } });
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Entering Results: Full Blood Count' })).toBeNull());
+    expect(ask).not.toHaveBeenCalled();
+    expect(screen.getByText('Draft saved')).toBeInTheDocument();
   });
 });

@@ -137,6 +137,19 @@ describe('The bench queue', () => {
     expect(screen.getByText(/in progress/i)).toBeInTheDocument();
   });
 
+  // A half-typed result kept on this machine is easy to forget in a list of
+  // twenty; the queue says which tests have one.
+  it('says which tests have a draft on this machine', () => {
+    renderQueue({
+      pending: [patient({ tests: [aTest({ id: 't-1' }), aTest({ id: 't-2', testId: 'lft', testName: 'Liver Function Test' })] })],
+      draftTestIds: new Set(['t-2']),
+    });
+    const withDraft = screen.getByText('Liver Function Test').closest('li')!;
+    expect(within(withDraft).getByText('Draft saved')).toBeInTheDocument();
+    const without = screen.getByText('Full Blood Count').closest('li')!;
+    expect(within(without).queryByText('Draft saved')).toBeNull();
+  });
+
   it('lists what was finished today', () => {
     renderQueue({
       completedToday: [

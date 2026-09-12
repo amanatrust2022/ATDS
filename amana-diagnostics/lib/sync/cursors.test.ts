@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getPullCursor, setPullCursor, EPOCH } from './cursors';
+import { getPullCursor, setPullCursor, cursorAfter, EPOCH } from './cursors';
 import { toRemotePayload } from './outboxPayload';
 
 /** A stand-in for the sync_metadata key/value table. */
@@ -84,5 +84,25 @@ describe('toRemotePayload', () => {
 
   it('does not touch columns of tables it knows nothing about', () => {
     expect(toRemotePayload('organizations', { id: 'o1', is_active: 1 }).is_active).toBe(1);
+  });
+});
+
+describe('Where the cursor stands after a pull', () => {
+  it('moves to the newest timestamp the cloud stamped, not the hub clock', () => {
+    const rows = [
+      { updated_at: '2026-09-12T10:00:00.000Z' },
+      { updated_at: '2026-09-12T10:00:05.123456Z' },
+      { updated_at: '2026-09-12T09:59:59.000Z' },
+    ];
+    expect(cursorAfter(rows, 'updated_at', '2026-09-12T09:00:00.000Z')).toBe('2026-09-12T10:00:05.123456Z');
+  });
+
+  it('stays put when the pull returned nothing', () => {
+    expect(cursorAfter([], 'updated_at', '2026-09-12T09:00:00.000Z')).toBe('2026-09-12T09:00:00.000Z');
+  });
+
+  it('never goes backwards, and ignores rows without a stamp', () => {
+    const rows = [{ updated_at: '2026-09-12T08:00:00.000Z' }, { updated_at: null }, {}];
+    expect(cursorAfter(rows, 'updated_at', '2026-09-12T09:00:00.000Z')).toBe('2026-09-12T09:00:00.000Z');
   });
 });

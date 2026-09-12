@@ -24,8 +24,12 @@ export interface DialogProps {
   onOpenChange: (open: boolean) => void;
   /** Announced when the dialog opens. Required — not decoration. */
   title: string;
-  /** One line under the title. Also read out, so keep it useful. */
-  description?: string;
+  /**
+   * One line under the title. Also read out, so keep it useful. A node is
+   * allowed so a word in it can be emphasised — the specimen on a result
+   * entry — but it should still read as one line.
+   */
+  description?: ReactNode;
   children: ReactNode;
   /** Buttons. Primary action last, matching the platform. */
   footer?: ReactNode;

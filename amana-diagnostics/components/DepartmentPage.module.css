@@ -2,7 +2,8 @@
  *
  * Replaces 35 inline styles, a per-department accent that was a hard-coded
  * violet on the radiology side, and two things that were not what they looked
- * like — a toast with no role and a "modal" that was a fixed div.
+ * like — a toast with no role and a "modal" that was a fixed div. The result
+ * entry itself has since moved into the system's Dialog.
  */
 
 .toolbar {
@@ -58,38 +59,12 @@
   padding: var(--space-6);
 }
 
-/* --- The entry panel ------------------------------------------------------ */
+/* --- The entry form -------------------------------------------------------
+ *
+ * It sits in the system's Dialog now, which owns the header, the scrim, the
+ * footer and the scrolling. What is left here is the layout of the body. */
 
-.panel {
-  margin-bottom: var(--space-6);
-}
-
-.panelHead {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
-  padding: var(--space-4) var(--space-5);
-  background: var(--accent-solid);
-  color: var(--accent-solid-text);
-}
-
-.panelTitle {
-  margin: 0;
-  font-family: var(--font-display);
-  font-size: var(--text-md);
-  font-weight: var(--weight-bold);
-  color: inherit;
-}
-
-.panelMeta {
-  margin: var(--space-1) 0 0;
-  font-size: var(--text-xs);
-  opacity: 0.85;
-}
-
-.panelBody {
-  padding: var(--space-5);
+.entryBody {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
@@ -144,11 +119,6 @@
   overflow-x: auto;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
-}
-
-.submitRow {
-  display: flex;
-  justify-content: flex-start;
 }
 
 /* --- Toast ----------------------------------------------------------------- */

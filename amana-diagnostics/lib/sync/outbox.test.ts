@@ -175,3 +175,37 @@ describe('pushOutbox', () => {
     expect(countPending(db)).toBe(1);
   });
 });
+
+/**
+ * A refusal that is about the caller, not the row. Being signed out — an
+ * expired session, a token that never reached the hub — makes the cloud refuse
+ * every row, and five refusals used to set the row aside for good. A morning's
+ * results were then "safe here but will not send" until a developer looked,
+ * for no fault in the results.
+ */
+describe('pushOutbox when the cloud does not know who is asking', () => {
+  it.each([
+    { message: 'new row violates row-level security policy for table "patient_tests"', code: '42501' },
+    { message: 'JWT expired', code: 'PGRST301' },
+    { message: 'Invalid JWT', code: '401' },
+    { message: 'permission denied for table patients', code: '42501' },
+  ])('stalls on "$message" without spending an attempt', async (error) => {
+    const db = fakeDb([row({ id: 1 }), row({ id: 2 })]);
+    const result = await pushOutbox(db, fakeSupabase({ patients: { error } }) as any);
+
+    expect(result.stalledOutboxId).toBe(1);
+    expect(result.unauthenticated).toBe(true);
+    expect(db.state[0].attempts).toBe(0);
+    expect(db.state[0].dead).toBe(0);
+    expect(db.deleted).toEqual([]);
+  });
+
+  it('cannot dead-letter a row however long the session stays expired', async () => {
+    const db = fakeDb([row({ id: 1 })]);
+    const supabase = fakeSupabase({ patients: { error: { message: 'JWT expired', code: 'PGRST301' } } }) as any;
+    for (let i = 0; i < MAX_ATTEMPTS * 3; i++) await pushOutbox(db, supabase);
+
+    expect(db.state[0].dead).toBe(0);
+    expect(countDeadLetters(db)).toBe(0);
+  });
+});

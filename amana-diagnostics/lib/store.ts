@@ -12,7 +12,7 @@ import { getRadiologyTemplatesRepository } from './repositories/radiologyTemplat
 import { getCustomTestsRepository } from './repositories/customTests';
 import { getCommissionsRepository } from './repositories/commissions';
 import { buildCommissionReport } from './store/commissionReport';
-import { getPatientsRepository, type PatientQuery } from './repositories/patients';
+import { getPatientsRepository, refreshOnWake, type PatientQuery } from './repositories/patients';
 export type { PatientQuery } from './repositories/patients';
 import { getBillingRepository } from './repositories/billing';
 
@@ -517,8 +517,15 @@ export const addPatient = async (
 export const updateTestResult = async (testId: string, updates: Partial<PatientTest>): Promise<void> =>
   getPatientsRepository().updateTestResult(testId, updates);
 
-export const subscribeToPatients = (organizationId: string, callback: () => void) =>
-  getPatientsRepository().subscribe(organizationId, callback);
+/**
+ * Calls back whenever this organisation's patients, tests or wallets change,
+ * and again whenever the machine wakes up. Returns the unsubscribe.
+ */
+export const subscribeToPatients = (organizationId: string, callback: () => void) => {
+  const unsubscribe = getPatientsRepository().subscribe(organizationId, callback);
+  const stopWaking = refreshOnWake(callback);
+  return () => { stopWaking(); unsubscribe(); };
+};
 
 
 let customCatalogueCache: Test[] = [];

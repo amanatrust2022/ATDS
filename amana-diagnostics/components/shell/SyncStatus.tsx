@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { RiCloudLine, RiCloudOffLine, RiErrorWarningLine, RiRefreshLine } from '@remixicon/react';
 import { useAuth } from '@/components/AuthProvider';
 import { Badge } from '@/components/ui';
+import { onSyncNudge } from '@/lib/sync/nudge';
 
 /**
  * Whether this machine's work has reached the cloud.
@@ -61,9 +62,12 @@ export function SyncStatus() {
     // finished, so a slow run overlapped the next and the two raced each
     // other over the same outbox rows.
     let running = false;
+    // A nudge that lands mid-run is not dropped: the write it announces may
+    // have missed the push that is under way, so one more run follows.
+    let runAgain = false;
 
     const run = async () => {
-      if (running) return;
+      if (running) { runAgain = true; return; }
       running = true;
       try {
         const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -86,14 +90,22 @@ export function SyncStatus() {
         }
       } finally {
         running = false;
+        if (runAgain && active) {
+          runAgain = false;
+          void run();
+        }
       }
     };
 
     void run();
     const id = setInterval(run, 15_000);
+    // A write on this machine asks for a run at once — see lib/sync/nudge.ts.
+    // Fifteen seconds is the ceiling, not the norm.
+    const stopNudges = onSyncNudge(() => { void run(); });
     return () => {
       active = false;
       clearInterval(id);
+      stopNudges();
     };
   }, [isLocal, organization, session]);
 
@@ -104,6 +116,17 @@ export function SyncStatus() {
     (state.failedTables?.length ?? 0) > 0 ||
     state.status === 'partial_sync' ||
     state.status === 'needs_attention';
+
+  // The cloud will not take this machine's changes from nobody. They are
+  // safe on the hub and go up untouched once someone signs in.
+  if (state.status === 'signed_out') {
+    return (
+      <Badge tone="warning" icon={<RiErrorWarningLine size={13} />}>
+        Sign in to sync
+        {state.pendingCount > 0 && ` · ${state.pendingCount} waiting`}
+      </Badge>
+    );
+  }
 
   if (state.status === 'offline') {
     return (

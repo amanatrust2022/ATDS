@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 
 import { ErrorBoundary, Tabs } from '@/components/ui';
 import { useAuth } from '@/components/AuthProvider';
+import { useNotices } from '@/components/Notices';
 
 import RegistrationTab from './features/registration/RegistrationTab';
 import WalletTab from './features/wallet/WalletTab';
@@ -11,6 +12,7 @@ import SlipModal from './features/reception/SlipModal';
 import ResultModal from './features/reception/ResultModal';
 import { QueueTab } from './features/queue/QueueTab';
 import { ResultsTab } from './features/queue/ResultsTab';
+import { useResultAlerts } from './features/queue/useResultAlerts';
 
 import { useWalletStore } from '@/lib/store/useWalletStore';
 import {
@@ -58,9 +60,12 @@ type Tab = 'register' | 'queue' | 'results' | 'wallet';
  */
 export default function ReceptionPage() {
   const { profile, organization } = useAuth();
+  const { notify } = useNotices();
 
   const [tab, setTab] = useState<Tab>('register');
   const [patients, setPatients] = useState<Patient[]>([]);
+  /** False until the first read lands, so the backlog is not announced as news. */
+  const [loaded, setLoaded] = useState(false);
   const [patientProfiles, setPatientProfiles] = useState<PatientProfile[]>([]);
 
   /**
@@ -116,6 +121,7 @@ export default function ReceptionPage() {
       setPatients(data);
       setPatientProfiles(profiles);
       setBillingAccounts(accs);
+      setLoaded(true);
 
       // The wallet screens read from the wallet store rather than from props,
       // so this is where their data arrives. externalCharges had no setter at
@@ -167,6 +173,10 @@ export default function ReceptionPage() {
       unsubscribe();
     };
   }, [organization?.id, refresh]);
+
+  // A result arriving is said out loud — a chime, a notice, a desktop
+  // notification — not only counted on a tab the receptionist may not be on.
+  useResultAlerts(patients, !loaded, (message) => notify(message, 'success'));
 
   // The badge counts share the queue store's date window, so they cannot drift
   // from the lists the user is actually looking at.
