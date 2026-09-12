@@ -1,23 +1,18 @@
 import React from 'react';
-import { RiTestTubeLine, RiRadarLine, RiCheckLine, RiMoreLine, RiPrinterLine, RiFileTextLine } from '@remixicon/react';
-import { Patient, PatientTest } from '@/lib/store';
+import { RiTestTubeLine, RiRadarLine, RiCheckLine, RiMoreLine, RiTimeLine, RiPrinterLine, RiFileTextLine } from '@remixicon/react';
+import { Patient, PatientTest, TestStatus } from '@/lib/store';
 import { patientDisplayName } from '@/lib/store/patientName';
+import { Button } from '@/components/ui';
 
-const btnStyle = (variant: 'primary' | 'outline' | 'ghost' | 'danger'): React.CSSProperties => ({
-  background: variant === 'primary' ? 'var(--teal-700)' : variant === 'danger' ? 'var(--red)' : variant === 'outline' ? 'white' : 'transparent',
-  color: variant === 'primary' || variant === 'danger' ? 'white' : variant === 'outline' ? 'var(--gray-700)' : 'var(--gray-600)',
-  border: variant === 'outline' ? '1px solid var(--gray-300)' : 'none',
-  padding: '0.45rem 0.85rem',
-  borderRadius: 'calc(var(--radius) - 1px)',
-  fontSize: '0.78rem',
-  fontWeight: 600,
-  cursor: 'pointer',
-  display: 'flex',
-  alignItems: 'center',
-  gap: '0.35rem',
-  transition: 'all 0.15s ease',
-  boxShadow: variant === 'primary' ? '0 1px 3px rgba(15,118,110,0.2)' : variant === 'outline' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none',
-});
+import styles from './patientCard.module.css';
+
+const cx = (...names: Array<string | false | undefined>) => names.filter(Boolean).join(' ');
+
+const STATUS: Record<TestStatus, { label: string; chip: string; Icon: typeof RiCheckLine }> = {
+  completed: { label: 'Completed', chip: styles.chipDone, Icon: RiCheckLine },
+  in_progress: { label: 'In progress', chip: styles.chipProgress, Icon: RiMoreLine },
+  pending: { label: 'Pending', chip: styles.chipPending, Icon: RiTimeLine },
+};
 
 interface PatientCardProps {
   patient: Patient;
@@ -30,48 +25,52 @@ export function PatientCard({ patient, mode, onViewSlip, onViewResult }: Patient
   const completedCount = patient.tests.filter((t: PatientTest) => t.status === 'completed').length;
 
   return (
-    <div style={{
-      background: 'white', borderRadius: 'var(--radius-lg)',
-      border: '1px solid var(--gray-300)', padding: '1rem 1.25rem',
-      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      gap: '1rem', animation: 'fadeIn 0.3s ease',
-    }}>
-      <div style={{ flex: 1 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
-          <span style={{
-            fontFamily: 'var(--font-mono)', fontSize: '0.72rem',
-            background: 'var(--teal-100)', color: 'var(--teal-800)',
-            padding: '0.15rem 0.5rem', borderRadius: 0, fontWeight: 600,
-          }}>{patient.slipNumber}</span>
-          <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--gray-900)' }}>{patientDisplayName(patient)}</span>
-          <span style={{ fontSize: '0.75rem', color: 'var(--gray-500)' }}>{patient.age} • {patient.sex}</span>
+    <div className={styles.card}>
+      <div className={styles.main}>
+        <div className={styles.identity}>
+          <span className={styles.slip}>{patient.slipNumber}</span>
+          <span className={styles.name}>{patientDisplayName(patient)}</span>
+          <span className={styles.demographics}>{patient.age} • {patient.sex}</span>
         </div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
-          {patient.tests.map((t: PatientTest) => (
-            <span key={t.testId} style={{
-              fontSize: '0.68rem', fontWeight: 500, padding: '0.15rem 0.5rem', borderRadius: 0,
-              background: t.status === 'completed' ? 'var(--green-light)' : t.status === 'in_progress' ? 'var(--amber-light)' : 'var(--gray-100)',
-              color: t.status === 'completed' ? 'var(--green)' : t.status === 'in_progress' ? 'var(--amber)' : 'var(--gray-600)',
-              border: `1px solid ${t.status === 'completed' ? '#a7d7c5' : t.status === 'in_progress' ? '#f0c97a' : 'var(--gray-300)'}`,
-            }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '0.15rem' }}>{t.department === 'lab' ? <RiTestTubeLine size={12} /> : <RiRadarLine size={12} />} {t.testName}</span>
-              {t.status === 'completed' ? <RiCheckLine size={12} style={{ marginLeft: '0.1rem' }} /> : t.status === 'in_progress' ? <RiMoreLine size={12} style={{ marginLeft: '0.1rem' }} /> : ''}
-            </span>
-          ))}
-        </div>
-        <div style={{ marginTop: '0.4rem', fontSize: '0.7rem', color: 'var(--gray-500)' }}>
+
+        <ul className={styles.chips}>
+          {patient.tests.map((t: PatientTest) => {
+            const isLab = t.department === 'lab';
+            const status = STATUS[t.status] ?? STATUS.pending;
+            const StatusIcon = status.Icon;
+            return (
+              <li key={t.testId} className={cx(styles.chip, status.chip)}>
+                <span aria-hidden="true">
+                  {isLab ? <RiTestTubeLine size={12} /> : <RiRadarLine size={12} />}
+                </span>
+                <span className="sr-only">{isLab ? 'Lab' : 'Radiology'}</span>{' '}
+                <span className={styles.chipName}>{t.testName}</span>
+                <span className={styles.chipStatus}>
+                  <StatusIcon size={12} aria-hidden="true" />
+                  {status.label}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+
+        <div className={styles.footnote}>
           Registered: {new Date(patient.registeredAt).toLocaleString('en-NG')}
-          {/* Both separators below were literal question marks: an editing
-              pass wrote this file in an encoding that could not hold a bullet,
-              and the queue has shown "Registered: … ? Ref: …" ever since. */}
           {patient.referredBy && ` • Ref: ${patient.referredBy}`}
-          {completedCount > 0 && <span style={{ color: 'var(--green)', fontWeight: 600 }}> {'•'} {completedCount}/{patient.tests.length} completed</span>}
+          {completedCount > 0 && (
+            <span className={styles.done}> • {completedCount}/{patient.tests.length} completed</span>
+          )}
         </div>
       </div>
-      <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
-        <button onClick={onViewSlip} style={btnStyle('outline')}><RiPrinterLine size={14} /> Slip</button>
+
+      <div className={styles.actions}>
+        <Button intent="secondary" size="sm" icon={<RiPrinterLine size={14} />} onClick={onViewSlip}>
+          Slip
+        </Button>
         {mode === 'results' && (
-          <button onClick={onViewResult} style={btnStyle('primary')}><RiFileTextLine size={14} /> View & Print Result</button>
+          <Button intent="primary" size="sm" icon={<RiFileTextLine size={14} />} onClick={onViewResult}>
+            View &amp; Print Result
+          </Button>
         )}
       </div>
     </div>
