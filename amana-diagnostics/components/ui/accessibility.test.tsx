@@ -243,6 +243,7 @@ describe('the component library meets the accessibility floor', () => {
       <div>
         <ResultFlag value="HH" />
         <ResultFlag value="L" />
+        <ResultFlag value="N" />
         <ResultFlag value="" />
       </div>,
     );
@@ -253,6 +254,12 @@ describe('the component library meets the accessibility floor', () => {
     // copy carries it, so a screen reader hears it exactly once.
     expect(screen.getAllByText('Critical high').length).toBe(2);
     expect(screen.getAllByText('Low').length).toBe(2);
-    expect(screen.getByText('Within reference range')).toBeTruthy();
+    expect(screen.getAllByText('Normal').length).toBe(2);
+
+    // And an empty flag is not a normal result: it is the absence of a
+    // judgement, which is what a parameter with no readable range carries. It
+    // used to announce "within reference range", asserting something nothing
+    // had checked.
+    expect(screen.getByText('Not flagged — no reference range to check against')).toBeTruthy();
   });
 });

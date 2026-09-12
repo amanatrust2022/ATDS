@@ -1,7 +1,7 @@
 'use client';
 import dynamic from 'next/dynamic';
 import {
-  RADIOLOGY_TEMPLATES, convertTextToFormattedHtml,
+  RADIOLOGY_TEMPLATES, convertTextToFormattedHtml, stripImpressionHeading,
   type RadiologyFormState,
 } from '@/lib/radiology-templates';
 import type { Department, RadiologyTemplate } from '@/lib/store';
@@ -46,11 +46,20 @@ export default function RadiologyEntryForm({
   // The pre-split code also stashed a `templateId` on the form state here.
   // Nothing ever read it — it is not part of RadiologyFormState and not
   // serialised — so it is dropped rather than carried across.
+  /**
+   * The impression goes into a box already headed "Clinical impression", and
+   * prints into a section already headed "Impression / Conclusion". Almost
+   * every template — built-in, custom or imported — carries the word at the
+   * start of its own text as well, because that is how the impression was
+   * identified in the first place. Once identified, the word has done its job:
+   * it comes off, here, so it cannot be printed twice whatever the template
+   * says and whoever wrote it.
+   */
   const applyTemplate = (template: PickableTemplate) =>
     onChange({
       ...value,
       findings: convertTextToFormattedHtml(template.findings),
-      impression: convertTextToFormattedHtml(template.impression),
+      impression: convertTextToFormattedHtml(stripImpressionHeading(template.impression)),
     });
 
   const toggleImage = (path: string) =>

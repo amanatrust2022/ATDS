@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { Alert, Button, Card, Dialog, Field, Input, LoadingPanel, Textarea } from '@/components/ui';
 import { useNotices } from '@/components/Notices';
@@ -7,12 +7,13 @@ import styles from './DepartmentPage.module.css';
 import { Department, Patient, PatientTest, getTestById, fetchPatients, updateTestResult, subscribeToPatients, fetchCustomTemplates, RadiologyTemplate, fetchCustomTests, setCustomCatalogueCache } from '@/lib/store';
 import { RiCheckLine, RiErrorWarningLine, RiSettings3Line } from '@remixicon/react';
 import { useAuth } from '@/components/AuthProvider';
-import { RADIOLOGY_TEMPLATES, serializeRadiologyResults, deserializeRadiologyResults, RadiologyFormState, convertTextToFormattedHtml } from '@/lib/radiology-templates';
+import { RADIOLOGY_TEMPLATES, serializeRadiologyResults, deserializeRadiologyResults, RadiologyFormState, convertTextToFormattedHtml, stripImpressionHeading } from '@/lib/radiology-templates';
 import { windowStartIso } from '@/lib/store/useQueueStore';
 import DepartmentQueue from '@/components/features/department/DepartmentQueue';
-import ParameterTable, { criticalRows } from '@/components/features/department/ParameterTable';
+import ParameterTable, { criticalRows, resolveFlags } from '@/components/features/department/ParameterTable';
 import { CriticalValueDialog } from '@/components/features/department/CriticalValueDialog';
 import { normaliseSex } from '@/lib/clinical/referenceRange';
+import { buildAutoComment, mayReplace } from '@/lib/clinical/autoComment';
 import { useNewTestAlerts } from '@/components/features/department/useNewTestAlerts';
 const TemplateManager = dynamic(() => import('@/components/TemplateManager'), {
   loading: () => <LoadingPanel label="Opening templates…" />,
@@ -52,6 +53,14 @@ export default function DepartmentPage({ department }: Props) {
   const [radiologyState, setRadiologyState] = useState<RadiologyFormState | null>(null);
   const [professional, setProfessional] = useState('');
   const [notes, setNotes] = useState('');
+  /**
+   * The last comment this screen generated from the flags.
+   *
+   * It is how "the box still holds what we put there" is told apart from "the
+   * technologist has written something". Nothing about the generation is
+   * written into the text itself — see lib/clinical/autoComment.ts.
+   */
+  const lastAutoComment = useRef('');
   const [saving, setSaving] = useState(false);
   /** Panic values on this test that nobody has acknowledged yet. Non-empty
    *  means the release is blocked. */
@@ -204,7 +213,11 @@ export default function DepartmentPage({ department }: Props) {
         
         if (defaultTemplate && RADIOLOGY_TEMPLATES[defaultTemplate]) {
           deserialized.findings = convertTextToFormattedHtml(RADIOLOGY_TEMPLATES[defaultTemplate].findings);
-          deserialized.impression = convertTextToFormattedHtml(RADIOLOGY_TEMPLATES[defaultTemplate].impression);
+          // Same reason as RadiologyEntryForm.applyTemplate: the section has
+          // its own heading, so the template's own copy of the word comes off.
+          deserialized.impression = convertTextToFormattedHtml(
+            stripImpressionHeading(RADIOLOGY_TEMPLATES[defaultTemplate].impression),
+          );
         }
       }
       setRadiologyState(deserialized);
@@ -238,6 +251,9 @@ export default function DepartmentPage({ department }: Props) {
     }
 
     setNotes(test.notes || '');
+    // A comment already saved against this test belongs to whoever wrote it.
+    // Only an empty box is this screen's to fill in.
+    lastAutoComment.current = '';
     setSelected({ patient, test });
     if (test.status === 'pending') {
       // Same reason as in handleSubmit: the "in progress" marker is what stops
@@ -266,17 +282,20 @@ export default function DepartmentPage({ department }: Props) {
 
     setSaving(true);
  
-    let finalResults = results;
+    // What the bench saw in the Flag column is what gets stored, and therefore
+    // what prints. Until now only a hand-set override was saved.
+    const flagged = resolveFlags(results, normaliseSex(selected.patient.sex));
+    let finalResults: typeof results = flagged;
     if (isMcs && mcsState) {
       finalResults = serializeMcsResults(mcsState) as any;
     } else if (isWidal && widalState && isMPs && mpsState) {
-      const extraResults = stripMatrixRows(results);
+      const extraResults = stripMatrixRows(flagged);
       finalResults = [...serializeMpsResults(mpsState), ...serializeWidalResults(widalState), ...extraResults] as any;
     } else if (isWidal && widalState) {
-      const extraResults = stripMatrixRows(results);
+      const extraResults = stripMatrixRows(flagged);
       finalResults = [...serializeWidalResults(widalState), ...extraResults] as any;
     } else if (isMPs && mpsState) {
-      const extraResults = stripMatrixRows(results);
+      const extraResults = stripMatrixRows(flagged);
       finalResults = [...serializeMpsResults(mpsState), ...extraResults] as any;
     } else if (radiologyState) {
       finalResults = serializeRadiologyResults(radiologyState) as any;
@@ -354,6 +373,39 @@ export default function DepartmentPage({ department }: Props) {
 
   const updateResult = (i: number, field: string, value: string) =>
     setResults(prev => prev.map((r, idx) => idx === i ? { ...r, [field]: value } : r));
+
+  /**
+   * The comment the flags write for themselves.
+   *
+   * Kept as a value rather than pushed into state, so the box below can offer
+   * it as a button when the technologist has written their own — and so that
+   * nothing is ever silently substituted for what a person typed.
+   */
+  const autoComment = useMemo(
+    () => (selected && isLab
+      ? buildAutoComment(results, { sex: normaliseSex(selected.patient.sex) })
+      : ''),
+    [results, selected, isLab],
+  );
+
+  /**
+   * Fill the empty box as the results are typed, and stop the moment it stops
+   * being ours. A technologist who deletes the draft and writes their own
+   * sentence keeps it; one who types nothing gets a report that says, in words,
+   * what the numbers mean — which is what the box was for and what almost every
+   * report went out without.
+   */
+  useEffect(() => {
+    if (!selected || !isLab) return;
+    if (!autoComment) return;
+    if (!mayReplace(notes, lastAutoComment.current)) return;
+    if (notes === autoComment) return;
+    lastAutoComment.current = autoComment;
+    setNotes(autoComment);
+    // `notes` is read, not depended on: depending on it would re-run the moment
+    // the technologist starts typing and fight them for the box.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoComment, selected, isLab]);
 
   if (!organization) return null;
 
@@ -474,14 +526,45 @@ export default function DepartmentPage({ department }: Props) {
                 </section>
               )}
 
-              <Field label="Comments / remarks" optional>
+              <Field
+                label="Comments / remarks"
+                optional
+                hint={
+                  isLab && autoComment
+                    ? 'Written from the flags as results are entered. Edit it freely — once you do, it is yours and will not be rewritten.'
+                    : undefined
+                }
+              >
                 <Textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  rows={3}
+                  rows={4}
                   placeholder="Additional clinical comments or interpretation..."
                 />
               </Field>
+              {isLab && autoComment && notes.trim() !== autoComment && (
+                <div className={styles['autoComment']}>
+                  <Button
+                    intent="secondary"
+                    size="sm"
+                    onClick={() => { lastAutoComment.current = autoComment; setNotes(autoComment); }}
+                  >
+                    Replace with the comment from the flags
+                  </Button>
+                  <Button
+                    intent="ghost"
+                    size="sm"
+                    onClick={() => {
+                      const joined = [notes.trim(), autoComment].filter(Boolean).join(' ');
+                      lastAutoComment.current = '';
+                      setNotes(joined);
+                    }}
+                  >
+                    Append it
+                  </Button>
+                  <p className={styles['autoCommentText']}>{autoComment}</p>
+                </div>
+              )}
 
               <div className={styles['submitRow']}>
                 <Button

@@ -28,8 +28,20 @@ export type ReferenceRange =
   | { kind: 'numeric'; low: number | null; high: number | null }
   | { kind: 'sexed'; male: ReferenceRange; female: ReferenceRange };
 
-/** Empty means "within range"; the rest match ResultFlagValue in the UI. */
-export type Flag = '' | 'H' | 'L' | 'HH' | 'LL';
+/**
+ * What a result is, once its reference range has been read.
+ *
+ * `'N'` is normal, and it is new. There used to be no way to say it: an
+ * in-range result derived `''`, and `''` was also what a parameter whose range
+ * could not be read carried, and what an untouched dropdown held. Three
+ * different facts — "this is normal", "nothing is known about this", and
+ * "nobody has said" — wore the same empty string, so the Flag column on a
+ * chemistry panel could only ever show H or L and normal results showed a dash
+ * that meant nothing in particular.
+ *
+ * Now: `'N'` asserts normal, and `''` asserts nothing.
+ */
+export type Flag = '' | 'N' | 'H' | 'L' | 'HH' | 'LL';
 
 const QUALITATIVE = [
   'negative', 'nil', 'normal', 'non-reactive', 'nonreactive',
@@ -214,11 +226,20 @@ export function deriveFlag(
   if (range.kind === 'numeric') {
     if (range.low !== null && value < range.low) return 'L';
     if (range.high !== null && value > range.high) return 'H';
-    return '';
+    return 'N';
   }
 
   return null;
 }
+
+/** The word behind a flag, for a comment or a screen reader. */
+export const FLAG_WORD: Record<Exclude<Flag, ''>, string> = {
+  N: 'normal',
+  H: 'high',
+  L: 'low',
+  HH: 'critically high',
+  LL: 'critically low',
+};
 
 /** True for the two tiers that carry a release interlock. */
 export const isCritical = (flag: Flag | null): boolean => flag === 'HH' || flag === 'LL';

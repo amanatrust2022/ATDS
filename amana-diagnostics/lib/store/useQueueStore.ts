@@ -78,10 +78,30 @@ export const selectPendingPatients = (patients: Patient[], dateFilter: DateFilte
 
 /**
  * Patients counted on the "Results Ready" tab badge and the header notification count:
- * anyone with at least one completed test, within the currently selected date window.
+ * anyone whose result was *released* inside the currently selected date window.
+ *
+ * This used to be bounded by when the patient was registered, which is not when
+ * the result arrives. A specimen taken on Monday and reported on Wednesday was
+ * released by the bench — which says "result sent to reception" — into a list
+ * reception could not see, because Wednesday's window only admits Wednesday's
+ * registrations. The result never appeared, and nothing anywhere said why.
+ *
+ * A result belongs to the day it was completed. `completedAt` is what that day
+ * is; registration time is only the fallback for rows written before the column
+ * was populated.
  */
-export const selectCompletedPatients = (patients: Patient[], dateFilter: DateFilter) =>
-  filterPatientsByDate(patients.filter(p => p.tests.some(t => t.status === 'completed')), dateFilter);
+export const releasedAt = (t: { completedAt?: string | null }, p: Patient): number => {
+  const stamp = t.completedAt || p.registeredAt;
+  const ms = stamp ? new Date(stamp).getTime() : NaN;
+  return Number.isNaN(ms) ? 0 : ms;
+};
+
+export const selectCompletedPatients = (patients: Patient[], dateFilter: DateFilter) => {
+  const start = windowStartFor(dateFilter).getTime();
+  return patients.filter(p =>
+    p.tests.some(t => t.status === 'completed' && releasedAt(t, p) >= start),
+  );
+};
 
 export const filterPatientsBySearchAndDept = (
   patients: Patient[],

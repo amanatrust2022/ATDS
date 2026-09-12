@@ -171,3 +171,27 @@
 }
 .toastSuccess { background: var(--success-solid); }
 .toastError { background: var(--critical-solid); }
+
+/* --- The comment written from the flags ------------------------------------ */
+
+/* Shown only once the technologist's own words are in the box, so the offer to
+ * use or append the generated comment is explicit rather than a substitution. */
+.autoComment {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+}
+
+.autoCommentText {
+  flex: 1 1 100%;
+  margin: 0;
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--text-secondary);
+}

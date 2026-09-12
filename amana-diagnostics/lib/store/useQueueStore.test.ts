@@ -154,6 +154,31 @@ describe('Tab badge counts', () => {
   it('leaves a fully completed patient out of the outstanding count', () => {
     expect(selectPendingPatients([doneToday], 'today')).toEqual([]);
   });
+
+  /**
+   * The bug the bench could not see: it says "result sent to reception", and
+   * reception's Results Ready never shows it, because the visit was registered
+   * before today. A result belongs to the day it was released.
+   */
+  it("shows a result released today for a visit registered last week", () => {
+    const lateRelease = patient(6, 6, ['completed']);
+    lateRelease.tests[0].completedAt = new Date(2026, 6, 27, 9, 0, 0).toISOString();
+
+    expect(selectCompletedPatients([lateRelease], 'today').map(p => p.id)).toEqual([6]);
+  });
+
+  it('keeps an old result out of today, even for a visit registered today', () => {
+    const oldRelease = patient(7, 0, ['completed']);
+    oldRelease.tests[0].completedAt = new Date(2026, 6, 20, 9, 0, 0).toISOString();
+
+    expect(selectCompletedPatients([oldRelease], 'today')).toEqual([]);
+    expect(selectCompletedPatients([oldRelease], 'thirty_days').map(p => p.id)).toEqual([7]);
+  });
+
+  it('falls back to the registration date when a row has no completion stamp', () => {
+    expect(selectCompletedPatients([doneToday], 'today').map(p => p.id)).toEqual([3]);
+    expect(selectCompletedPatients([doneTenDaysAgo], 'today')).toEqual([]);
+  });
 });
 
 /**

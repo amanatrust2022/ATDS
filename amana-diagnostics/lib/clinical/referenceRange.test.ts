@@ -88,23 +88,23 @@ describe('deriving the flag', () => {
   it('flags high and low against a closed range', () => {
     expect(deriveFlag('5.9', '3.5-5.2', { parameter: 'Chloride' })).toBe('H');
     expect(deriveFlag('3.0', '3.5-5.2', { parameter: 'Chloride' })).toBe('L');
-    expect(deriveFlag('4.1', '3.5-5.2', { parameter: 'Chloride' })).toBe('');
+    expect(deriveFlag('4.1', '3.5-5.2', { parameter: 'Chloride' })).toBe('N');
   });
 
   it('treats the bounds themselves as in range', () => {
-    expect(deriveFlag('3.5', '3.5-5.2', { parameter: 'Chloride' })).toBe('');
-    expect(deriveFlag('5.2', '3.5-5.2', { parameter: 'Chloride' })).toBe('');
+    expect(deriveFlag('3.5', '3.5-5.2', { parameter: 'Chloride' })).toBe('N');
+    expect(deriveFlag('5.2', '3.5-5.2', { parameter: 'Chloride' })).toBe('N');
   });
 
   it('flags against a one-sided range', () => {
     expect(deriveFlag('150', '<100', { parameter: 'Triglycerides' })).toBe('H');
-    expect(deriveFlag('80', '<100', { parameter: 'Triglycerides' })).toBe('');
+    expect(deriveFlag('80', '<100', { parameter: 'Triglycerides' })).toBe('N');
     expect(deriveFlag('1.0', '>1.5', { parameter: 'HDL' })).toBe('L');
   });
 
   it('uses the patient sex when the range is sexed', () => {
     expect(deriveFlag('150', 'F: 35-135 / M: 40-160', { sex: 'female' })).toBe('H');
-    expect(deriveFlag('150', 'F: 35-135 / M: 40-160', { sex: 'male' })).toBe('');
+    expect(deriveFlag('150', 'F: 35-135 / M: 40-160', { sex: 'male' })).toBe('N');
   });
 
   it('has no opinion rather than a wrong one', () => {
@@ -118,11 +118,16 @@ describe('deriving the flag', () => {
     expect(deriveFlag('150', 'F: 35-135 / M: 40-160', { sex: 'unknown' })).toBeNull();
   });
 
-  it('distinguishes "no opinion" from "in range"', () => {
-    // null must never be treated as normal: an empty string asserts the value
-    // was checked and found in range, and that assertion has to be earned.
+  it('distinguishes "no opinion" from "normal"', () => {
+    // null must never be treated as normal: 'N' asserts the value was checked
+    // and found in range, and that assertion has to be earned.
     expect(deriveFlag('4.1', '')).toBeNull();
-    expect(deriveFlag('4.1', '3.5-5.2')).toBe('');
+    expect(deriveFlag('4.1', '3.5-5.2')).toBe('N');
+  });
+
+  it('is not abnormal, and not critical, when it is normal', () => {
+    expect(isAbnormal('N')).toBe(false);
+    expect(isCritical('N')).toBe(false);
   });
 });
 

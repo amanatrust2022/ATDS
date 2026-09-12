@@ -26,6 +26,7 @@ import {
   RiUploadCloud2Line,
 } from '@remixicon/react';
 
+import { useNotices } from '@/components/Notices';
 import styles from './LetterheadDesigner.module.css';
 
 // ── Canvas geometry ──────────────────────────────────────────────────────────
@@ -98,8 +99,57 @@ const FONTS = [
 let seq = 0;
 const uid = () => `el_${Date.now().toString(36)}_${(seq++).toString(36)}`;
 
+/**
+ * Nothing raster enters a letterhead at its original size.
+ *
+ * Every picture here is stored as a base64 data URL inside `letterhead_html` —
+ * one column, on one row, read back on every screen that renders a letterhead
+ * and embedded again in every report printed, emailed and shown in the patient
+ * portal. A phone photograph of a letterhead is 4000px wide and 4 MB; base64
+ * makes that 5.3 MB, and the clinic then carries it on every document it
+ * produces, forever. Nothing anywhere said no.
+ *
+ * 1600px is comfortably more than the 740px canvas needs at print resolution
+ * (roughly 2×), and it is the difference between a letterhead measured in
+ * kilobytes and one measured in megabytes.
+ */
+const MAX_IMAGE_PX = 1600;
+/** Past this, the letterhead is big enough to be worth telling someone about. */
+export const LARGE_LETTERHEAD_BYTES = 1_500_000;
+
+/** Draws `source` into a canvas no larger than MAX_IMAGE_PX and re-encodes it. */
+function downscale(
+  source: CanvasImageSource,
+  w: number,
+  h: number,
+  preferJpeg: boolean,
+): { src: string; w: number; h: number } {
+  const factor = Math.min(1, MAX_IMAGE_PX / Math.max(w, h));
+  const outW = Math.max(1, Math.round(w * factor));
+  const outH = Math.max(1, Math.round(h * factor));
+
+  const canvas = document.createElement('canvas');
+  canvas.width = outW;
+  canvas.height = outH;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return { src: '', w: outW, h: outH };
+  ctx.imageSmoothingQuality = 'high';
+  // A photograph re-encodes far smaller as JPEG; a logo needs PNG's alpha.
+  if (preferJpeg) {
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, outW, outH);
+  }
+  ctx.drawImage(source, 0, 0, outW, outH);
+  return {
+    src: preferJpeg ? canvas.toDataURL('image/jpeg', 0.9) : canvas.toDataURL('image/png'),
+    w: outW,
+    h: outH,
+  };
+}
+
 // Turn a picked file into a raster image (data URL + pixel size). Images load
 // directly; a PDF has its first page rendered to a canvas at 2× for crisp print.
+// Either way the result is bounded — see MAX_IMAGE_PX.
 async function fileToImage(file: File): Promise<{ src: string; w: number; h: number }> {
   const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
   if (isPdf) {
@@ -113,14 +163,25 @@ async function fileToImage(file: File): Promise<{ src: string; w: number; h: num
     canvas.width = Math.round(viewport.width);
     canvas.height = Math.round(viewport.height);
     await page.render({ canvasContext: canvas.getContext('2d')!, viewport }).promise;
-    return { src: canvas.toDataURL('image/png'), w: canvas.width, h: canvas.height };
+    // A rendered page is flat artwork on white, so JPEG is the right encoding.
+    return downscale(canvas, canvas.width, canvas.height, true);
   }
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {
       const src = e.target?.result as string;
       const img = new window.Image();
-      img.onload = () => resolve({ src, w: img.width, h: img.height });
+      img.onload = () => {
+        // An SVG has no useful pixel size and loses nothing by staying vector,
+        // so it is kept as it is. Everything else is bounded.
+        if (/^data:image\/svg\+xml/i.test(src) || Math.max(img.width, img.height) <= MAX_IMAGE_PX) {
+          resolve({ src, w: img.width, h: img.height });
+          return;
+        }
+        const opaque = /^data:image\/jpe?g/i.test(src);
+        const out = downscale(img, img.width, img.height, opaque);
+        resolve(out.src ? out : { src, w: img.width, h: img.height });
+      };
       img.onerror = () => reject(new Error('image decode failed'));
       img.src = src;
     };
@@ -190,7 +251,11 @@ function serialize(els: El[], height: number): string {
       const imgStyle = `position:absolute;left:${-ox}px;top:${-oy}px;width:${iw}px;height:${ih}px;max-width:none;display:block`;
       return `<div data-type="image" data-shape="1" style="${elStyle(e)}"><img src="${escapeAttr(e.src)}" style="${imgStyle}" alt="" /></div>`;
     }
-    const inner = e.type === 'text' ? e.content : '';
+    // A text box nobody has typed into is still a placeholder. It used to be
+    // serialised with its prompt intact, so "Double-click to edit" printed on
+    // the top of every report the clinic issued. The box is kept — deleting it
+    // behind the designer's back would be worse — but it carries no words.
+    const inner = e.type === 'text' ? (e.ph ? '' : e.content) : '';
     // Shapes are empty divs; `data-shape` stops cleanLetterhead's "trailing empty
     // element" tidier from deleting them before they reach the page.
     const shapeMark = e.type === 'text' ? '' : ' data-shape="1"';
@@ -279,6 +344,7 @@ function rotate(vx: number, vy: number, deg: number) {
 
 // ── Component ────────────────────────────────────────────────────────────────
 export default function LetterheadDesigner({ value, onChange, defaultHeight = DEFAULT_H }: Props) {
+  const { notify } = useNotices();
   const [els, setEls] = useState<El[]>([]);
   const [height, setHeight] = useState(defaultHeight);
   const [selId, setSelId] = useState<string | null>(null);
@@ -465,22 +531,27 @@ export default function LetterheadDesigner({ value, onChange, defaultHeight = DE
   };
 
   // ── Pointer interactions ───────────────────────────────────────────────────
-  const pt = (ev: MouseEvent | React.MouseEvent) => {
-    const r = canvasRef.current!.getBoundingClientRect();
+  // Null when the canvas has gone — a section switch or a navigation mid-drag.
+  // It used to be `canvasRef.current!`, which threw out of a window listener and
+  // took the settings screen down with it.
+  const pt = (ev: { clientX: number; clientY: number }) => {
+    const r = canvasRef.current?.getBoundingClientRect();
+    if (!r) return null;
     return { x: ev.clientX - r.left, y: ev.clientY - r.top };
   };
 
-  const startMove = (ev: React.MouseEvent, e: El) => {
+  const startMove = (ev: React.PointerEvent, e: El) => {
     if (editingId === e.id) return;
     if (ev.button !== 0) return; // left button only
     ev.stopPropagation();
     ev.preventDefault(); // stop the browser starting a text selection / image drag
     setSelId(e.id);
     const p = pt(ev);
+    if (!p) return;
     drag.current = { mode: 'move', id: e.id, sx: p.x, sy: p.y, ox: e.x, oy: e.y, ckpt: false };
   };
 
-  const startResize = (ev: React.MouseEvent, e: El, sx: number, sy: number) => {
+  const startResize = (ev: React.PointerEvent, e: El, sx: number, sy: number) => {
     ev.stopPropagation();
     ev.preventDefault();
     const cx = e.x + e.w / 2, cy = e.y + e.h / 2;
@@ -489,22 +560,24 @@ export default function LetterheadDesigner({ value, onChange, defaultHeight = DE
     drag.current = { mode: 'resize', id: e.id, sx, sy, rot: e.rot, w0: e.w, h0: e.h, anchor: { x: cx + ar.x, y: cy + ar.y }, ckpt: false };
   };
 
-  const startRotate = (ev: React.MouseEvent, e: El) => {
+  const startRotate = (ev: React.PointerEvent, e: El) => {
     ev.stopPropagation();
     ev.preventDefault();
     const cx = e.x + e.w / 2, cy = e.y + e.h / 2;
     const p = pt(ev);
+    if (!p) return;
     const start = Math.atan2(p.y - cy, p.x - cx);
     drag.current = { mode: 'rotate', id: e.id, cx, cy, start, orot: e.rot, ckpt: false };
   };
 
-  const onWinMove = (ev: MouseEvent) => {
+  const onWinMove = (ev: PointerEvent) => {
     const d = drag.current; if (!d) return;
     // Record one undo checkpoint the first time a drag actually moves, so a plain
     // click-to-select never leaves an empty undo step. Pause parent emits for the
     // duration of the drag; onWinUp flushes a single update.
     if (!d.ckpt) { d.ckpt = true; checkpoint(d.mode + ':' + d.id); emitPaused.current = true; }
     const p = pt(ev);
+    if (!p) return;
     if (d.mode === 'move') {
       const moving = elsRef.current.find((e) => e.id === d.id);
       const rawX = d.ox + (p.x - d.sx), rawY = d.oy + (p.y - d.sy);
@@ -546,19 +619,43 @@ export default function LetterheadDesigner({ value, onChange, defaultHeight = DE
     setGuides({ x: [], y: [] });
     if (emitPaused.current) { emitPaused.current = false; emitNow(); }
   };
+
+  /**
+   * The same pause, for the inspector's two sliders.
+   *
+   * `apply` serialises the whole design on every change and hands it to the
+   * settings screen, which re-renders the A4 preview. With an imported
+   * letterhead that is a megabyte of base64 rebuilt on every frame of an
+   * opacity or zoom drag — the canvas went from smooth to unusable the moment
+   * a real letterhead was imported. The slider updates the canvas as before
+   * and the parent hears about it once, when the thumb is let go.
+   */
+  const holdEmit = useCallback(() => { emitPaused.current = true; }, []);
+  const releaseEmit = useCallback(() => {
+    if (!emitPaused.current) return;
+    emitPaused.current = false;
+    emitNow();
+  }, [emitNow]);
   // Bind the drag listeners ONCE and dispatch through refs. Adding/removing them
   // per-drag by function identity leaked listeners (every render makes new
   // closures, so removal never matched what was added) and made dragging erratic.
-  const moveRef = useRef<(e: MouseEvent) => void>(() => {});
+  const moveRef = useRef<(e: PointerEvent) => void>(() => {});
   const upRef = useRef<() => void>(() => {});
   moveRef.current = onWinMove;
   upRef.current = onWinUp;
   useEffect(() => {
-    const m = (e: MouseEvent) => moveRef.current(e);
+    const m = (e: PointerEvent) => moveRef.current(e);
     const u = () => upRef.current();
-    window.addEventListener('mousemove', m);
-    window.addEventListener('mouseup', u);
-    return () => { window.removeEventListener('mousemove', m); window.removeEventListener('mouseup', u); };
+    // Pointer, not mouse: the same listeners now serve a finger on a tablet and
+    // a pen, which the canvas simply did not respond to before.
+    window.addEventListener('pointermove', m);
+    window.addEventListener('pointerup', u);
+    window.addEventListener('pointercancel', u);
+    return () => {
+      window.removeEventListener('pointermove', m);
+      window.removeEventListener('pointerup', u);
+      window.removeEventListener('pointercancel', u);
+    };
   }, []);
 
   // Keyboard: arrow-nudge, delete, duplicate, deselect — but only when a shape
@@ -578,6 +675,17 @@ export default function LetterheadDesigner({ value, onChange, defaultHeight = DE
         if ((ev.ctrlKey || ev.metaKey) && k === 'y') { ev.preventDefault(); redo(); return; }
       }
 
+      // Escape gets you out of a text box. There was no way out but the mouse:
+      // every key the keyboard handler cares about was ignored while editing,
+      // and Escape was one of them, so a keyboard user who double-clicked into
+      // a text box was stuck in it.
+      if (editingId && ev.key === 'Escape') {
+        ev.preventDefault();
+        setEditingId(null);
+        canvasRef.current?.focus();
+        return;
+      }
+
       if (inField || !selId || editingId) return;
 
       if (ev.key === 'Escape') { setSelId(null); return; }
@@ -595,21 +703,29 @@ export default function LetterheadDesigner({ value, onChange, defaultHeight = DE
     return () => window.removeEventListener('keydown', onKey);
   }, [selId, editingId, undo, redo, checkpoint]); // eslint-disable-line
 
-  const onImagePick = (ev: React.ChangeEvent<HTMLInputElement>) => {
-    const file = ev.target.files?.[0]; if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const src = e.target?.result as string;
-      const img = new window.Image();
-      img.onload = () => {
-        const scale = Math.min(1, 200 / img.width);
-        const w = Math.round(img.width * scale), h = Math.round(img.height * scale);
-        addEl('image', { src, w, h, x: 60, y: 40, iw: w, ih: h, ox: 0, oy: 0, nar: img.height / img.width });
-      };
-      img.src = src;
-    };
-    reader.readAsDataURL(file);
+  /**
+   * Adding a logo or a picture.
+   *
+   * This used to read the file itself, with no `onerror` on either the reader
+   * or the decode: a file the browser could not read — a HEIC from a phone, a
+   * renamed .docx, a truncated download — did nothing at all. No element, no
+   * message, nothing to try next. It now shares the one loader with the
+   * letterhead import, which bounds the pixel size, and it says so when it
+   * cannot use what it was given.
+   */
+  const onImagePick = async (ev: React.ChangeEvent<HTMLInputElement>) => {
+    const file = ev.target.files?.[0];
     ev.target.value = '';
+    if (!file) return;
+    try {
+      const { src, w: iw0, h: ih0 } = await fileToImage(file);
+      const scale = Math.min(1, 200 / iw0);
+      const w = Math.round(iw0 * scale), h = Math.round(ih0 * scale);
+      addEl('image', { src, w, h, x: 60, y: 40, iw: w, ih: h, ox: 0, oy: 0, nar: ih0 / iw0 });
+    } catch (err) {
+      console.error('Image import failed:', err);
+      notify('Could not read that picture. Please use a PNG, JPG or PDF.', 'error');
+    }
   };
 
   // Import an existing letterhead: the picture becomes the letterhead itself —
@@ -631,7 +747,9 @@ export default function LetterheadDesigner({ value, onChange, defaultHeight = DE
       setSelId(el.id);
     } catch (err) {
       console.error('Letterhead import failed:', err);
-      window.alert('Could not import that file. Please use a PNG, JPG, or PDF.');
+      // Not `alert`: it freezes the tab, cannot be styled or logged, and the
+      // rest of this app stopped using it deliberately (components/Notices.tsx).
+      notify('Could not import that file. Please use a PNG, JPG or PDF.', 'error');
     }
   };
 
@@ -718,13 +836,17 @@ export default function LetterheadDesigner({ value, onChange, defaultHeight = DE
             ref={canvasRef}
             className={styles['canvas']}
             style={{ width: CANVAS_W, height }}
-            onMouseDown={() => { setSelId(null); setEditingId(null); }}
+            role="group"
+            aria-label="Letterhead canvas — Tab to reach each element, Enter to type in a text box"
+            tabIndex={-1}
+            onPointerDown={() => { setSelId(null); setEditingId(null); }}
           >
             {[...els].sort((a, b) => a.z - b.z).map((e) => (
               <ElementView
                 key={e.id} e={e} selected={e.id === selId} editing={e.id === editingId}
-                onMouseDown={(ev) => startMove(ev, e)}
+                onPointerDown={(ev) => startMove(ev, e)}
                 onDoubleClick={() => { if (e.type === 'text') { setSelId(e.id); setEditingId(e.id); } }}
+                onFocus={() => setSelId(e.id)}
                 onResizeStart={startResize} onRotateStart={startRotate}
                 onTextInput={(html, contentH) => { checkpoint('text:' + e.id); update(e.id, { content: html, h: Math.max(e.h, contentH), ph: false }); }}
               />
@@ -758,6 +880,8 @@ export default function LetterheadDesigner({ value, onChange, defaultHeight = DE
               onBack={() => sendBack(sel.id)}
               onDuplicate={() => duplicate(sel.id)}
               onAlign={alignEl}
+              onHold={holdEmit}
+              onRelease={releaseEmit}
             />
           )}
         </div>
@@ -769,11 +893,12 @@ export default function LetterheadDesigner({ value, onChange, defaultHeight = DE
 // ── Element view + handles ───────────────────────────────────────────────────
 // Everything positioned here is inline on purpose: x, y, w, h and rotation are
 // the design itself, not styling, and they are what gets serialised for print.
-function ElementView({ e, selected, editing, onMouseDown, onDoubleClick, onResizeStart, onRotateStart, onTextInput }: {
+function ElementView({ e, selected, editing, onPointerDown, onDoubleClick, onFocus, onResizeStart, onRotateStart, onTextInput }: {
   e: El; selected: boolean; editing: boolean;
-  onMouseDown: (ev: React.MouseEvent) => void; onDoubleClick: () => void;
-  onResizeStart: (ev: React.MouseEvent, e: El, sx: number, sy: number) => void;
-  onRotateStart: (ev: React.MouseEvent, e: El) => void;
+  onPointerDown: (ev: React.PointerEvent) => void; onDoubleClick: () => void;
+  onFocus: () => void;
+  onResizeStart: (ev: React.PointerEvent, e: El, sx: number, sy: number) => void;
+  onRotateStart: (ev: React.PointerEvent, e: El) => void;
   onTextInput: (html: string, contentH: number) => void;
 }) {
   const editRef = useRef<HTMLDivElement>(null);
@@ -803,6 +928,8 @@ function ElementView({ e, selected, editing, onMouseDown, onDoubleClick, onResiz
     position: 'absolute', left: e.x, top: e.y, width: e.w, height: e.h,
     transform: e.rot ? `rotate(${e.rot}deg)` : undefined, opacity: e.opacity,
     zIndex: e.z, boxSizing: 'border-box', cursor: editing ? 'text' : 'move',
+    // Otherwise a finger on the element scrolls the page instead of moving it.
+    touchAction: editing ? 'auto' : 'none',
     userSelect: editing ? 'text' : 'none', WebkitUserSelect: editing ? 'text' : 'none',
   };
 
@@ -845,7 +972,44 @@ function ElementView({ e, selected, editing, onMouseDown, onDoubleClick, onResiz
     Object.assign(shapeStyle, { background: e.fill, clipPath: CLIP[e.type] });
   }
 
-  const el = <div style={shapeStyle} onMouseDown={onMouseDown} onDoubleClick={onDoubleClick}>{inner}</div>;
+  /**
+   * Every element is reachable with a keyboard.
+   *
+   * The canvas was a mouse-only tool: nothing on it could be focused, so the
+   * arrow-key nudge, Delete, Ctrl+D and the whole inspector could only be
+   * reached after a click. Tab now walks the design in stacking order, Enter
+   * opens a text box for typing, and focus selects — which is what a click
+   * already did.
+   */
+  const describe =
+    e.type === 'text'
+      ? `Text: ${(e.ph ? '' : e.content.replace(/<[^>]*>/g, ' ')).trim().slice(0, 40) || 'empty'}`
+      : e.type === 'image'
+        ? 'Picture'
+        : `${e.type.charAt(0).toUpperCase()}${e.type.slice(1)} shape`;
+
+  const el = (
+    <div
+      style={shapeStyle}
+      onPointerDown={onPointerDown}
+      onDoubleClick={onDoubleClick}
+      tabIndex={editing ? -1 : 0}
+      role="button"
+      aria-label={describe}
+      aria-pressed={selected}
+      onFocus={onFocus}
+      onKeyDown={(ev) => {
+        if (editing) return;
+        if (ev.key === 'Enter' || ev.key === ' ') {
+          // Space would otherwise scroll the canvas out from under the element.
+          ev.preventDefault();
+          if (e.type === 'text') onDoubleClick();
+        }
+      }}
+    >
+      {inner}
+    </div>
+  );
 
   // Corner + side handles. sx/sy ∈ {-1,0,1}; 0 means that side handle only moves
   // one edge (leaves the other dimension fixed).
@@ -865,12 +1029,12 @@ function ElementView({ e, selected, editing, onMouseDown, onDoubleClick, onResiz
           style={{ left: e.x, top: e.y, width: e.w, height: e.h, transform: e.rot ? `rotate(${e.rot}deg)` : undefined }}
         >
           {handles.map(([sx, sy, cursor], i) => (
-            <div key={i} onMouseDown={(ev) => onResizeStart(ev, e, sx, sy)}
+            <div key={i} onPointerDown={(ev) => onResizeStart(ev, e, sx, sy)}
               className={styles['handle']}
               style={{ cursor, left: hpos(sx, e.w), top: hpos(sy, e.h) }} />
           ))}
           {/* rotate handle */}
-          <div onMouseDown={(ev) => onRotateStart(ev, e)} className={styles['rotateHandle']} style={{ left: e.w / 2 - 6 }} />
+          <div onPointerDown={(ev) => onRotateStart(ev, e)} className={styles['rotateHandle']} style={{ left: e.w / 2 - 6 }} />
           <div className={styles['rotateStem']} style={{ left: e.w / 2 }} />
         </div>
       )}
@@ -878,16 +1042,55 @@ function ElementView({ e, selected, editing, onMouseDown, onDoubleClick, onResiz
   );
 }
 
+/**
+ * What a number field is allowed to be.
+ *
+ * Dragging a corner has always stopped at MIN; typing into the inspector did
+ * not. A width of 0 made the element unselectable and unclickable — there was
+ * nothing left to grab — and a negative one inverted the box, so the design on
+ * screen and the design on paper disagreed. A font size of 0 did the same to a
+ * text box. Undo was the only way back, if you realised in time.
+ */
+const LIMITS: Record<string, [number, number]> = {
+  w: [MIN, 4000],
+  h: [MIN, 4000],
+  fontSize: [4, 400],
+  borderWidth: [0, 80],
+  radius: [0, 2000],
+  rot: [-360, 360],
+  iw: [1, 8000],
+  ih: [1, 8000],
+};
+
+const clampField = (key: string, n: number): number => {
+  const range = LIMITS[key];
+  if (!range) return n;
+  return Math.min(range[1], Math.max(range[0], n));
+};
+
 // ── Inspector ────────────────────────────────────────────────────────────────
-function Inspector({ e, onChange, onDelete, onFront, onBack, onDuplicate, onAlign }: {
+function Inspector({ e, onChange, onDelete, onFront, onBack, onDuplicate, onAlign, onHold, onRelease }: {
   e: El; onChange: (patch: Partial<El>) => void; onDelete: () => void;
   onFront: () => void; onBack: () => void; onDuplicate: () => void;
   onAlign: (how: 'left' | 'hcenter' | 'right' | 'top' | 'vcenter' | 'bottom') => void;
+  /** Hold the parent's serialise while a slider is being dragged; see holdEmit. */
+  onHold: () => void;
+  onRelease: () => void;
 }) {
+  /** Everything a slider needs so a drag costs one serialise, not sixty. */
+  const slider = {
+    onPointerDown: onHold,
+    onPointerUp: onRelease,
+    onPointerCancel: onRelease,
+    onKeyDown: onHold,
+    onKeyUp: onRelease,
+    onBlur: onRelease,
+  };
   const num = (label: string, key: keyof El, step = 1) => (
     <label className={styles['field']}><span className={styles['fLabel']}>{label}</span>
       <NumInput value={e[key] as number} step={step} className={styles['num']}
-        onCommit={(n) => onChange({ [key]: n } as any)} />
+        min={LIMITS[key as string]?.[0]} max={LIMITS[key as string]?.[1]}
+        onCommit={(n) => onChange({ [key]: clampField(key as string, n) } as any)} />
     </label>
   );
   const color = (label: string, key: keyof El) => (
@@ -904,7 +1107,7 @@ function Inspector({ e, onChange, onDelete, onFront, onBack, onDuplicate, onAlig
       <div className={styles['row']}>{num('W', 'w')}{num('H', 'h')}</div>
       <div className={styles['row']}>{num('Angle°', 'rot')}
         <label className={styles['field']}><span className={styles['fLabel']}>Opacity</span>
-          <input type="range" min={0.1} max={1} step={0.05} value={e.opacity}
+          <input type="range" min={0.1} max={1} step={0.05} value={e.opacity} {...slider}
             onChange={(ev) => onChange({ opacity: parseFloat(ev.target.value) })} className={styles['range']} />
         </label>
       </div>
@@ -961,7 +1164,7 @@ function Inspector({ e, onChange, onDelete, onFront, onBack, onDuplicate, onAlig
           <div className={styles['picture']}>
             <span className={styles['fLabel']}>Picture — resize the box to crop</span>
             <label className={styles['field']}><span className={styles['fLabel']}>Zoom {zoom}%</span>
-              <input type="range" min={100} max={400} step={1} value={Math.max(100, Math.min(400, zoom))}
+              <input type="range" min={100} max={400} step={1} value={Math.max(100, Math.min(400, zoom))} {...slider}
                 onChange={(ev) => { const f = parseInt(ev.target.value) / 100; onChange({ iw: e.w * f, ih: e.w * f * nar }); }} className={styles['range']} />
             </label>
             <div className={styles['row']}>{num('Crop X', 'ox')}{num('Crop Y', 'oy')}</div>
@@ -1015,14 +1218,15 @@ function TBtn({ children, onClick, label, disabled, pressed, expanded }: {
 // A number field that lets you actually TYPE a value — clear it, type digits,
 // paste — instead of the arrows driving a hard-controlled input. It commits any
 // valid number as you type and re-syncs to the real value when focus leaves.
-function NumInput({ value, onCommit, step = 1, className }: {
+function NumInput({ value, onCommit, step = 1, className, min, max }: {
   value: number; onCommit: (n: number) => void; step?: number; className?: string;
+  min?: number; max?: number;
 }) {
   const [text, setText] = useState(String(Math.round(value)));
   const [focused, setFocused] = useState(false);
   useEffect(() => { if (!focused) setText(String(Math.round(value))); }, [value, focused]);
   return (
-    <input type="number" step={step} value={text} className={className}
+    <input type="number" step={step} value={text} className={className} min={min} max={max}
       onFocus={(e) => { setFocused(true); e.currentTarget.select(); }}
       onChange={(e) => { setText(e.target.value); const n = parseFloat(e.target.value); if (!isNaN(n)) onCommit(n); }}
       onBlur={() => { setFocused(false); const n = parseFloat(text); if (!isNaN(n)) onCommit(n); }}
