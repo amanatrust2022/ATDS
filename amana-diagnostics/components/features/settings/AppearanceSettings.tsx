@@ -12,6 +12,8 @@ import {
   type ThemeChoice,
 } from '@/components/ui';
 
+import styles from './appearanceSettings.module.css';
+
 /**
  * Theme and density, where the user can find them.
  *
@@ -74,7 +76,7 @@ export function AppearanceSettings() {
         subtitle="Saved on this device, so each screen you work from can differ."
       />
       <CardBody>
-        <div style={{ display: 'grid', gap: 'var(--space-6)' }}>
+        <div className={styles.groups}>
           <FieldSet legend="Theme">
             {THEMES.map((option) => (
               <Radio
@@ -84,14 +86,8 @@ export function AppearanceSettings() {
                 checked={theme === option.value}
                 onChange={() => setTheme(option.value)}
                 label={
-                  <span
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: 'var(--space-2)',
-                    }}
-                  >
-                    <span aria-hidden="true" style={{ display: 'inline-flex' }}>
+                  <span className={styles.themeLabel}>
+                    <span aria-hidden="true" className={styles.themeIcon}>
                       {option.icon}
                     </span>
                     {option.label}
