@@ -3,7 +3,7 @@ import RequireRole from '@/components/RequireRole';
 
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/components/AuthProvider';
-import { useRouter, useParams } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import {
   fetchReferringFacilities, fetchReferringDoctors, fetchTestPrices, fetchCommissionReport,
 } from '@/lib/store';
@@ -12,16 +12,26 @@ import {
   RiArrowRightLine,
 } from '@remixicon/react';
 import Link from 'next/link';
+import { Alert, Card, Skeleton } from '@/components/ui';
+import { useShellSlot } from '@/components/shell/ShellSlot';
+
+import styles from './referrals.module.css';
 
 function ReferralsOverviewPage() {
   const { organization } = useAuth();
   const params = useParams();
   const slug = params?.slug as string;
-  const router = useRouter();
   const [stats, setStats] = useState({
     facilities: 0, doctors: 0, pricedTests: 0, totalCommission: 0, referralCount: 0,
   });
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  // The shell owns the page heading; the sentence under it is the screen's.
+  useShellSlot(
+    { subtitle: 'Manage your referral network, set test prices, and track commissions owed to referring doctors and facilities.' },
+    [],
+  );
 
   useEffect(() => {
     if (!organization?.id) return;
@@ -39,6 +49,12 @@ function ReferralsOverviewPage() {
         referralCount: commissions.length,
       });
       setLoading(false);
+    }).catch((err: unknown) => {
+      // Nothing used to catch this. The promise rejected into the void and the
+      // tiles sat on an em dash for ever, with no way to tell a network that
+      // had failed from a referral network that was simply empty.
+      setError((err as { message?: string })?.message || 'The connection could not be reached.');
+      setLoading(false);
     });
   }, [organization?.id]);
 
@@ -49,8 +65,7 @@ function ReferralsOverviewPage() {
       value: stats.facilities,
       unit: 'facilities',
       icon: <RiHospitalLine size={24} />,
-      color: 'var(--teal-600)',
-      bg: 'rgba(68,114,196,0.08)',
+      iconClass: styles.iconFacilities,
       path: `/${slug}/admin/referrals/facilities`,
     },
     {
@@ -59,8 +74,7 @@ function ReferralsOverviewPage() {
       value: stats.doctors,
       unit: 'doctors',
       icon: <RiUserHeartLine size={24} />,
-      color: '#7c3aed',
-      bg: 'rgba(124,58,237,0.08)',
+      iconClass: styles.iconDoctors,
       path: `/${slug}/admin/referrals/doctors`,
     },
     {
@@ -69,8 +83,7 @@ function ReferralsOverviewPage() {
       value: stats.pricedTests,
       unit: 'tests priced',
       icon: <RiPriceTag3Line size={24} />,
-      color: 'var(--gold)',
-      bg: 'rgba(201,151,58,0.08)',
+      iconClass: styles.iconPricing,
       path: `/${slug}/admin/referrals/pricing`,
     },
     {
@@ -79,59 +92,55 @@ function ReferralsOverviewPage() {
       value: `₦${stats.totalCommission.toLocaleString('en-NG', { minimumFractionDigits: 2 })}`,
       unit: 'total owed',
       icon: <RiMoneyDollarCircleLine size={24} />,
-      color: 'var(--green)',
-      bg: 'rgba(30,126,90,0.08)',
+      iconClass: styles.iconCommissions,
       path: `/${slug}/admin/referrals/commissions`,
     },
   ];
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--gray-50)' }}>
-      <div style={{ background: 'white', borderBottom: '1px solid var(--gray-200)', padding: '1.5rem 2rem', marginBottom: '2rem' }}>
-        <h1 style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--gray-900)', margin: '0 0 0.3rem' }}>
-          Referrals & Pricing
-        </h1>
-        <p style={{ color: 'var(--gray-500)', fontSize: '0.85rem', margin: 0 }}>
-          Manage your referral network, set test prices, and track commissions owed to referring doctors and facilities.
-        </p>
-      </div>
+    <div className={styles.page}>
+      {error && (
+        <Alert tone="critical" title="The referral figures could not be loaded" live>
+          {error} The four areas below are still open — only their counts are missing.
+        </Alert>
+      )}
 
-      <div style={{ padding: '0 2rem 2rem', maxWidth: 1100, margin: '0 auto' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.25rem' }}>
-          {cards.map(c => (
-            <Link key={c.path} href={c.path} style={{ textDecoration: 'none' }}>
-              <div style={{
-                background: 'white', border: '1px solid var(--gray-200)', padding: '1.5rem',
-                cursor: 'pointer', transition: 'transform 0.15s, box-shadow 0.15s',
-                display: 'flex', flexDirection: 'column', gap: '1rem',
-              }}
-                onMouseOver={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)'; (e.currentTarget as HTMLElement).style.boxShadow = '0 8px 24px rgba(0,0,0,0.10)'; }}
-                onMouseOut={e => { (e.currentTarget as HTMLElement).style.transform = ''; (e.currentTarget as HTMLElement).style.boxShadow = ''; }}
-              >
-                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-                  <div style={{ width: 44, height: 44, background: c.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', color: c.color }}>
-                    {c.icon}
-                  </div>
-                  <RiArrowRightLine size={18} color="var(--gray-300)" />
-                </div>
-                <div>
-                  <div style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--gray-400)', marginBottom: '0.25rem' }}>{c.title}</div>
-                  <div style={{ fontSize: '1.75rem', fontWeight: 800, color: c.color, lineHeight: 1 }}>
-                    {loading ? '—' : c.value}
-                  </div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--gray-500)', marginTop: '0.2rem' }}>{loading ? '…' : c.unit}</div>
-                </div>
-                <p style={{ fontSize: '0.78rem', color: 'var(--gray-500)', margin: 0 }}>{c.desc}</p>
-              </div>
-            </Link>
-          ))}
+      {loading && !error && (
+        <div role="status" aria-live="polite" aria-busy="true">
+          <span className="sr-only">Loading the referral figures…</span>
         </div>
+      )}
+
+      <div className={styles.grid}>
+        {cards.map(c => (
+          <Link key={c.path} href={c.path} className={styles.link}>
+            <Card raised className={styles.tile}>
+              <div className={styles.tileTop}>
+                <span className={`${styles.tileIcon} ${c.iconClass}`} aria-hidden="true">
+                  {c.icon}
+                </span>
+                <RiArrowRightLine size={18} className={styles.chevron} aria-hidden="true" />
+              </div>
+              <div>
+                <div className={styles.title}>{c.title}</div>
+                {loading && !error ? (
+                  <Skeleton width={90} height="1.75rem" />
+                ) : (
+                  <span className={styles.figure}>{error ? 'Unavailable' : c.value}</span>
+                )}
+                <div className={styles.unit}>{c.unit}</div>
+              </div>
+              <p className={styles.desc}>{c.desc}</p>
+            </Card>
+          </Link>
+        ))}
       </div>
     </div>
   );
 }
 
 /** Only these roles may open this screen — see components/RequireRole.tsx. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export default function GuardedReferralsOverviewPage(props: any) {
   return (
     <RequireRole allow={['admin']}>
