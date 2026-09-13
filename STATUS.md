@@ -17,8 +17,16 @@ type checking — the wallet ledger, 800 lines — is now checked like everythin
 else. Three real defects were hiding behind that exemption, including one that
 threw an error every single time the ledger was opened.
 
-**None of it has reached the clinic.** The live system is still running the
-version from **6 July 2026** (v1.2.20).
+**All of it is now released.** `v1.2.21` (13 September 2026) is the first
+desktop release since **v1.2.20** of 6 July 2026, and carries everything logged
+in [BUGFIXES.md](BUGFIXES.md) from 1 September onward. The on-premise hubs
+update themselves from Supabase Storage and picked it up on their next restart.
+
+One caveat on the desktop app: machines running v1.2.20 have the *old* updater
+address compiled into them — it pointed at a repository that has never held a
+release — so they will not update themselves to v1.2.21. They need v1.2.21
+installed by hand, once. From v1.2.21 onward the address is right and
+auto-update works.
 
 Three things need you, and they are at the bottom. Two of them are database
 changes that have been written but deliberately not applied.

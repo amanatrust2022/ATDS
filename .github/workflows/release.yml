@@ -203,11 +203,11 @@ jobs:
           tag_name: ${{ steps.version.outputs.TAG }}
           name: "DiagnosticOS v${{ steps.version.outputs.VERSION }}"
           body: |
-            ## DiagnosticOS v${{ steps.version.outputs.VERSION }}
+            ## Redian v${{ steps.version.outputs.VERSION }}
 
             ### Installation
-            - **Windows (recommended):** Download and run `DiagnosticOS_${{ steps.version.outputs.VERSION }}_x64-setup.exe`
-            - **Windows MSI:** Download and run the `.msi` package
+            - **Windows (recommended):** Download and run `Redian_${{ steps.version.outputs.VERSION }}_x64-setup.exe`
+            - **Windows MSI:** Download and run `Redian_${{ steps.version.outputs.VERSION }}_x64_en-US.msi`
 
             ### What's New
             See commit history for details.

@@ -5,24 +5,37 @@ This document outlines the step-by-step release process for **DiagnosticOS** aft
 ---
 
 ## 1. Version Bumping
-Before committing your changes, you must increment the version number to trigger the auto-updater and build unique installer packages. Update the version (e.g. `1.2.20`) in these **4 key files**:
+Before committing your changes, increment the version number: it is what triggers
+the auto-updater and what names the installer packages. **Two files**, and they
+must agree — `package.json` names the artifacts, `tauri.conf.json` is what an
+installed app reports as its own version, and an updater offered a version it
+already has will refuse the update.
 
 1. **`amana-diagnostics/package.json`**:
    ```json
-   "version": "1.2.20"
+   "version": "1.2.21"
    ```
 2. **`amana-diagnostics/src-tauri/tauri.conf.json`**:
    ```json
-   "version": "1.2.20"
+   "version": "1.2.21"
    ```
-3. **`amana-diagnostics/app/download/page.tsx`**:
-   ```typescript
-   const CURRENT_VERSION = '1.2.20';
-   ```
-4. **`amana-diagnostics/app/login/page.tsx`** (Version badge next to logo):
-   ```tsx
-   <span style={{ ... }}>v1.2.20</span>
-   ```
+
+Then `npm install --package-lock-only` so `package-lock.json` agrees, or `npm ci`
+fails on the runner before anything is built.
+
+This used to list four files: the download page and the sign-in badge each had
+the version typed into them by hand. Both now read it from `package.json`
+(`import pkg from '@/package.json'`), so there is nothing to keep in step and
+nothing to forget — the download link cannot name a build that was never made.
+
+### Where releases go
+`release.yml` publishes to **`amanatrust2022/amana-releases`**, which is where
+every build from v1.2.10 onward lives. Two things have to keep pointing there,
+and both were pointing at a repository that had never received a release:
+
+- `src-tauri/tauri.conf.json` → `plugins.updater.endpoints` — compiled into the
+  app, so a wrong value here is only fixed by a manual reinstall.
+- `app/download/DownloadScreen.tsx` → `RELEASES` — the download buttons.
 
 ---
 
@@ -35,10 +48,10 @@ Run the following commands in the root of the repository:
 git add .
 
 # 2. Commit the changes
-git commit -m "Brief summary of features/fixes. Bump version to 1.2.20"
+git commit -m "Brief summary of features/fixes. Bump version to 1.2.21"
 
 # 3. Create the local release tag
-git tag v1.2.20
+git tag v1.2.21
 
 # 4. Push the code and tags to GitHub
 git push origin main --tags
