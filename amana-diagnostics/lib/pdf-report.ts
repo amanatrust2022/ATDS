@@ -4,8 +4,8 @@
  */
 
 import type { Patient, PatientTest } from './store';
-import type { OrgForTemplate } from './templates';
-import { deserializeRadiologyResults } from './radiology-templates';
+import { flagColour, type OrgForTemplate } from './templates';
+import { deserializeRadiologyResults, stripImpressionHeading } from './radiology-templates';
 import { SUPPORT_EMAIL, FALLBACK_ORG_NAME } from '@/lib/branding';
 import { letterheadFor } from './letterhead';
 
@@ -289,7 +289,7 @@ export function buildReportPdfDefinition(
                     text: `${r.result}${r.flag ? ` (${r.flag})` : ''}`,
                     style: 'tableCell',
                     bold: true,
-                    color: r.flag === 'H' ? '#c0392b' : r.flag === 'L' ? '#1a6aaf' : '#000',
+                    color: flagColour(r.flag),
                   },
                   { text: r.unit || '—', style: 'tableCell', color: '#555' },
                   { text: r.range || '—', style: 'tableCell', color: '#555' },
@@ -339,7 +339,9 @@ export function buildReportPdfDefinition(
               [{
                 stack: [
                   { text: 'IMPRESSION / CONCLUSION:', bold: true, color: '#0563c1', fontSize: 10, margin: [0, 0, 0, 4] },
-                  ...parseHtmlToPdfmake(radData.impression)
+                  // The section already says the word; the stored text must not
+                  // say it again directly underneath. See stripImpressionHeading.
+                  ...parseHtmlToPdfmake(stripImpressionHeading(radData.impression))
                 ],
                 margin: [8, 8, 8, 8],
                 fillColor: '#f8fafc'
@@ -608,7 +610,7 @@ export function buildReportPdfDefinition(
                   text: `${r.result}${r.flag ? ` (${r.flag})` : ''}`,
                   style: 'tableCell',
                   bold: true,
-                  color: r.flag === 'H' ? '#c0392b' : r.flag === 'L' ? '#1a6aaf' : '#000',
+                  color: flagColour(r.flag),
                 },
                 { text: r.unit || '—', style: 'tableCell', color: '#555' },
                 { text: r.range || '—', style: 'tableCell', color: '#555' },

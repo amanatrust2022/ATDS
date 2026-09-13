@@ -92,9 +92,10 @@ export function StatusPill({
  * carries a release interlock. Keeping them separate in the type stops the
  * two being conflated at the call site.
  */
-export type ResultFlagValue = '' | 'H' | 'L' | 'HH' | 'LL';
+export type ResultFlagValue = '' | 'N' | 'H' | 'L' | 'HH' | 'LL';
 
 const FLAG_TEXT: Record<Exclude<ResultFlagValue, ''>, { mark: string; word: string }> = {
+  N: { mark: 'N', word: 'Normal' },
   H: { mark: 'H', word: 'High' },
   L: { mark: 'L', word: 'Low' },
   HH: { mark: 'HH', word: 'Critical high' },
@@ -110,11 +111,14 @@ export function ResultFlag({
   value: ResultFlagValue;
   compact?: boolean;
 }) {
+  // An empty flag is not a normal result — it is the absence of a judgement,
+  // which is what a parameter with no readable reference range has. Saying
+  // "within reference range" there was an assertion nothing had checked.
   if (!value) {
     return (
       <span className={[styles['flag'], styles['flagNormal']].join(' ')}>
         <span aria-hidden="true">&mdash;</span>
-        <span className="sr-only">Within reference range</span>
+        <span className="sr-only">Not flagged — no reference range to check against</span>
       </span>
     );
   }
@@ -123,9 +127,11 @@ export function ResultFlag({
   const critical = value === 'HH' || value === 'LL';
   const toneClass = critical
     ? styles['flagCritical']
-    : value === 'H'
-      ? styles['flagHigh']
-      : styles['flagLow'];
+    : value === 'N'
+      ? styles['flagNormal']
+      : value === 'H'
+        ? styles['flagHigh']
+        : styles['flagLow'];
 
   return (
     <span className={[styles['flag'], toneClass].join(' ')}>

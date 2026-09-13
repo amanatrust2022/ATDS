@@ -10,8 +10,8 @@ import { cleanLetterhead } from './sanitizeHtml';
 
 import { Patient, PatientTest, getTestById } from './store';
 import { patientDisplayName } from './store/patientName';
-import { deserializeRadiologyResults, convertTextToFormattedHtml } from './radiology-templates';
-import { buildDocCss, splitLetterhead } from './letterheadStyles';
+import { deserializeRadiologyResults, convertTextToFormattedHtml, stripImpressionHeading } from './radiology-templates';
+import { buildDocCss, splitLetterhead, letterheadHeight } from './letterheadStyles';
 import { SUPPORT_EMAIL, FALLBACK_ORG_NAME } from '@/lib/branding';
 import { letterheadFor } from './letterhead';
 
@@ -47,6 +47,39 @@ export type OrgForTemplate = {
  */
 export const specimenOf = (t: PatientTest): string =>
   t.specimen || getTestById(t.testId)?.specimen || '';
+
+/**
+ * Anything a person typed, on its way into a report.
+ *
+ * Results, units, reference ranges and comments were interpolated into the
+ * report's HTML raw. A technologist who wrote "Hb < 7.0 g/dL" in the comment
+ * box — an ordinary thing to write — produced `<` followed by text, which the
+ * browser reads as the start of a tag and swallows until the next `>`. The
+ * comment, and however much of the report followed it, disappeared from the
+ * printed page with nothing to show that anything was missing.
+ *
+ * Reference ranges are the same shape by nature: "< 200", "> 40", "<1:80".
+ */
+/**
+ * The ink a flagged result is printed in.
+ *
+ * The critical tiers used to fall through to plain black — the one result on
+ * the page that has to be seen from across a desk was the one that looked like
+ * every other. 'N' is deliberately black: normal is the baseline, not a
+ * highlight, and colouring it would drown the two that matter.
+ */
+export const flagColour = (flag: string | null | undefined): string => {
+  if (flag === 'H' || flag === 'HH') return '#c0392b';
+  if (flag === 'L' || flag === 'LL') return '#1a6aaf';
+  return '#000';
+};
+
+export const esc = (value: unknown): string =>
+  String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 export const getResultTemplate = (patient: Patient, completedTests: PatientTest[], org?: OrgForTemplate) => {
   const regDate = new Date(patient.registeredAt).toLocaleDateString('en-NG');
   const reportingDate = completedTests[0]?.completedAt ? new Date(completedTests[0].completedAt).toLocaleDateString('en-NG') : '—';
@@ -72,9 +105,25 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
   const cleanLetterheadHtml = cleanLetterhead(rawHeader);
   const cleanFooterHtml = rawFooter.trim() ? cleanLetterhead(rawFooter) : '';
   const cleanBgHtml = rawBg.trim() ? cleanLetterhead(rawBg) : '';
-  // Reserve bottom space on every page for the running footer.
-  const footerH = cleanFooterHtml ? parseFloat((/width:740px;height:(\d+(?:\.\d+)?)px/.exec(rawFooter) || [])[1] || '120') : 0;
-  const pageMarginBottom = cleanFooterHtml ? `${Math.round(footerH + 20)}px` : '15mm';
+  /**
+   * Room the running footer needs at the foot of every printed page.
+   *
+   * This used to be reserved by enlarging `@page margin-bottom`, which does not
+   * do what it looks like it does. In paged media a `position: fixed` element is
+   * placed against the *page area* — the box inside the page margins — so the
+   * footer sat at the bottom of the text column, not below it. Growing the page
+   * margin moved the bottom of the text column and the footer down together,
+   * and the report's own last lines still ran underneath the footer. The page
+   * simply got shorter for nothing.
+   *
+   * The room has to be taken out of the flow, which is what the repeating
+   * thead/tfoot spacers below do — the same mechanism the full-page background
+   * already used for its clear area. The footer then lands in a strip no text
+   * can reach.
+   */
+  const FOOTER_GAP = 12;
+  const footerH = cleanFooterHtml ? letterheadHeight(rawFooter, 120) : 0;
+  const footerReserve = cleanFooterHtml ? Math.round(footerH + FOOTER_GAP) : 0;
 
   const testSections = completedTests.map(t => {
     const isMcs = t.testId.toLowerCase().endsWith('_mcs') || t.testId.toLowerCase().includes('mcs') || t.testId.toLowerCase() === 'sfmcs' || t.testName.toLowerCase().includes('mcs') || t.testName.toLowerCase().includes('culture & sensitivity') || t.testName.toLowerCase().includes('culture and sensitivity');
@@ -110,29 +159,29 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
               <tbody>
                 <tr>
                   <td style="padding: 5px 8px; font-weight: bold; border: 1px solid #eee; width: 40%; font-size: 10pt;">Malaria Parasite:</td>
-                  <td style="padding: 5px 8px; border: 1px solid #eee; font-size: 10pt; font-weight: ${parasiteSeen === 'Seen' ? 'bold' : 'normal'}; color: ${parasiteSeen === 'Seen' ? '#c0392b' : '#000'}">${parasiteSeen.toUpperCase()}</td>
+                  <td style="padding: 5px 8px; border: 1px solid #eee; font-size: 10pt; font-weight: ${parasiteSeen === 'Seen' ? 'bold' : 'normal'}; color: ${parasiteSeen === 'Seen' ? '#c0392b' : '#000'}">${esc(parasiteSeen.toUpperCase())}</td>
                 </tr>
                 <tr>
                   <td style="padding: 5px 8px; font-weight: bold; border: 1px solid #eee; font-size: 10pt;">Density (Plus System):</td>
-                  <td style="padding: 5px 8px; border: 1px solid #eee; font-size: 10pt; font-weight: ${densityPlus !== 'Nil' ? 'bold' : 'normal'}; color: ${densityPlus !== 'Nil' ? '#c0392b' : '#000'}">${densityPlus}</td>
+                  <td style="padding: 5px 8px; border: 1px solid #eee; font-size: 10pt; font-weight: ${densityPlus !== 'Nil' ? 'bold' : 'normal'}; color: ${densityPlus !== 'Nil' ? '#c0392b' : '#000'}">${esc(densityPlus)}</td>
                 </tr>
                 <tr>
                   <td style="padding: 5px 8px; font-weight: bold; border: 1px solid #eee; font-size: 10pt;">Quantitative Count:</td>
-                  <td style="padding: 5px 8px; border: 1px solid #eee; font-size: 10pt; font-family: monospace;">${densityCount}</td>
+                  <td style="padding: 5px 8px; border: 1px solid #eee; font-size: 10pt; font-family: monospace;">${esc(densityCount)}</td>
                 </tr>
                 ${parasiteSeen === 'Seen' ? `
                 <tr>
                   <td style="padding: 5px 8px; font-weight: bold; border: 1px solid #eee; font-size: 10pt;">Species Isolated:</td>
-                  <td style="padding: 5px 8px; border: 1px solid #eee; font-size: 10pt; font-style: italic;">${species}</td>
+                  <td style="padding: 5px 8px; border: 1px solid #eee; font-size: 10pt; font-style: italic;">${esc(species)}</td>
                 </tr>
                 <tr>
                   <td style="padding: 5px 8px; font-weight: bold; border: 1px solid #eee; font-size: 10pt;">Parasite Stage:</td>
-                  <td style="padding: 5px 8px; border: 1px solid #eee; font-size: 10pt;">${stage}</td>
+                  <td style="padding: 5px 8px; border: 1px solid #eee; font-size: 10pt;">${esc(stage)}</td>
                 </tr>
                 ` : ''}
                 <tr>
                   <td style="padding: 5px 8px; font-weight: bold; border: 1px solid #eee; font-size: 10pt;">Blood Film / Comments:</td>
-                  <td style="padding: 5px 8px; border: 1px solid #eee; font-size: 10pt;">${comment}</td>
+                  <td style="padding: 5px 8px; border: 1px solid #eee; font-size: 10pt;">${esc(comment)}</td>
                 </tr>
               </tbody>
             </table>
@@ -209,12 +258,12 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
       if (extraResults.length > 0) {
         const rows = extraResults.map(r => `
           <tr style="border-bottom: 1px solid #eee;">
-            <td style="padding: 6px 8px; font-size: 10pt;">${r.parameter}</td>
-            <td style="padding: 6px 8px; font-weight: bold; font-size: 10pt; color:${r.flag === 'H' ? '#c0392b' : r.flag === 'L' ? '#1a6aaf' : '#000'}">
-              ${r.result}${r.flag ? ` (${r.flag})` : ''}
+            <td style="padding: 6px 8px; font-size: 10pt;">${esc(r.parameter)}</td>
+            <td style="padding: 6px 8px; font-weight: bold; font-size: 10pt; color:${flagColour(r.flag)}">
+              ${esc(r.result)}${r.flag ? ` (${esc(r.flag)})` : ''}
             </td>
-            <td style="padding: 6px 8px; font-size: 10pt; color: #555;">${r.unit || '—'}</td>
-            <td style="padding: 6px 8px; font-size: 10pt; color: #555;">${r.range || '—'}</td>
+            <td style="padding: 6px 8px; font-size: 10pt; color: #555;">${esc(r.unit) || '—'}</td>
+            <td style="padding: 6px 8px; font-size: 10pt; color: #555;">${esc(r.range) || '—'}</td>
           </tr>`).join('');
         extraHtml = `
           <div style="padding: 10px; border-top: 1px dashed #0563c1; page-break-inside: avoid;">
@@ -238,13 +287,13 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
 
       return `
         <div class="test-block mps-widal-block" style="page-break-inside: avoid; border: 1px solid #0563c1; margin-bottom: 12px;">
-          <div class="test-header" style="background: #0563c1; color: white; padding: 6px 10px; font-weight: bold; font-size: 11pt;">
-            ${t.testName}
+          <div class="test-header" style="background: #0563c1; color: white; padding: 6px 10px; font-weight: bold; font-size: 11pt; text-align: center;">
+            ${esc(t.testName)}
           </div>
           ${mpsHtml}
           ${widalHtml}
           ${extraHtml}
-          ${t.notes ? `<div class="notes" style="padding: 5px 8px; font-size: 9pt; background: #fffbe6; border-top: 1px solid #ddd; font-style: italic;"><b>Comment:</b> ${t.notes}</div>` : ''}
+          ${t.notes ? `<div class="notes" style="padding: 5px 8px; font-size: 9pt; background: #fffbe6; border-top: 1px solid #ddd; font-style: italic;"><b>Comment:</b> ${esc(t.notes)}</div>` : ''}
         </div>
       `;
     }
@@ -256,8 +305,8 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
            <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:15px; page-break-inside:avoid;">
              ${radData.images.map(img => `
                <div style="border:1px solid #ddd; padding:8px; background:white; text-align:center; page-break-inside:avoid;">
-                 <img src="${img}" style="max-width:100%; max-height:220px; object-fit:contain;" alt="Attached Scan" />
-                 <div style="font-size:8pt; color:#555; margin-top:5px; font-weight:bold;">${img.split('/').pop()?.replace(/_/g, ' ') || ''}</div>
+                 <img src="${esc(img)}" style="max-width:100%; max-height:220px; object-fit:contain;" alt="Attached Scan" />
+                 <div style="font-size:8pt; color:#555; margin-top:5px; font-weight:bold;">${esc(img.split('/').pop()?.replace(/_/g, ' ') || '')}</div>
                </div>
              `).join('')}
            </div>`
@@ -265,8 +314,8 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
 
       return `
         <div class="test-block radiology-block" style="border: none; margin-bottom: 24px;">
-          <div style="font-weight: bold; border-bottom: 2px solid #0563c1; margin-bottom: 12px; font-size: 12pt; color: #0563c1; text-transform: uppercase; padding-bottom: 4px;">
-            ${t.testName}
+          <div style="font-weight: bold; border-bottom: 2px solid #0563c1; margin-bottom: 12px; font-size: 12pt; color: #0563c1; text-transform: uppercase; padding-bottom: 4px; text-align: center;">
+            ${esc(t.testName)}
           </div>
           <div style="font-size: 11pt; line-height: 1.6; color: #000; text-align: justify; margin-bottom: 18px; font-family: 'Times New Roman', Times, serif;">
             ${convertTextToFormattedHtml(radData.findings)}
@@ -275,12 +324,12 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
             <div style="background: #f8fafc; border-left: 4px solid #0563c1; padding: 12px; margin-top: 15px; page-break-inside: avoid; font-family: 'Times New Roman', Times, serif;">
               <div style="font-weight: bold; color: #0563c1; font-size: 11pt; text-transform: uppercase; margin-bottom: 4px;">Impression / Conclusion:</div>
               <div style="font-size: 11pt; line-height: 1.5; font-weight: bold; color: #111827;">
-                ${convertTextToFormattedHtml(radData.impression)}
+                ${convertTextToFormattedHtml(stripImpressionHeading(radData.impression))}
               </div>
             </div>
           ` : ''}
           ${imageSection}
-          ${t.notes ? `<div class="notes" style="margin-top:15px; padding: 8px 12px; font-size: 10pt; background: #fffbe6; border: 1px solid #ffe58f; font-style: italic;"><b>Remarks:</b> ${t.notes}</div>` : ''}
+          ${t.notes ? `<div class="notes" style="margin-top:15px; padding: 8px 12px; font-size: 10pt; background: #fffbe6; border: 1px solid #ffe58f; font-style: italic;"><b>Remarks:</b> ${esc(t.notes)}</div>` : ''}
         </div>
       `;
     }
@@ -311,7 +360,7 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
           if (field === 'Appearance') appearance = val || '—';
         } else if (param.startsWith('Microscopy: ')) {
           const pName = param.replace('Microscopy: ', '');
-          microscopyRows.push(`<tr><td style="padding: 2px 4px; border: none; font-size: 10pt; font-weight: 600; width: 50%;">${pName}:</td><td style="padding: 2px 4px; border: none; font-size: 10pt;">${val || 'Nil'}</td></tr>`);
+          microscopyRows.push(`<tr><td style="padding: 2px 4px; border: none; font-size: 10pt; font-weight: 600; width: 50%;">${esc(pName)}:</td><td style="padding: 2px 4px; border: none; font-size: 10pt;">${esc(val) || 'Nil'}</td></tr>`);
         } else if (param.startsWith('Culture: ')) {
           const field = param.replace('Culture: ', '');
           if (field === 'Growth') growth = val || '—';
@@ -339,25 +388,25 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
       for (let i = 0; i < maxRows; i++) {
         sensitivityRows.push(`
           <tr>
-            <td style="padding: 4px 6px; font-size: 10pt; border-bottom: 1px solid #eee; border-right: 1px solid #eee; color: #1e7e5a; font-weight: 500;">${sensitiveList[i] || ''}</td>
-            <td style="padding: 4px 6px; font-size: 10pt; border-bottom: 1px solid #eee; border-right: 1px solid #eee; color: #d4850a; font-weight: 500;">${intermediateList[i] || ''}</td>
-            <td style="padding: 4px 6px; font-size: 10pt; border-bottom: 1px solid #eee; color: #c0392b; font-weight: 600;">${resistantList[i] || ''}</td>
+            <td style="padding: 4px 6px; font-size: 10pt; border-bottom: 1px solid #eee; border-right: 1px solid #eee; color: #1e7e5a; font-weight: 500;">${esc(sensitiveList[i] || '')}</td>
+            <td style="padding: 4px 6px; font-size: 10pt; border-bottom: 1px solid #eee; border-right: 1px solid #eee; color: #d4850a; font-weight: 500;">${esc(intermediateList[i] || '')}</td>
+            <td style="padding: 4px 6px; font-size: 10pt; border-bottom: 1px solid #eee; color: #c0392b; font-weight: 600;">${esc(resistantList[i] || '')}</td>
           </tr>
         `);
       }
 
       return `
         <div class="test-block mcs-block" style="page-break-inside: avoid; border: 1px solid #0563c1; margin-bottom: 12px;">
-          <div class="test-header" style="background: #0563c1; color: white; padding: 6px 10px; font-weight: bold; font-size: 11pt;">
-            ${t.testName}
+          <div class="test-header" style="background: #0563c1; color: white; padding: 6px 10px; font-weight: bold; font-size: 11pt; text-align: center;">
+            ${esc(t.testName)}
           </div>
           
           <div class="mcs-flex" style="display: flex; border-bottom: 1px solid #ddd;">
             <div class="mcs-border-right" style="flex: 1; padding: 8px; border-right: 1px solid #ddd;">
               <div style="font-weight: bold; border-bottom: 1px solid #ddd; margin-bottom: 5px; font-size: 10pt; color: #0563c1; text-transform: uppercase;">Macroscopy</div>
               <table style="width: 100%; margin-top: 0; border: none; border-collapse: collapse;">
-                <tr style="border: none;"><td style="padding: 2px 4px; font-weight: 600; border: none; font-size: 10pt; width: 50%;">Colour:</td><td style="padding: 2px 4px; border: none; font-size: 10pt;">${colour}</td></tr>
-                <tr style="border: none;"><td style="padding: 2px 4px; font-weight: 600; border: none; font-size: 10pt;">Appearance:</td><td style="padding: 2px 4px; border: none; font-size: 10pt;">${appearance}</td></tr>
+                <tr style="border: none;"><td style="padding: 2px 4px; font-weight: 600; border: none; font-size: 10pt; width: 50%;">Colour:</td><td style="padding: 2px 4px; border: none; font-size: 10pt;">${esc(colour)}</td></tr>
+                <tr style="border: none;"><td style="padding: 2px 4px; font-weight: 600; border: none; font-size: 10pt;">Appearance:</td><td style="padding: 2px 4px; border: none; font-size: 10pt;">${esc(appearance)}</td></tr>
               </table>
             </div>
             <div style="flex: 1; padding: 8px;">
@@ -375,20 +424,20 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
             <table style="width: 100%; margin-top: 0; border: none; border-collapse: collapse;">
               <tr style="border: none;">
                 <td style="padding: 2px 4px; font-weight: 600; border: none; font-size: 10pt; width: 15%;">Growth:</td>
-                <td style="padding: 2px 4px; border: none; font-size: 10pt; width: 25%;">${growth}</td>
+                <td style="padding: 2px 4px; border: none; font-size: 10pt; width: 25%;">${esc(growth)}</td>
                 ${!isNoGrowth ? `
                   <td style="padding: 2px 4px; font-weight: 600; border: none; font-size: 10pt; width: 15%;">Organism:</td>
-                  <td style="padding: 2px 4px; border: none; font-size: 10pt; font-style: italic; width: 25%;">${organism}</td>
+                  <td style="padding: 2px 4px; border: none; font-size: 10pt; font-style: italic; width: 25%;">${esc(organism)}</td>
                   <td style="padding: 2px 4px; font-weight: 600; border: none; font-size: 10pt; width: 10%;">Degree:</td>
-                  <td style="padding: 2px 4px; border: none; font-size: 10pt; width: 10%;">${degree}</td>
+                  <td style="padding: 2px 4px; border: none; font-size: 10pt; width: 10%;">${esc(degree)}</td>
                 ` : '<td colSpan="4" style="border: none;"></td>'}
               </tr>
               ${!isNoGrowth ? `
                 <tr style="border: none;">
                   <td style="padding: 2px 4px; font-weight: 600; border: none; font-size: 10pt;">Reaction:</td>
-                  <td style="padding: 2px 4px; border: none; font-size: 10pt;">${gramReaction} (${shape})</td>
+                  <td style="padding: 2px 4px; border: none; font-size: 10pt;">${esc(gramReaction)} (${esc(shape)})</td>
                   <td style="padding: 2px 4px; font-weight: 600; border: none; font-size: 10pt;">Incubation:</td>
-                  <td style="padding: 2px 4px; border: none; font-size: 10pt;" colSpan="3">${incubationPeriod} @ ${incubationTemperature}</td>
+                  <td style="padding: 2px 4px; border: none; font-size: 10pt;" colSpan="3">${esc(incubationPeriod)} @ ${esc(incubationTemperature)}</td>
                 </tr>
               ` : ''}
             </table>
@@ -412,29 +461,29 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
             </div>
           ` : ''}
 
-          ${t.notes ? `<div class="notes" style="padding: 5px 8px; font-size: 9pt; background: #fffbe6; border-top: 1px solid #ddd; font-style: italic;"><b>Comment:</b> ${t.notes}</div>` : ''}
+          ${t.notes ? `<div class="notes" style="padding: 5px 8px; font-size: 9pt; background: #fffbe6; border-top: 1px solid #ddd; font-style: italic;"><b>Comment:</b> ${esc(t.notes)}</div>` : ''}
         </div>`;
     }
 
     const rows = (t.results || []).map(r => `
       <tr>
-        <td>${r.parameter}</td>
-        <td style="font-weight:bold; color:${r.flag === 'H' ? '#c0392b' : r.flag === 'L' ? '#1a6aaf' : '#000'}">
-          ${r.result}${r.flag ? ` (${r.flag})` : ''}
+        <td>${esc(r.parameter)}</td>
+        <td style="font-weight:bold; color:${flagColour(r.flag)}">
+          ${esc(r.result)}${r.flag ? ` (${esc(r.flag)})` : ''}
         </td>
-        <td>${r.unit || '—'}</td>
-        <td>${r.range || '—'}</td>
+        <td>${esc(r.unit) || '—'}</td>
+        <td>${esc(r.range) || '—'}</td>
       </tr>`).join('');
 
     return `
       <div class="test-block" style="page-break-inside: avoid;">
-        <div class="test-header">${t.testName}</div>
+        <div class="test-header">${esc(t.testName)}</div>
         ${t.results && t.results.length > 0 ? `
         <table>
           <thead><tr><th>Parameter</th><th>Result</th><th>Unit</th><th>Reference Range</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>` : ''}
-        ${t.notes ? `<div class="notes"><b>Comment:</b> ${t.notes}</div>` : ''}
+        ${t.notes ? `<div class="notes"><b>Comment:</b> ${esc(t.notes)}</div>` : ''}
       </div>`;
   }).join('');
 
@@ -451,27 +500,27 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
       ${org?.letterhead_html ? `
         <div class="custom-letterhead">${cleanLetterheadHtml}</div>
       ` : `
-        <div class="org-name-1">${orgName}</div>
-        ${orgLine2 ? `<div class="org-name-2">${orgLine2}</div>` : ''}
-        ${orgAddress ? `<div class="org-addr">${orgAddress}</div>` : ''}
-        ${orgPhone ? `<div class="org-contact"><b>Phone;</b> ${orgPhone}</div>` : ''}
-        ${orgEmail ? `<div class="org-email"><b>Email;</b> <span style="color:#0563c1">${orgEmail}</span></div>` : ''}
+        <div class="org-name-1">${esc(orgName)}</div>
+        ${orgLine2 ? `<div class="org-name-2">${esc(orgLine2)}</div>` : ''}
+        ${orgAddress ? `<div class="org-addr">${esc(orgAddress)}</div>` : ''}
+        ${orgPhone ? `<div class="org-contact"><b>Phone;</b> ${esc(orgPhone)}</div>` : ''}
+        ${orgEmail ? `<div class="org-email"><b>Email;</b> <span style="color:#0563c1">${esc(orgEmail)}</span></div>` : ''}
       `}
     </div>
     <div class="report-title">${reportTitle}</div>
     <div class="patient-info">
-      <div><span class="pi-label">Patient Name;</span> ${patientDisplayName(patient)}</div>
-      <div><span class="pi-label">Patient ID;</span> ${patient.slipNumber}</div>
+      <div><span class="pi-label">Patient Name;</span> ${esc(patientDisplayName(patient))}</div>
+      <div><span class="pi-label">Patient ID;</span> ${esc(patient.slipNumber)}</div>
       <div>
-        <span style="margin-right: 30px;"><span class="pi-label">Age;</span> ${patient.age}</span>
-        <span><span class="pi-label">Requested Date;</span> ${regDate}</span>
+        <span style="margin-right: 30px;"><span class="pi-label">Age;</span> ${esc(patient.age)}</span>
+        <span><span class="pi-label">Requested Date;</span> ${esc(regDate)}</span>
       </div>
       <div>
-        <span style="margin-right: 30px;"><span class="pi-label">Sex;</span> ${patient.sex}</span>
-        <span><span class="pi-label">Reporting Date;</span> ${reportingDate}</span>
+        <span style="margin-right: 30px;"><span class="pi-label">Sex;</span> ${esc(patient.sex)}</span>
+        <span><span class="pi-label">Reporting Date;</span> ${esc(reportingDate)}</span>
       </div>
-      <div><span class="pi-label">Investigation(s);</span> ${investigationList}</div>
-      <div><span class="pi-label">Specimen(s);</span> ${specimens}</div>
+      <div><span class="pi-label">Investigation(s);</span> ${esc(investigationList)}</div>
+      <div><span class="pi-label">Specimen(s);</span> ${esc(specimens)}</div>
     </div>
     ${testSections}
     <div style="text-align:center; margin-top:20px; margin-bottom:16px; font-weight:bold; text-transform:uppercase; font-size:10pt; color:#000;">
@@ -480,25 +529,32 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
     <div class="sig-section">
       <div class="sig-box">
         ${completedTests[0]?.completedBySignatureUrl
-          ? `<div style="margin-bottom:6px; text-align:center;">
-               <img src="${completedTests[0].completedBySignatureUrl}" style="max-height:55px; max-width:160px; object-fit:contain; display:block; margin:0 auto;" alt="Signature" />
+          ? `<div style="margin-bottom:6px;">
+               <img src="${esc(completedTests[0].completedBySignatureUrl)}" style="max-height:55px; max-width:160px; object-fit:contain; display:block; margin:0;" alt="Signature" />
              </div>`
           : '<div style="height:55px;"></div>'
         }
-        <div class="sig-line">${completedTests[0]?.completedBy || 'Authorised Professional'}</div>
+        <div class="sig-line">${esc(completedTests[0]?.completedBy) || 'Authorised Professional'}</div>
+        ${completedTests[0]?.completedByTitle ? `<div class="sig-title">${esc(completedTests[0].completedByTitle)}</div>` : ''}
       </div>
     </div>`;
 
-  const reportBlock = cleanBgHtml
+  // Room to keep clear on every page: the background's own header/footer zones,
+  // and the strip the running footer prints into. Whichever is larger wins —
+  // they occupy the same space.
+  const topReserve = cleanBgHtml ? Math.max(0, Math.round(bgTop)) : 0;
+  const bottomReserve = Math.max(cleanBgHtml ? Math.round(bgBottom) : 0, footerReserve);
+
+  const reportBlock = topReserve || bottomReserve
     ? `<table class="report-frame">
-         <thead><tr><td><div style="height:${bgTop}px"></div></td></tr></thead>
-         <tfoot><tr><td><div style="height:${bgBottom}px"></div></td></tr></tfoot>
+         ${topReserve ? `<thead><tr><td><div style="height:${topReserve}px"></div></td></tr></thead>` : ''}
+         ${bottomReserve ? `<tfoot><tr><td><div style="height:${bottomReserve}px"></div></td></tr></tfoot>` : ''}
          <tbody><tr><td>${reportInner}</td></tr></tbody>
        </table>`
     : `<div class="report-body">${reportInner}</div>`;
 
   return `
-    <!DOCTYPE html><html><head><title>Result - ${patient.slipNumber}</title>
+    <!DOCTYPE html><html><head><title>Result - ${esc(patient.slipNumber)}</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <style>
       body { font-family: 'Times New Roman', Times, serif; margin: 0; padding: 20px; font-size: 11pt; color: #000; }
@@ -506,8 +562,13 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
         body { min-width: 750px; }
       }
       @page {
-        margin-top: 20mm;
-        margin-bottom: ${pageMarginBottom};
+        /* With a full-page background every page has to have the same geometry,
+           or the fixed frame lands 20mm lower on page two than on page one and
+           the border printed round the report stops lining up with the paper.
+           The clear area at the top of each page comes from the repeating
+           spacer row instead, which is in the flow and therefore honest. */
+        margin-top: ${cleanBgHtml ? '0' : '20mm'};
+        margin-bottom: 15mm;
         margin-left: 20px;
         margin-right: 20px;
       }
@@ -580,14 +641,25 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
       .patient-info { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; font-size: 12pt; border: 1px solid #0563c1; padding: 12px; }
       .pi-label { font-weight: bold; margin-right: 8px; }
       .test-block { margin-bottom: 18px; border: 1px solid #ddd; }
-      .test-header { background: #0563c1; color: white; padding: 7px 12px; font-size: 11pt; font-weight: bold; }
+      /* The name of the investigation is the heading of its section, so it is
+         centred over the section it heads rather than tucked into the left
+         corner of the blue bar. Every investigation block uses this, including
+         the culture and Widal/MPs blocks that carry their own inline copy. */
+      .test-header { background: #0563c1; color: white; padding: 7px 12px; font-size: 11pt; font-weight: bold; text-align: center; }
       table { width: 100%; border-collapse: collapse; margin-top: 16px; }
       th { background: #0563c1; color: white; padding: 6px 8px; text-align: left; font-size: 11pt; }
       td { padding: 5px 8px; border-bottom: 1px solid #eee; font-size: 11pt; }
       .notes { padding: 6px 12px; font-size: 10pt; background: #fffbe6; border-top: 1px solid #eee; font-style: italic; }
-      .sig-section { margin-top: 24px; display: flex; justify-content: flex-end; }
-      .sig-box { text-align: center; width: 200px; }
+      /* The signature closes the report, at the extreme lower left of the last
+         page. It used to sit hard against the right margin, which on a report
+         carrying a full-page frame or a right-hand watermark put the person who
+         released the result on top of the letterhead's own artwork. Bottom left
+         is also where a signature is looked for on a clinical document.
+         page-break-inside keeps the name with the line above it. */
+      .sig-section { margin-top: 28px; display: flex; justify-content: flex-start; page-break-inside: avoid; }
+      .sig-box { text-align: left; width: 220px; }
       .sig-line { border-top: 1px solid #333; padding-top: 4px; font-size: 10pt; color: #333; }
+      .sig-title { font-size: 9pt; color: #555; padding-top: 2px; }
       
       /* Responsive styles */
       @media screen and (max-width: 600px) {

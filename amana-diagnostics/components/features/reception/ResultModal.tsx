@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { RiMailLine, RiPrinterLine } from '@remixicon/react';
 import type { Patient } from '@/lib/store';
 import { getResultTemplate, printHtml } from '@/lib/templates';
-import { useAuth } from '@/components/AuthProvider';
+import { jsonAuthHeaders } from '@/lib/authHeaders';
 import { useNotices } from '@/components/Notices';
 import { Button, Dialog } from '@/components/ui';
 import styles from './DocumentPreview.module.css';
@@ -34,7 +34,6 @@ export default function ResultModal({
   org?: any;
 }) {
   const { notify } = useNotices();
-  const { session } = useAuth();
   const completedTests = patient.tests.filter((t) => t.status === 'completed');
   const [sendingEmail, setSendingEmail] = useState(false);
   // Everything is included until the receptionist says otherwise.
@@ -72,13 +71,12 @@ export default function ResultModal({
     try {
       const res = await fetch('/api/send-result', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          // The route sends mail as the clinic, so it establishes who is asking.
-          ...(session?.access_token
-            ? { Authorization: `Bearer ${session.access_token}` }
-            : {}),
-        },
+        // The route sends mail as the clinic, so it establishes who is asking.
+        // Read live rather than from the auth context: the token held there is
+        // whatever arrived when the desk signed in, and a receptionist keeps
+        // this screen open all day. Once it expired, emailing a report failed
+        // with "Authentication required" until the page was reloaded.
+        headers: await jsonAuthHeaders(),
         body: JSON.stringify({ patient, completedTests: chosen, org }),
       });
 

@@ -128,7 +128,7 @@ export default function ParameterTable({ results, onUpdate, sex = 'unknown' }: P
       cellClassName: styles['flagCell'],
       render: (row, i) => {
         const suggested = derived[i] ?? null;
-        const effective = (row.flag || suggested || '') as Flag;
+        const effective = effectiveFlag(row, suggested);
         const overridden = row.flag !== '' && suggested !== null && row.flag !== suggested;
 
         return (
@@ -138,7 +138,7 @@ export default function ParameterTable({ results, onUpdate, sex = 'unknown' }: P
               <span className={styles['overrideNote']}>
                 set by hand
                 <span className="sr-only">
-                  , overriding the {suggested === '' ? 'in-range' : suggested} result
+                  , overriding the {suggested === 'N' ? 'normal' : suggested} result
                   derived from the reference range
                 </span>
               </span>
@@ -161,6 +161,12 @@ export default function ParameterTable({ results, onUpdate, sex = 'unknown' }: P
               className={styles['overrideSelect']}
             >
               <option value="">{suggested === null ? 'No range' : 'From range'}</option>
+              {/* Normal was missing. A parameter whose range the parser cannot
+                * read — a qualitative result, an age-dependent range, anything
+                * typed as free text — could be marked high or low and nothing
+                * else, so a technologist who wanted to say "this is normal" had
+                * no way to say it and the report showed no flag at all. */}
+              <option value="N">N — normal</option>
               <option value="H">H — high</option>
               <option value="L">L — low</option>
               <option value="HH">HH — critical high</option>
@@ -185,6 +191,36 @@ export default function ParameterTable({ results, onUpdate, sex = 'unknown' }: P
       }}
     />
   );
+}
+
+/**
+ * The flag a row actually carries: what the technologist set, or failing that
+ * what the reference range says, or nothing.
+ */
+export function effectiveFlag(row: EditableResult, suggested: Flag | null): Flag {
+  return (row.flag || suggested || '') as Flag;
+}
+
+/**
+ * The flags as they must be stored.
+ *
+ * The derived flag was a rendering detail: it appeared in the Flag column while
+ * the technologist worked, and then the row was saved with whatever the
+ * override dropdown held — which is nothing, unless someone had touched it. So
+ * a haemoglobin of 9.1 against a range of 12–16 showed "L — Low" on the bench
+ * and printed on the patient's report with no flag at all. What is seen is now
+ * what is stored, and what is stored is what prints.
+ *
+ * A row with no result is left alone: a blank line should not be asserted
+ * normal.
+ */
+export function resolveFlags<T extends EditableResult>(results: T[], sex: Sex = 'unknown'): T[] {
+  return results.map((row) => {
+    if (!String(row.result ?? '').trim()) return row;
+    const suggested = deriveFlag(row.result, row.range, { parameter: row.parameter, sex });
+    const flag = effectiveFlag(row, suggested);
+    return flag === row.flag ? row : { ...row, flag };
+  });
 }
 
 /**

@@ -94,12 +94,37 @@ export default function ReceptionPage() {
       // The queue wants the window the user has chosen. That filter used to run
       // in the browser, after downloading every patient the centre had ever
       // registered.
-      const [data, profiles, accs, charges] = await Promise.all([
-        fetchPatients(organization.id, { since: windowStartIso(dateFilter) }),
+      const windowStart = windowStartIso(dateFilter);
+      const [registered, profiles, accs, charges, released] = await Promise.all([
+        fetchPatients(organization.id, { since: windowStart }),
         fetchPatientProfiles(organization.id),
         fetchBillingAccounts(organization.id),
         fetchExternalCharges(organization.id),
+        // The second question is the one the desk was never asking. A result
+        // entered today can belong to a visit registered last week, and the
+        // bench tells the technologist it has been "sent to reception" either
+        // way. Bounded by registration date alone, that result arrived in a
+        // list reception could not see. Asked by completion date, it arrives.
+        fetchPatients(organization.id, { completedSince: windowStart }),
       ]);
+
+      // `completedSince` is an inner join on the tests, so those rows carry
+      // only the completed tests. Any patient it finds who is not already in
+      // the window is re-read whole, so the card still shows the rest of the
+      // visit rather than a half of it.
+      const known = new Set(registered.map((p) => String(p.id)));
+      const missingIds = released
+        .map((p) => p.id)
+        .filter((id) => id != null && !known.has(String(id)));
+      const alsoReady = missingIds.length
+        ? await fetchPatients(organization.id, { ids: missingIds })
+        : [];
+
+      const data = [...registered, ...alsoReady].sort(
+        (a, b) =>
+          new Date(b.registeredAt || 0).getTime() -
+          new Date(a.registeredAt || 0).getTime(),
+      );
 
       // The wallet table shows one thing about a patient — the owner's name —
       // so it fetches the owners, not everybody ever charged to a wallet. That

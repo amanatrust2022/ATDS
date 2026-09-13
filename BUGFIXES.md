@@ -13,6 +13,299 @@ Two conventions:
 
 ---
 
+## 2026-09-12
+
+Two faults reported from the clinic, and everything found reading the code
+around them. The two reports — "communication sent from lab to reception
+disappears" and "managing staff throws *authentication required*" — each turned
+out to be one line; the rest of this section is what an audit of the letterhead
+editor, the printed report, the lab result form and the radiology templates
+turned up on the way.
+
+Released: **no**, for every entry in this section.
+
+### A result released today never reached reception if the visit was older
+`E-01`. Released: no.
+
+The bench enters a result, is told **"result sent to reception ✓"**, and the
+result never appears in reception's **Results ready**. Nothing on either screen
+says why. It happens whenever the specimen was registered on an earlier day than
+the one it is reported on — an afternoon culture read the next morning, an
+outstanding test finished on Monday, anything held overnight.
+
+Reception asked the database one question: *which patients were registered
+inside the chosen date window*. That is the wrong question for a results list. A
+result belongs to the day it was **released**, not the day the patient walked
+in, so a report finished today for Friday's visit landed in a list that only
+admits today's registrations. The bench's own screen had this right already —
+it asks for work `completedSince` a moment — and the two had quietly disagreed
+for as long as both have existed.
+
+Reception now asks both questions and merges the answers
+(`components/ReceptionPage.tsx`), and `selectCompletedPatients` decides
+membership by `completedAt` rather than `registeredAt`
+(`lib/store/useQueueStore.ts`). A patient found only by the second question is
+re-read whole, so the card still shows the rest of the visit.
+
+**Guard:** `useQueueStore.test.ts` — a result released today for a visit
+registered six days ago appears under "Today"; an old result on a visit
+registered today does not.
+
+### The Results tab silently applied the department filter it does not show
+`E-02`. Released: no.
+
+A receptionist narrows the queue to **Radiology**, moves to **Results ready** to
+print a blood count, and sees an empty list. The department control is hidden on
+that tab — deliberately, a report is a report — but the filter was still being
+applied, so there was no control on screen to explain the emptiness and nothing
+to switch back.
+
+`ResultsTab` now passes `'all'` (`components/features/queue/ResultsTab.tsx`).
+The list matches the filters visible above it.
+
+### Every attempt to change a colleague's role failed with "Authentication required"
+`E-03`. Released: no.
+
+An administrator changes someone's role, or removes them from the workspace, and
+gets **"Authentication required"** every time. Nothing on the staff screen works.
+
+`/api/staff/update` holds the Supabase service-role key, which bypasses every
+row-level-security rule in the database, so it was correctly gated behind
+`requireAdmin`. The guard went in; the two call sites did not. Both posted with
+nothing but a `Content-Type`, so the request was refused before it was read.
+
+Both now send the administrator's bearer token (`lib/authHeaders.ts`,
+`app/[slug]/admin/staff/StaffScreen.tsx`), read live from the Supabase client
+rather than from React state — an access token is short-lived, and a screen open
+since the morning held an expired one. On a hub with no cloud session there is
+no token and never will be, so the cloud call is skipped rather than made and
+then reported as a failure over a local write that succeeded.
+
+`ResultModal` emailed reports through the same kind of stale token; it reads live
+now too.
+
+**Guard:** `StaffScreen.test.tsx` asserts an `Authorization: Bearer` header on
+both the role change and the removal.
+
+### A "<" typed into a comment deleted the rest of the report
+`E-04`. Released: no.
+
+A technologist writes `Hb < 7.0 g/dL and falling` in the comment box. The browser
+reads `<` as the start of a tag and swallows everything up to the next `>`, so
+the comment — and however much of the report followed it — vanished from the
+printed page, with nothing to show that anything was missing. Reference ranges
+are the same shape by nature: `< 200`, `> 40`, `<1:80`.
+
+Every value a person typed is now escaped on the way into the report
+(`esc` in `lib/templates.ts`): results, units, ranges, comments, names,
+specimens, organisms, antibiotics, the report title.
+
+**Guard:** `templates.test.ts` prints a comment containing `<` and asserts the
+signature block still follows it.
+
+### The running footer printed over the last lines of the report
+`E-05`. Released: no.
+
+A letterhead footer overlapped the body text at the foot of every page.
+
+The room for it was reserved by enlarging `@page margin-bottom`, which does not
+do what it looks like it does: in paged media a `position: fixed` element is
+placed against the *page area*, the box inside the page margins. Growing the
+margin moved the bottom of the text column and the footer down together, and the
+text still ran underneath. The page simply got shorter for nothing.
+
+The room is now taken out of the flow, by the repeating `tfoot` spacer the
+full-page background already used for its clear area, so the footer lands in a
+strip no text can reach. The footer's height is measured with
+`letterheadHeight` (`lib/letterheadStyles.ts`) instead of a regex matching one
+exact serialiser output — an imported or older footer used to fall back to a
+guess of 120px — and is capped, so a mis-measurement cannot hand half the page
+away.
+
+**Guard:** `templates.test.ts` asserts a 90px footer reserves 102px on every
+page, and that the page margin is back to 15mm.
+
+### A full-page letterhead frame sat 20mm lower on page two
+`E-06`. Released: no.
+
+The first page had no top margin so the letterhead could sit at the very top;
+every page after it had 20mm. The background is a fixed layer anchored to the
+page area, so it moved down with the margin and the printed frame stopped lining
+up with the paper from page two onwards.
+
+When a full-page background is in use every page now has the same geometry, and
+the clear area at the top comes from the repeating spacer row, which is in the
+flow and therefore honest.
+
+### The signature sat on the right margin; section headings sat in the corner
+`E-07`. Released: no.
+
+Requested, and right: the signature closes the report at the extreme lower left
+of the last page — where a signature is looked for on a clinical document, and
+clear of the right-hand watermark or frame a full-page letterhead often carries.
+It now also prints the releasing professional's title when there is one, and will
+not break across a page.
+
+The name of each investigation is the heading of its section, so it is centred
+over the section it heads rather than tucked into the left corner of the blue
+bar. Applied to the ordinary parameter block, the culture block, the Widal/MPs
+block and the radiology block.
+
+**Guard:** `templates.test.ts`.
+
+### The letterhead editor printed its own placeholder on every report
+`E-08`. Released: no.
+
+Add a text box, do not type into it, save: **"Double-click to edit"** was
+serialised into the letterhead and printed at the top of every report the clinic
+issued. The box is still kept — deleting it behind the designer's back would be
+worse — but it carries no words until someone types some.
+
+### A phone photograph of a letterhead became a five-megabyte database row
+`E-09`. Released: no.
+
+Every picture in a letterhead is base64 inside one HTML column, read back on
+every screen that renders a letterhead, embedded in every report printed,
+emailed and shown in the patient portal, and pushed through the offline sync.
+Nothing anywhere said no, and nothing said how big it had got.
+
+Imports and logos are now bounded to 1600px on their longest side and
+re-encoded (`MAX_IMAGE_PX` in `components/LetterheadDesigner.tsx`) — comfortably
+2× what the 740px canvas needs at print resolution. The settings screen shows the
+size once it passes 1.5 MB and refuses to save past 4 MB, naming what to do
+about it.
+
+### Everything else found in the letterhead editor
+`E-10`. Released: no.
+
+- **A picture the browser could not read did nothing at all.** No `onerror` on
+  either the file read or the decode: no element, no message, nothing to try
+  next. Logo picking now shares the one loader with the letterhead import, and
+  says so when it cannot use what it was given.
+- **`window.alert` on a failed import** — freezes the tab, cannot be styled or
+  logged, and the rest of this app stopped using it deliberately. It goes
+  through `Notices` like everything else.
+- **A width of 0 typed into the inspector made an element unselectable** and a
+  negative one inverted the box, so screen and paper disagreed. Dragging a
+  corner had always stopped at 8px; typing did not. Every numeric field is now
+  clamped to the same limits the drag uses.
+- **Dragging an opacity or zoom slider re-serialised the whole design on every
+  frame** — a megabyte of base64 rebuilt sixty times a second, which is what
+  made the canvas unusable the moment a real letterhead was imported. The
+  sliders hold the emit for the length of the drag, as a drag already did.
+- **There was no way out of a text box but the mouse.** Escape now leaves it.
+- **The canvas was mouse-only.** Nothing on it could be focused, so the
+  arrow-key nudge, Delete, Ctrl+D and the whole inspector were unreachable
+  without a click. Tab now walks the design in stacking order, Enter opens a
+  text box, and focus selects.
+- **Touch and pen did nothing.** The drag machinery listened for mouse events
+  only; it is on pointer events now, so the canvas works on a tablet.
+- **A drag that outlived the canvas threw** out of a window listener — a section
+  switch mid-drag took the settings screen down with it.
+- **"Remove footer" and "Remove background" threw a design away on one click**,
+  with no warning. Both ask first.
+- **The A4 preview was not showing what prints.** It drew the footer 6px from
+  the paper edge rather than at the foot of the page area, and let the sample
+  body run straight into it — the one thing it existed to show. It now reserves
+  the same strip the printer does and draws it.
+
+**Guard:** `LetterheadDesigner.test.tsx` covers the placeholder, the clamps and
+the keyboard reach.
+
+### The flag shown on the bench was not the flag that printed
+`E-11`. Released: no.
+
+The reference range has been read and the flag derived since the last overhaul —
+but only for the screen. The row was saved with whatever the override dropdown
+held, which is nothing unless someone touched it. A haemoglobin of 9.4 against a
+range of 12–16 read **"L — Low"** on the bench and printed on the patient's
+report with no flag at all.
+
+What is seen is now what is stored, and what is stored is what prints
+(`resolveFlags` in `components/features/department/ParameterTable.tsx`). A row
+with no result is left unflagged: a blank line is not normal.
+
+**Guard:** `DepartmentPage.test.tsx` asserts the derived `L` reaches the save
+payload.
+
+### There was no way to say a result was normal
+`E-12`. Released: no.
+
+Reported from the clinic: some investigations offer only **high** and **low**.
+
+An in-range result derived an empty string, and an empty string was also what a
+parameter whose range could not be read carried, and what an untouched dropdown
+held. Three different facts — *this is normal*, *nothing is known about this*,
+and *nobody has said* — wore the same value. So the Flag column on a panel with
+unparseable ranges could only ever show H or L, and a technologist who wanted to
+record "normal" had no way to record it.
+
+`'N'` is now a flag in its own right (`lib/clinical/referenceRange.ts`),
+offered in the override dropdown, shown in the Flag column and printed on the
+report. `''` asserts nothing, and the screen-reader text for it says so
+instead of claiming "within reference range". The critical tiers now print in
+red and blue like H and L, having previously fallen through to plain black —
+the one result on the page that has to be seen from across a desk looked like
+every other.
+
+### The comment box went out empty on almost every report
+`E-13`. Released: no.
+
+Requested. Writing the same sentence about the same panel forty times a day is
+the first thing a busy bench stops doing, and what is lost is not decoration:
+the comment is the only part of the report that says, in words, which values are
+outside their range and which of them matter now.
+
+The flags now write a draft into the comment box as results are entered
+(`lib/clinical/autoComment.ts`). The rule is narrow on purpose:
+
+- it reports what the flags say and nothing more — *"Haemoglobin 9.1 g/dL
+  (reference 12-16) is low."* is a reading of the reference range;
+  *"the patient is anaemic"* is a diagnosis, and this does not make diagnoses;
+- critical values lead, and carry the line about informing the requesting
+  clinician without delay;
+- a parameter with no readable reference range is **named as not assessed**,
+  never counted among the ones found to be normal;
+- it fills an empty box and nothing else. The moment the technologist types a
+  character of their own it is theirs, and the generated text is offered as a
+  button — *replace* or *append* — rather than substituted. Nothing marks the
+  comment as machine-written inside the text itself: that has no place on a
+  document a patient keeps.
+
+**Guard:** `autoComment.test.ts` (13 cases, including "offers no diagnosis") and
+two cases in `DepartmentPage.test.tsx`.
+
+### Radiology reports printed the word "IMPRESSION" twice
+`E-14`. Released: no.
+
+Reported. The impression prints inside a section headed **IMPRESSION /
+CONCLUSION:**, and almost every template's own text began with the same word —
+because that is how the impression is identified when a template is written or
+imported. The word came out on the report twice, one line under the other, on
+every scan report the centre issued.
+
+Once the keyword has done its job of finding the section, it is removed from the
+wording (`stripImpressionHeading` in `lib/radiology-templates.ts`). It is applied
+at every point a template becomes an impression, so it covers the built-ins, the
+custom ones, anything imported from a document, and anything added in future:
+
+- `splitTemplateContent`, where an imported report is cut in two;
+- applying a template on the radiology entry form, and the default template the
+  form pre-fills;
+- saving, importing or editing a custom template in the template manager, so the
+  stored copy is clean from then on;
+- and both report renderers, so results already saved with the duplicate print
+  correctly too.
+
+Only ever at the start of the text: a "conclusion" written inside a sentence is
+a word the radiologist chose, not a heading.
+
+**Guard:** `radiologyTemplates.test.ts` — the spellings in use, the HTML
+wrappers an imported template puts round the word, that no built-in template
+survives with a heading, and that the radiologist's own prose is untouched.
+
+---
+
 ## 2026-09-04
 
 Nine defects from the pre-migration audit, fixed together. All were found by

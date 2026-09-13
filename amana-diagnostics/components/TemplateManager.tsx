@@ -9,7 +9,7 @@ import {
   RadiologyTemplate, fetchCustomTemplates, addCustomTemplate, 
   updateCustomTemplate, deleteCustomTemplate 
 } from '@/lib/store';
-import { RADIOLOGY_TEMPLATES, convertTextToFormattedHtml, splitTemplateContent } from '@/lib/radiology-templates';
+import { RADIOLOGY_TEMPLATES, convertTextToFormattedHtml, splitTemplateContent, stripImpressionHeading } from '@/lib/radiology-templates';
 import dynamic from 'next/dynamic';
 const RichTextEditor = dynamic(() => import('./RichTextEditor'), { ssr: false });
 
@@ -113,7 +113,10 @@ export default function TemplateManager({
     setFormName(template.name);
     // Convert text templates to HTML if they are plain text
     setFormFindings(convertTextToFormattedHtml(template.findings));
-    setFormImpression(convertTextToFormattedHtml(template.impression));
+    // Templates saved before the impression heading was stripped still carry
+    // it; editing one is the moment to clean it, so it stops being printed
+    // twice on every report the template produces from here on.
+    setFormImpression(convertTextToFormattedHtml(stripImpressionHeading(template.impression)));
     setImportStatus(null);
   };
 
@@ -137,6 +140,10 @@ export default function TemplateManager({
     setSaving(true);
     
     const templateKey = editingTemplate?.key || formName.trim().toLowerCase().replace(/[^a-z0-9_]+/g, '_');
+    // Stored without its heading. The impression has a titled section of its own
+    // on the entry form and on the printed report; a template that carries the
+    // word as well prints it twice, one line under the other.
+    const impressionToStore = stripImpressionHeading(formImpression);
 
     try {
       if (editingTemplate?.id && !editingTemplate.id.startsWith('system_')) {
@@ -144,7 +151,7 @@ export default function TemplateManager({
           name: formName,
           key: templateKey,
           findings: formFindings,
-          impression: formImpression
+          impression: impressionToStore,
         });
       } else {
         await addCustomTemplate({
@@ -152,7 +159,7 @@ export default function TemplateManager({
           name: formName,
           key: templateKey,
           findings: formFindings,
-          impression: formImpression
+          impression: impressionToStore,
         }, userId);
       }
       
@@ -180,7 +187,9 @@ export default function TemplateManager({
 
     // Process using convertTextToFormattedHtml (strips colons, normalizes white spaces, bolds & capitalizes headers)
     const findingsHtml = convertTextToFormattedHtml(findings);
-    const impressionHtml = convertTextToFormattedHtml(impression);
+    // splitTemplateContent has already taken the heading off; this is the
+    // guard for a document whose heading survived the split some other way.
+    const impressionHtml = convertTextToFormattedHtml(stripImpressionHeading(impression));
 
     setFormName(prev => prev || cleanedName);
     setFormFindings(findingsHtml);

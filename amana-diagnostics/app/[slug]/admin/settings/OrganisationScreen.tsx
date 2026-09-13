@@ -2,6 +2,7 @@
 import RequireRole from '@/components/RequireRole';
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/components/AuthProvider';
+import { useNotices } from '@/components/Notices';
 import { createClient } from '@/lib/supabase';
 import { RiSave3Line, RiHospitalLine } from '@remixicon/react';
 import dynamic from 'next/dynamic';
@@ -65,8 +66,32 @@ function defaultLetterhead(org: {
 
 type Section = 'header' | 'footer' | 'fullpage';
 
+/**
+ * How big a letterhead may get.
+ *
+ * It is one HTML string in one column, and every picture in it is base64 inside
+ * that string. It is read back on every screen that renders a letterhead,
+ * embedded in every report printed and emailed, pushed through the offline
+ * sync, and shown in the patient portal. There was no limit and no indication
+ * of size at all: a clinic could import a phone photograph of its letterhead,
+ * save a five-megabyte row, and then find that saving failed, sync stalled, or
+ * result emails bounced — with nothing connecting any of that to what they did.
+ *
+ * The designer now bounds each picture (MAX_IMAGE_PX), so these are a backstop
+ * and, more usefully, a number on screen.
+ */
+const LETTERHEAD_WARN_BYTES = 1_500_000;
+const LETTERHEAD_MAX_BYTES = 4_000_000;
+
+const byteLength = (value: string) =>
+  typeof TextEncoder !== 'undefined' ? new TextEncoder().encode(value).length : value.length;
+
+const readableSize = (bytes: number) =>
+  bytes >= 1_000_000 ? `${(bytes / 1_000_000).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1000))} KB`;
+
 function OrganizationSettings() {
   const { organization, refreshOrg } = useAuth();
+  const { ask } = useNotices();
   const supabase = createClient();
 
   const [formData, setFormData] = useState({
@@ -122,6 +147,19 @@ function OrganizationSettings() {
       formData.letterheadHtml, formData.letterheadFooterHtml, formData.letterheadBgHtml,
       formData.letterheadBgTop, formData.letterheadBgBottom,
     );
+
+    const size = byteLength(combinedLetterhead);
+    if (size > LETTERHEAD_MAX_BYTES) {
+      setSaving(false);
+      setMessage({
+        text:
+          `This letterhead is ${readableSize(size)}, which is too large to store and would be ` +
+          'attached to every report the clinic prints and emails. Re-import the design as a ' +
+          'smaller picture, or remove the full-page background.',
+        type: 'error',
+      });
+      return;
+    }
 
     const cloudUpdates = {
       name: formData.name,
@@ -186,6 +224,13 @@ function OrganizationSettings() {
   const footerEmpty = !formData.letterheadFooterHtml.trim();
   const bgEmpty = !formData.letterheadBgHtml.trim();
 
+  const letterheadSize = byteLength(
+    combineLetterhead(
+      formData.letterheadHtml, formData.letterheadFooterHtml, formData.letterheadBgHtml,
+      formData.letterheadBgTop, formData.letterheadBgBottom,
+    ),
+  );
+
   const sections: { value: Section; label: string }[] = [
     { value: 'header', label: 'Header' },
     { value: 'footer', label: footerEmpty ? 'Footer (none yet)' : 'Footer' },
@@ -225,6 +270,14 @@ function OrganizationSettings() {
               bgTop={formData.letterheadBgTop}
               bgBottom={formData.letterheadBgBottom}
             />
+            {letterheadSize > LETTERHEAD_WARN_BYTES && (
+              <Alert tone="warning" title={`This letterhead is ${readableSize(letterheadSize)}`}>
+                It rides inside every report this clinic prints and emails, and through the
+                offline sync. Above {readableSize(LETTERHEAD_MAX_BYTES)} it will not save at all.
+                A smaller picture — or a designed letterhead rather than a scan — costs nothing
+                in print quality.
+              </Alert>
+            )}
           </div>
 
           <form onSubmit={handleSave} className={styles['form']}>
@@ -258,11 +311,17 @@ function OrganizationSettings() {
                   options={sections}
                   ariaLabel="Letterhead section"
                 />
+                {/* Both of these throw a design away. They used to do it on a
+                  * single click, with no warning and nothing on the page to say
+                  * what had just gone. */}
                 {section === 'footer' && !footerEmpty && (
                   <Button
                     intent="danger"
                     size="sm"
-                    onClick={() => setFormData({ ...formData, letterheadFooterHtml: '' })}
+                    onClick={async () => {
+                      if (!(await ask('Delete the footer design? This cannot be undone once the settings are saved.'))) return;
+                      setFormData((fd) => ({ ...fd, letterheadFooterHtml: '' }));
+                    }}
                   >
                     Remove footer
                   </Button>
@@ -271,7 +330,10 @@ function OrganizationSettings() {
                   <Button
                     intent="danger"
                     size="sm"
-                    onClick={() => setFormData({ ...formData, letterheadBgHtml: '' })}
+                    onClick={async () => {
+                      if (!(await ask('Delete the full-page background? This cannot be undone once the settings are saved.'))) return;
+                      setFormData((fd) => ({ ...fd, letterheadBgHtml: '' }));
+                    }}
                   >
                     Remove background
                   </Button>

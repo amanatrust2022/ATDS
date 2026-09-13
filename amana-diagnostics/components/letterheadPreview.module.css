@@ -76,3 +76,12 @@
   border: 1px solid var(--border-default);
   border-top: none;
 }
+
+/* The band at the foot of every page that the report is kept out of, so the
+ * running footer has somewhere to print. A draughtsman's mark, not paper. */
+.footerZone {
+  position: absolute;
+  pointer-events: none;
+  border-top: 1px dashed var(--border-strong);
+  background: color-mix(in srgb, var(--surface-sunken) 45%, transparent);
+}

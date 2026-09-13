@@ -120,3 +120,66 @@ describe('The letterhead designer', () => {
     expect(screen.getByTestId('out').textContent).not.toContain('data-type="text"');
   });
 });
+
+/**
+ * Defects found reading the canvas against what it produces. Each of these
+ * reached paper or reached the database.
+ */
+describe('what the canvas is allowed to emit', () => {
+  it('never prints its own placeholder prompt on a report', () => {
+    render(<Harness />);
+    fireEvent.click(screen.getByRole('button', { name: /^text box/i }));
+
+    const out = screen.getByTestId('out').textContent || '';
+    // The box is kept — deleting it behind the designer's back would be worse —
+    // but "Double-click to edit" is a prompt, not letterhead.
+    expect(out).toContain('data-type="text"');
+    expect(out).not.toContain('Double-click to edit');
+  });
+
+  it('will not accept a width of zero typed into the inspector', () => {
+    render(<Harness />);
+    fireEvent.click(screen.getByRole('button', { name: /^text box/i }));
+
+    const width = screen.getByRole('spinbutton', { name: /^w$/i });
+    fireEvent.change(width, { target: { value: '0' } });
+
+    // 8px is the same floor a corner drag has always stopped at. A zero-width
+    // element cannot be clicked, dragged or selected again.
+    expect(screen.getByTestId('out').textContent).toContain('width:8px');
+  });
+
+  it('will not accept a negative height either', () => {
+    render(<Harness />);
+    fireEvent.click(screen.getByRole('button', { name: /^rectangle/i }));
+
+    fireEvent.change(screen.getByRole('spinbutton', { name: /^h$/i }), { target: { value: '-40' } });
+    expect(screen.getByTestId('out').textContent).toContain('height:8px');
+  });
+});
+
+describe('reaching the canvas without a mouse', () => {
+  it('puts every element in the tab order, named by what it is', () => {
+    render(<Harness />);
+    fireEvent.click(screen.getByRole('button', { name: /^circle/i }));
+
+    const shape = screen.getByRole('button', { name: /circle shape/i });
+    expect(shape).toHaveAttribute('tabindex', '0');
+  });
+
+  it('selects an element when it is focused, so the inspector follows', () => {
+    render(<Harness />);
+    fireEvent.click(screen.getByRole('button', { name: /^text box/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^line$/i }));
+
+    // The line is selected after being added; focusing the text box takes over.
+    const text = screen.getByRole('button', { name: /^text:/i });
+    fireEvent.focus(text);
+    expect(text).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('names the canvas and says how to work it', () => {
+    render(<Harness />);
+    expect(screen.getByRole('group', { name: /letterhead canvas/i })).toBeInTheDocument();
+  });
+});

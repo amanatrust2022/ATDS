@@ -356,13 +356,49 @@ describe('Submitting a result', () => {
     expect(payload.completedBySignatureUrl).toBe('sig.png');
     expect(payload.completedByTitle).toBe('MLS');
     expect(payload.notes).toBe('Repeat in 2 weeks');
+    // The flag the bench was shown is the flag that is stored. It used to be
+    // derived for the screen and then dropped on save, so a haemoglobin of 9.4
+    // against 12-16 read "L — Low" on the bench and printed with no flag at all.
+    // A row with no result is left unflagged: a blank line is not normal.
     expect(payload.results).toEqual([
-      { parameter: 'Haemoglobin', result: '9.4', unit: 'g/dL', range: '12-16', flag: '' },
+      { parameter: 'Haemoglobin', result: '9.4', unit: 'g/dL', range: '12-16', flag: 'L' },
       { parameter: 'WBC', result: '', unit: '10^9/L', range: '4-11', flag: '' },
     ]);
 
     expect(await screen.findByText('"Full Blood Count" result sent to reception ✓')).toBeDefined();
     expect(screen.queryByText('Entering Results: Full Blood Count')).toBeNull();
+  });
+
+  /**
+   * The comment box went out empty on almost every report, because writing the
+   * same sentence forty times a day is the first thing a busy bench stops
+   * doing. The flags write a draft; the technologist owns it from the moment
+   * they touch it.
+   */
+  it('writes the comment from the flags as results are entered', async () => {
+    await openFbc();
+
+    fireEvent.change(screen.getAllByPlaceholderText('Enter result')[0], { target: { value: '9.4' } });
+
+    const box = screen.getByPlaceholderText(
+      'Additional clinical comments or interpretation...',
+    ) as HTMLTextAreaElement;
+    await waitFor(() => expect(box.value).toContain('Haemoglobin 9.4 g/dL (reference 12-16) is low.'));
+  });
+
+  it('does not touch a comment the technologist has written', async () => {
+    await openFbc();
+
+    const box = screen.getByPlaceholderText(
+      'Additional clinical comments or interpretation...',
+    ) as HTMLTextAreaElement;
+    fireEvent.change(box, { target: { value: 'Sample haemolysed; repeat requested.' } });
+    fireEvent.change(screen.getAllByPlaceholderText('Enter result')[0], { target: { value: '9.4' } });
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /replace with the comment from the flags/i })).toBeDefined(),
+    );
+    expect(box.value).toBe('Sample haemolysed; repeat requested.');
   });
 
   it('keeps the panel open and reports the reason when the save fails', async () => {

@@ -61,6 +61,61 @@ export const deserializeRadiologyResults = (results: any[]): RadiologyFormState 
   return state;
 };
 
+/**
+ * The words a report template uses to mark where its impression starts.
+ *
+ * They are how the impression is found. They are also, once it has been found,
+ * a duplicate: the impression has its own titled section on the report —
+ * "IMPRESSION / CONCLUSION:" — and on the entry form, so a template whose text
+ * began "IMPRESSION: The USS features are suggestive of…" printed the word
+ * twice, one line under the other, on every scan report the centre issued.
+ *
+ * Once the keyword has done its job of identifying the section, it is removed
+ * from the wording. Every built-in template, every custom one, and every
+ * imported document goes through this.
+ */
+const IMPRESSION_HEADINGS =
+  '(?:CLINICAL\\s+)?(?:IMPRESSIONS?|CONCLUSIONS?|SUMMARY|RECOMMENDATIONS?|FINAL\\s+IMPRESSIONS?)';
+
+/** The heading at the start of a run of plain text or HTML, with its punctuation. */
+const LEADING_HEADING = new RegExp(
+  // any opening tags and whitespace, then the word, then its colon or dash
+  `^((?:\\s|<[^>]+>)*?)${IMPRESSION_HEADINGS}\\s*[:\\-\u2013\u2014]?[ \\t]*`,
+  'i',
+);
+
+/** Inline wrappers left holding nothing once the heading is taken out. */
+const EMPTY_INLINE = /<(b|u|strong|em|i|span|font)\b[^>]*>(\s|&nbsp;)*<\/\1>/gi;
+const EMPTY_LEADING_BLOCK = /^(?:\s|<br\s*\/?>)*<(p|div|h[1-6])\b[^>]*>(?:\s|&nbsp;|<br\s*\/?>)*<\/\1>/i;
+
+/**
+ * Takes the impression heading off a piece of impression text.
+ *
+ * Only ever at the start: a "conclusion" written inside a sentence in the body
+ * of an impression is a word the radiologist chose, not a heading.
+ */
+export function stripImpressionHeading(text: string | null | undefined): string {
+  let out = (text ?? '').trim();
+  if (!out) return '';
+
+  const before = out;
+  out = out.replace(LEADING_HEADING, '$1');
+  if (out === before) return before;
+
+  // The heading may have been the entire contents of a <b><u>…</u></b>, and an
+  // empty pair of tags at the head of an impression renders as a stray blank
+  // line above the first sentence.
+  let previous = '';
+  while (previous !== out) {
+    previous = out;
+    out = out.replace(EMPTY_INLINE, '').replace(EMPTY_LEADING_BLOCK, '').trim();
+  }
+
+  // What is left may start with the punctuation that followed the heading.
+  out = out.replace(/^((?:\s|<[^>]+>)*?)[:\-\u2013\u2014]\s*/, '$1').trim();
+  return out;
+}
+
 export function splitTemplateContent(textOrHtml: string): { findings: string; impression: string } {
   if (!textOrHtml) return { findings: '', impression: '' };
 
@@ -100,7 +155,9 @@ export function splitTemplateContent(textOrHtml: string): { findings: string; im
 
     return {
       findings: findingsBlocks.join('').trim(),
-      impression: impressionBlocks.join('').trim()
+      // The keyword identified the section. Having done that, it goes: the
+      // section already has a heading everywhere it is shown or printed.
+      impression: stripImpressionHeading(impressionBlocks.join('')),
     };
   } else {
     let normalized = textOrHtml.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
@@ -134,7 +191,7 @@ export function splitTemplateContent(textOrHtml: string): { findings: string; im
 
     return {
       findings: findingsText,
-      impression: impressionText
+      impression: stripImpressionHeading(impressionText),
     };
   }
 }

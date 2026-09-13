@@ -11,6 +11,7 @@ import { Tabs, TabPanel } from '@/components/ui';
 import { useShellSlot } from '@/components/shell';
 import { printHtml } from '@/lib/templates';
 import { apiBase, reachableOrigin } from '@/lib/cloudOrigin';
+import { accessToken, jsonAuthHeaders } from '@/lib/authHeaders';
 import { orgName } from '@/lib/branding';
 import { buildStaffAuditHtml } from '@/lib/staffAudit';
 import {
@@ -295,22 +296,46 @@ function StaffManagement() {
     }
   };
 
+  /**
+   * Both staff actions go to `/api/staff/update`, which holds the service-role
+   * key and therefore demands an administrator's bearer token. Neither used to
+   * send one, so every role change and every removal returned
+   * "Authentication required" — the request was refused before it was read.
+   *
+   * On a hub with no cloud session there is no token to send and never will be;
+   * the local write below is the whole operation, so the cloud call is skipped
+   * rather than made and then reported as a failure.
+   */
+  const callStaffEndpoint = async (
+    body: Record<string, unknown>,
+    failure: string,
+  ): Promise<'ok' | 'skipped'> => {
+    const token = await accessToken();
+    if (!token) {
+      if (isLocalMode) return 'skipped';
+      throw new Error('Your session has expired. Sign in again to manage staff.');
+    }
+
+    const res = await fetch(`${apiBase()}/api/staff/update`, {
+      method: 'POST',
+      headers: await jsonAuthHeaders(),
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || failure);
+    }
+    return 'ok';
+  };
+
   const updateRole = async (id: string, role: string) => {
     try {
-      const apiEndpoint = `${apiBase()}/api/staff/update`;
-
-      const res = await fetch(apiEndpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'update_role', staffId: id, role })
-      });
-      
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || 'Failed to update role');
-      }
-      
-      showToast('Staff role updated successfully!');
+      const outcome = await callStaffEndpoint(
+        { action: 'update_role', staffId: id, role },
+        'Failed to update role',
+      );
+      if (outcome === 'ok') showToast('Staff role updated successfully!');
     } catch (err: any) {
       console.warn('Failed to update role:', err);
       showToast(err.message || 'Failed to update role in cloud.', 'error');
@@ -351,20 +376,11 @@ function StaffManagement() {
     if (!await ask(`Remove ${s.full_name || 'this staff member'} from the workspace?`)) return;
 
     try {
-      const apiEndpoint = `${apiBase()}/api/staff/update`;
-
-      const res = await fetch(apiEndpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'remove_staff', staffId: s.id })
-      });
-      
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || 'Failed to remove staff');
-      }
-      
-      showToast('Staff removed from workspace.');
+      const outcome = await callStaffEndpoint(
+        { action: 'remove_staff', staffId: s.id },
+        'Failed to remove staff',
+      );
+      if (outcome === 'ok') showToast('Staff removed from workspace.');
     } catch (err: any) {
       console.warn('Failed to remove staff:', err);
       showToast(err.message || 'Failed to remove staff in cloud.', 'error');

@@ -70,6 +70,33 @@ export function combineLetterhead(
   return h + (f ? LH_FOOTER_SEP + f : '') + (b ? LH_BG_SEP + b : '') + box;
 }
 
+/**
+ * How tall a designed letterhead strip is, in px.
+ *
+ * The report reserves this much room at the foot of every printed page so the
+ * running footer has somewhere to land. It used to be read with
+ * `/width:740px;height:(\d+)px/`, which is the exact string one version of the
+ * serialiser happened to emit: a footer imported from an older design, or one
+ * whose canvas width ever changes, silently fell back to a guess of 120px and
+ * the footer printed over the last lines of the report.
+ *
+ * Capped, because a mis-measured footer that claims half the page would push
+ * the report into an endless run of near-empty sheets.
+ */
+export const MAX_FOOTER_H = 340;
+
+export function letterheadHeight(
+  html: string | null | undefined,
+  fallback = 120,
+  max = MAX_FOOTER_H,
+): number {
+  if (!html || !html.trim()) return 0;
+  const m = /data-letterhead-canvas[^>]*style\s*=\s*"[^"]*?height\s*:\s*(\d+(?:\.\d+)?)px/i.exec(html);
+  const h = m ? parseFloat(m[1]) : NaN;
+  if (!Number.isFinite(h) || h <= 0) return Math.min(fallback, max);
+  return Math.min(h, max);
+}
+
 export const DOC_BASE = {
   fontFamily: "'Times New Roman', Times, serif",
   fontSize: '11pt',

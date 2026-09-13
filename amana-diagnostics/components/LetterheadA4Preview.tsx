@@ -12,7 +12,7 @@
 import { useId } from 'react';
 
 import { cleanLetterhead } from '@/lib/sanitizeHtml';
-import { buildDocCss } from '@/lib/letterheadStyles';
+import { buildDocCss, letterheadHeight } from '@/lib/letterheadStyles';
 
 import styles from './letterheadPreview.module.css';
 
@@ -22,6 +22,7 @@ const PAGE_H = 297 * MM;           // A4 height ≈ 1122.5px
 const MARGIN_X = 20;               // @page margin-left / margin-right (px)
 const MARGIN_BOTTOM = 15 * MM;     // @page margin-bottom (15mm)
 const PAD_TOP = 10;                // body padding-top on print
+const FOOTER_GAP = 12;             // clearance kept above the running footer
 const SCALE = 0.72;                // shrink the sheet to fit the settings column
 
 // Where a guide sits is geometry, so it stays here; what it looks like is
@@ -36,7 +37,17 @@ export default function LetterheadA4Preview({ html, footerHtml, bgHtml, bgTop = 
   const clean = cleanLetterhead(html);
   const footerClean = footerHtml && footerHtml.trim() ? cleanLetterhead(footerHtml) : '';
   const bgClean = bgHtml && bgHtml.trim() ? cleanLetterhead(bgHtml) : '';
-  const contentTop = bgClean ? bgTop : PAD_TOP;
+  // Where the report actually starts on paper: the body's own top padding, plus
+  // the clear strip the full-page frame reserves above it.
+  const contentTop = PAD_TOP + (bgClean ? bgTop : 0);
+  // And where it has to stop. The footer is a fixed layer at the foot of the
+  // page *area* — 15mm above the paper edge, not on it — and the report reserves
+  // its height plus a gap on every page so nothing prints underneath it. The
+  // preview drew the footer 6px from the paper edge and left the body running
+  // straight into it, which is the one thing it was there to show.
+  const footerH = footerClean ? letterheadHeight(footerHtml, 120) : 0;
+  const footerReserve = footerClean ? Math.round(footerH + FOOTER_GAP) : 0;
+  const bottomReserve = Math.max(bgClean ? bgBottom : 0, footerReserve);
   // A <figcaption> names its figure in the spec but not in every accessibility
   // tree, so the link is made explicitly.
   const captionId = useId();
@@ -94,7 +105,7 @@ export default function LetterheadA4Preview({ html, footerHtml, bgHtml, bgTop = 
               {bgClean && (
                 <div
                   className={styles.clearArea}
-                  style={{ left: MARGIN_X, right: MARGIN_X, top: bgTop, bottom: bgBottom, zIndex: 2 }}
+                  style={{ left: MARGIN_X, right: MARGIN_X, top: contentTop, bottom: MARGIN_BOTTOM + bottomReserve, zIndex: 2 }}
                 >
                   <div className={styles.clearAreaLabel}>report prints here</div>
                 </div>
@@ -103,7 +114,13 @@ export default function LetterheadA4Preview({ html, footerHtml, bgHtml, bgTop = 
 
             {/* Body content area: inset by the @page side margins. Starts below the
                 letterhead header when a full-page background reserves space. */}
-            <div className="a4-report" style={{ position: 'absolute', left: MARGIN_X, right: MARGIN_X, top: contentTop, zIndex: 1 }}>
+            <div
+              className="a4-report"
+              style={{
+                position: 'absolute', left: MARGIN_X, right: MARGIN_X, top: contentTop,
+                bottom: MARGIN_BOTTOM + bottomReserve, overflow: 'hidden', zIndex: 1,
+              }}
+            >
               <div className="header" style={{ textAlign: 'left' }}>
                 <div className="custom-letterhead" dangerouslySetInnerHTML={{ __html: clean }} />
               </div>
@@ -123,9 +140,21 @@ export default function LetterheadA4Preview({ html, footerHtml, bgHtml, bgTop = 
 
             {/* Footer — repeats at the bottom of every printed page. */}
             {footerClean && (
-              <div className="a4-report" style={{ position: 'absolute', left: MARGIN_X, right: MARGIN_X, bottom: 6, zIndex: 1 }}>
-                <div className="custom-letterhead" dangerouslySetInnerHTML={{ __html: footerClean }} />
-              </div>
+              <>
+                {/* The strip no report text can reach, drawn so the size of a
+                    footer is visible while it is being designed. */}
+                <div
+                  aria-hidden="true"
+                  className={styles.footerZone}
+                  style={{ left: MARGIN_X, right: MARGIN_X, bottom: MARGIN_BOTTOM, height: footerReserve }}
+                />
+                <div
+                  className="a4-report"
+                  style={{ position: 'absolute', left: MARGIN_X, right: MARGIN_X, bottom: MARGIN_BOTTOM, zIndex: 1 }}
+                >
+                  <div className="custom-letterhead" dangerouslySetInnerHTML={{ __html: footerClean }} />
+                </div>
+              </>
             )}
           </div>
         </div>
