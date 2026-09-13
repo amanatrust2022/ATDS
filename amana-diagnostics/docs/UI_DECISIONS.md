@@ -640,3 +640,25 @@ owner: three named testimonials and a "100+ diagnostic centres" figure.
 on the disk. That is not marketing tone; it is a statement about what the
 software does, and the software does not do it. Anyone migrating a marketing
 page should read the copy as carefully as the styles.
+
+## 33. Result entry is a dialog, and a notice goes where the user is
+
+**Decision.** The lab and radiology entry form opens in the system's `Dialog`
+(size `xl`) over the bench, not as a card pushed in above the queue. Closing
+it — Close, Escape, the scrim, the × — never asks and never loses anything:
+every keystroke is kept as a draft on that machine (`lib/store/resultDrafts`),
+the queue marks the test *Draft saved*, the same test reopens where it was
+left, and the draft is deleted when the result is sent. Throwing a draft away
+is a separate button that does ask. While the dialog is open, the save-failed
+and validation notices render *inside* it as an `Alert`; the fixed toast is
+only used once it has closed. `Dialog.description` now accepts a node so the
+specimen can be bolded in the header line.
+
+**Why.** As a card, a full blood count or a radiology report pushed the queue
+off the bottom of the screen, and the queue kept taking clicks while a result
+was half-typed. A modal holds the work in one place and keeps focus in it.
+
+The notice placement is not taste: Radix marks everything outside a modal
+`aria-hidden`, so a toast painted at `--z-toast` over the scrim was visible
+and *unannounced*. The characterisation test "announces a failed save as an
+alert" caught it — a screen-reader user could submit, fail, and hear nothing.

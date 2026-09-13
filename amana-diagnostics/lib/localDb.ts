@@ -1,4 +1,5 @@
 import path from 'path';
+import { notifyChange } from './changeBus';
 
 let dbInstance: any = null;
 
@@ -490,7 +491,13 @@ function initDb(db: any) {
 
 
 /**
- * Helper to queue write operations in the local outbox.
+ * Queues a write for the cloud, and tells every open screen it happened.
+ *
+ * This is the one place every write the hub makes passes through — a
+ * registration, a result, a wallet movement — which is why the doorbell is
+ * rung from here rather than from each of the thirty call sites. The ring is
+ * delivered after the current turn of the event loop, so it lands after the
+ * caller's transaction has committed.
  */
 export function queueSync(db: any, tableName: string, action: 'INSERT' | 'UPDATE' | 'DELETE', recordId: string, payload: any) {
   const insertStmt = db.prepare(`
@@ -498,6 +505,7 @@ export function queueSync(db: any, tableName: string, action: 'INSERT' | 'UPDATE
     VALUES (?, ?, ?, ?, ?)
   `);
   insertStmt.run(tableName, action, recordId, JSON.stringify(payload), Date.now());
+  notifyChange();
 }
 
 /**

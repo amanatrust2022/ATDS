@@ -108,6 +108,14 @@ export interface PatientsRepository {
 }
 
 const ENDPOINT = '/api/patients';
+/** The hub's change stream, served by app/api/events. */
+const EVENTS_ENDPOINT = '/api/events';
+
+/**
+ * How often to poll the hub's version stamp while its event stream is down.
+ * This was the only mechanism, at this cadence; it is now the fallback.
+ */
+export const LOCAL_FALLBACK_POLL_MS = 5000;
 
 /** The one place a PatientQuery becomes a query string, so both ends agree. */
 export function patientQueryParams(organizationId: string, query: PatientQuery = {}): string {
@@ -186,12 +194,20 @@ export const localPatientsRepository: PatientsRepository = {
   },
 
   subscribe(organizationId, callback) {
-    // No realtime channel on the hub, so it polls — but it polls a cheap
-    // version stamp rather than reloading the whole queue every five seconds,
-    // which is what it used to do on every open screen, forever.
-    let lastVersion: string | null = null;
+    // The hub tells its screens when something changed, over an event stream
+    // (`/api/events`). Every write the hub makes — a registration, a result, a
+    // wallet charge, a row pulled down from the cloud — rings it, and every
+    // open screen re-reads its queue. On a LAN that is tens of milliseconds.
+    //
+    // The stream is not assumed to be up. While it is down (the hub
+    // restarting, a laptop waking, a browser that has no EventSource) the
+    // screen falls back to polling a cheap version stamp, and stops the moment
+    // the stream is back.
+    const onChange = debounce(callback, REALTIME_DEBOUNCE_MS);
     let stopped = false;
 
+    let lastVersion: string | null = null;
+    let poll: ReturnType<typeof setInterval> | null = null;
     const check = async () => {
       try {
         const res = await fetch(`${ENDPOINT}?action=version&organizationId=${organizationId}`);
@@ -203,12 +219,44 @@ export const localPatientsRepository: PatientsRepository = {
         // Offline or the hub is restarting; the next tick tries again.
       }
     };
+    const startPolling = () => {
+      if (stopped || poll) return;
+      check();
+      poll = setInterval(check, LOCAL_FALLBACK_POLL_MS);
+    };
+    const stopPolling = () => {
+      if (poll) { clearInterval(poll); poll = null; }
+    };
 
-    check();
-    const interval = setInterval(check, 5000);
-    return () => { stopped = true; clearInterval(interval); };
+    let source: EventSource | null = null;
+    if (typeof EventSource === 'undefined') {
+      startPolling();
+    } else {
+      source = new EventSource(`${EVENTS_ENDPOINT}?organizationId=${organizationId}`);
+      source.addEventListener('change', onChange);
+      let openedBefore = false;
+      source.onopen = () => {
+        if (stopped) return;
+        stopPolling();
+        // Coming back after a gap: whatever happened during it was never
+        // announced, so ask once rather than trust the queue on screen.
+        if (openedBefore) callback();
+        openedBefore = true;
+        lastVersion = null;
+      };
+      // The browser reconnects on its own; until it does, this keeps asking.
+      source.onerror = () => { if (!stopped) startPolling(); };
+    }
+
+    return () => {
+      stopped = true;
+      onChange.cancel();
+      stopPolling();
+      source?.close();
+    };
   },
 };
+
 
 /**
  * Collapses a burst of changes into one call.
@@ -640,26 +688,116 @@ export const cloudPatientsRepository: CloudPatientsRepository = {
       if (poll) { clearInterval(poll); poll = null; }
     };
 
-    const channel = REALTIME_TABLES.reduce(
-      (ch, table) => ch.on(
-        'postgres_changes' as any,
-        { event: '*', schema: 'public', table, filter: `organization_id=eq.${organizationId}` },
-        onChange,
-      ),
-      supabase.channel(`patients-org-${organizationId}`) as any,
-    ).subscribe((status: string) => {
-      if (status === 'SUBSCRIBED') stopPolling();
-      else startPolling();
-    });
+    // The channel is opened by a function rather than once, because a channel
+    // can die in ways the library does not recover from. A CLOSED status is
+    // the server ending the subscription — an expired token, a realtime
+    // restart — and nothing rejoins after it. A subscription that never
+    // reports a status at all (see the topic note below) is dead from birth.
+    // Either way the answer is the same: throw the channel away and open a
+    // new one, backing off so a project with realtime switched off is not
+    // hammered.
+    let channel: any = null;
+    let generation = 0;
+    let attempt = 0;
+    let retry: ReturnType<typeof setTimeout> | null = null;
+
+    const reopenLater = () => {
+      if (stopped || retry) return;
+      const delay = Math.min(REALTIME_REOPEN_MAX_MS, REALTIME_REOPEN_BASE_MS * 2 ** attempt);
+      attempt += 1;
+      retry = setTimeout(() => {
+        retry = null;
+        const old = channel;
+        channel = null;
+        if (old) supabase.removeChannel(old);
+        open();
+      }, delay);
+    };
+
+    const open = () => {
+      if (stopped) return;
+      const mine = ++generation;
+
+      // The topic carries a nonce. `supabase.channel(topic)` hands back an
+      // existing channel with the same topic, and `removeChannel` only takes
+      // it out of that list once the server has acknowledged the leave. So a
+      // screen that unsubscribed and subscribed again within that window —
+      // reception changing its date window, a technologist moving from the
+      // lab bench to radiology — was handed the channel that was on its way
+      // out. Its subscribe() saw a channel that was not closed and did
+      // nothing: no join, no events, and no status, so the fallback poll never
+      // started either. That screen stopped changing until someone reloaded
+      // it. A topic nobody else can be holding cannot be handed back.
+      channel = REALTIME_TABLES.reduce(
+        (ch, table) => ch.on(
+          'postgres_changes' as any,
+          { event: '*', schema: 'public', table, filter: `organization_id=eq.${organizationId}` },
+          onChange,
+        ),
+        supabase.channel(`patients-org-${organizationId}-${channelNonce()}`) as any,
+      ).subscribe((status: string) => {
+        // A channel that has been replaced may still report; it is not ours.
+        if (stopped || mine !== generation) return;
+        if (status === 'SUBSCRIBED') {
+          attempt = 0;
+          stopPolling();
+          // Anything that happened before the join, or while the channel was
+          // down, was never delivered. Ask once rather than trust the screen.
+          onChange();
+          return;
+        }
+        startPolling();
+        if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') reopenLater();
+      });
+    };
+
+    open();
 
     return () => {
       stopped = true;
       onChange.cancel();
       stopPolling();
-      supabase.removeChannel(channel);
+      if (retry) { clearTimeout(retry); retry = null; }
+      if (channel) supabase.removeChannel(channel);
     };
   },
 };
 
+/** Something no other subscription can be using as its topic. */
+const channelNonce = (): string =>
+  typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID().slice(0, 8)
+    : Math.random().toString(36).slice(2, 10);
+
+/** First wait before replacing a channel that closed or errored. Doubles each time. */
+export const REALTIME_REOPEN_BASE_MS = 1000;
+/** The longest that wait grows to. */
+export const REALTIME_REOPEN_MAX_MS = 30000;
+
 export const getPatientsRepository = (mode: RuntimeMode = RUNTIME_MODE): PatientsRepository =>
   mode === 'local' ? localPatientsRepository : cloudPatientsRepository;
+
+/**
+ * Re-reads when the machine wakes up.
+ *
+ * Neither the cloud channel nor the hub stream survives a laptop lid being
+ * closed, and both come back on their own — but a tab the browser has parked
+ * in the background gets its timers slowed to a crawl and its socket quietly
+ * dropped, and what happened while it was parked was never delivered. The
+ * moment the tab is looked at again, or the network returns, is the moment to
+ * ask. Cheap when nothing changed; the difference between right and stale
+ * when something did.
+ *
+ * Wrapped around either repository's subscription by `subscribeToPatients`.
+ */
+export function refreshOnWake(callback: () => void): () => void {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return () => {};
+  const onVisible = () => { if (document.visibilityState === 'visible') callback(); };
+  const onOnline = () => callback();
+  document.addEventListener('visibilitychange', onVisible);
+  window.addEventListener('online', onOnline);
+  return () => {
+    document.removeEventListener('visibilitychange', onVisible);
+    window.removeEventListener('online', onOnline);
+  };
+}

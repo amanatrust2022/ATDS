@@ -19,6 +19,8 @@ interface Props {
   pendingCount: number;
   loading: boolean;
   onOpenTest: (patient: Patient, test: PatientTest) => void;
+  /** Tests with a half-typed result kept on this machine (lib/store/resultDrafts). */
+  draftTestIds?: Set<string>;
 }
 
 const fullName = patientDisplayName;
@@ -57,7 +59,7 @@ function waitLabel(mins: number) {
  * walked in a minute ago. A queue in no particular order is not a queue.
  */
 export default function DepartmentQueue({
-  department, pending, completedToday, pendingCount, loading, onOpenTest,
+  department, pending, completedToday, pendingCount, loading, onOpenTest, draftTestIds,
 }: Props) {
   const isLab = department === 'lab';
 
@@ -139,6 +141,7 @@ export default function DepartmentQueue({
                           <span className={styles['testName']}>
                             {test.testName}
                             {started && <Badge tone="warning">In progress</Badge>}
+                            {test.id && draftTestIds?.has(test.id) && <Badge tone="info">Draft saved</Badge>}
                           </span>
 
                           {/* Named after the test. A column of buttons all

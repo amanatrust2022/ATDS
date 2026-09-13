@@ -15,6 +15,12 @@ import { toRemotePayload } from './outboxPayload';
  *    MAX_ATTEMPTS a row is marked dead and the queue moves past it. Before this,
  *    one unacceptable record froze every later change indefinitely and the only
  *    way out was a developer with a SQLite client.
+ * 4. **A refusal about the caller is not a refusal about the row.** An expired
+ *    session makes the cloud refuse everything; that is not the row's fault and
+ *    does not count against it. The run stalls, the attempt is not spent, and
+ *    the rows go up untouched once someone is signed in again. Before this, a
+ *    hub whose session had lapsed set every result of the morning aside as
+ *    permanently un-sendable within two minutes.
  */
 
 /** Attempts before a row is set aside as permanently un-sendable. */
@@ -44,6 +50,24 @@ export interface PushResult {
   stalledOutboxId?: number;
   /** The error that stopped the run, for the caller to surface. */
   stalledReason?: string;
+  /**
+   * Set when the run stopped because the cloud did not accept who was asking,
+   * rather than what was asked. Nothing was counted against the row.
+   */
+  unauthenticated?: boolean;
+}
+
+/**
+ * Whether a refusal is about the session rather than the data.
+ *
+ * PostgREST answers an expired or missing JWT with PGRST301 or a 401, and a
+ * row that RLS will not let this caller write with 42501 (insufficient
+ * privilege) — the same code, and the same words, whether the policy was
+ * wrong or the caller was nobody.
+ */
+export function isAuthFailure(error: { message?: string; code?: string } | string): boolean {
+  const message = typeof error === 'string' ? error : `${error?.code ?? ''} ${error?.message ?? ''}`;
+  return /(PGRST301|42501|401)|JWT|row-level security|permission denied/i.test(message);
 }
 
 /**
@@ -58,7 +82,10 @@ export interface RemoteClient {
 }
 
 /** Applies one outbox row to the cloud. Throws nothing; reports the error instead. */
-async function sendRow(supabase: RemoteClient, row: OutboxRow): Promise<{ ok: true } | { ok: false; error: string }> {
+async function sendRow(
+  supabase: RemoteClient,
+  row: OutboxRow,
+): Promise<{ ok: true } | { ok: false; error: string; unauthenticated?: boolean }> {
   const { table_name, action, record_id, payload } = row;
 
   let data: Record<string, any>;
@@ -84,7 +111,13 @@ async function sendRow(supabase: RemoteClient, row: OutboxRow): Promise<{ ok: tr
       : action === 'UPDATE' ? await scopedTo(supabase.from(table_name).update(data))
       : await supabase.from(table_name).upsert(data);
 
-    if (error) return { ok: false, error: error.message || error.code || 'Unknown Supabase error' };
+    if (error) {
+      return {
+        ok: false,
+        error: error.message || error.code || 'Unknown Supabase error',
+        unauthenticated: isAuthFailure(error),
+      };
+    }
     return { ok: true };
   } catch (err: any) {
     return { ok: false, error: err?.message || String(err) };
@@ -116,6 +149,15 @@ export async function pushOutbox(db: OutboxDb, supabase: RemoteClient): Promise<
       deleteRow.run(row.id);
       result.pushed += 1;
       continue;
+    }
+
+    if (outcome.unauthenticated) {
+      // The session, not the row. Stop here, spend nothing, say why.
+      console.warn(`[Sync] Outbox ${row.id} refused for lack of a valid session; will retry once signed in: ${outcome.error}`);
+      result.stalledOutboxId = row.id;
+      result.stalledReason = outcome.error;
+      result.unauthenticated = true;
+      return result;
     }
 
     const attempts = (row.attempts ?? 0) + 1;

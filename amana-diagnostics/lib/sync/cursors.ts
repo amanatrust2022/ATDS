@@ -49,3 +49,26 @@ export function setPullCursor(db: CursorDb, organizationId: string, table: strin
   db.prepare('INSERT INTO sync_metadata (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
     .run(cursorKey(organizationId, table), timestamp);
 }
+
+/**
+ * Where the cursor should stand after a pull that returned `rows`.
+ *
+ * The cursor used to be the hub's own clock, captured before the read. The
+ * rows are stamped by the cloud's clock. Clinic PCs drift — minutes, on a
+ * machine that has never seen a time server — and when the hub ran ahead, a
+ * result entered on the web in the gap between the two clocks carried a
+ * cloud timestamp *earlier* than the cursor the hub had just written. It was
+ * never asked for again. Reception on the hub simply never saw it.
+ *
+ * Taking the cursor from the newest row seen keeps it in the cloud's clock,
+ * where the comparison happens. A pull that returns nothing leaves the cursor
+ * where it was, which is exactly as far as the data has been read.
+ */
+export function cursorAfter(rows: Array<Record<string, any>>, column: string, current: string): string {
+  let newest = current;
+  for (const row of rows) {
+    const stamp = row[column];
+    if (typeof stamp === 'string' && stamp > newest) newest = stamp;
+  }
+  return newest;
+}

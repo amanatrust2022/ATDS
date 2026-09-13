@@ -52,8 +52,6 @@
 }
 
 .body {
-  flex: 1;
-  min-height: 200px;
   padding: var(--space-4);
   background: var(--surface-sunken);
   display: flex;
@@ -144,7 +142,9 @@
 }
 
 .empty {
-  flex: 1;
+  /* The floor lives here, not on .body: a basket of one test used to sit in
+   * 200px of empty well because the floor applied to the list as well. */
+  min-height: 200px;
   display: flex;
   flex-direction: column;
   justify-content: center;

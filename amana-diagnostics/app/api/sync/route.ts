@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/localDb';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { pushOutbox, countPending, countDeadLetters, requeueDeadLetters } from '@/lib/sync/outbox';
-import { getPullCursor, setPullCursor } from '@/lib/sync/cursors';
+import { getPullCursor, setPullCursor, cursorAfter } from '@/lib/sync/cursors';
+import { notifyChange } from '@/lib/changeBus';
 
 // Helper to create a client using the user's access token (for RLS enforcement),
 // falling back to the service role key or anon key.
@@ -135,6 +136,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ status: 'requeued', requeued, pendingCount: countPending(db) });
     }
 
+    // Nobody to act as. Under RLS the anon key can neither push nor pull, and
+    // a push under it used to count each refusal against the row until every
+    // pending result was set aside as un-sendable. Say so and touch nothing;
+    // the browser sends a token again as soon as it has a session.
+    if (!accessToken && !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      return NextResponse.json({
+        status: 'signed_out',
+        pendingCount: countPending(db),
+        deadLetterCount: countDeadLetters(db),
+        message: 'Sign in again to send changes to the cloud',
+      });
+    }
+
     const supabase = getSyncSupabaseClient(accessToken);
 
     // 1. Heartbeat Connection Check (pinging organizations table)
@@ -160,7 +174,7 @@ export async function POST(request: Request) {
 
     if (push.stalledOutboxId !== undefined) {
       return NextResponse.json({
-        status: 'sync_stalled',
+        status: push.unauthenticated ? 'signed_out' : 'sync_stalled',
         pendingCount: countPending(db),
         deadLetterCount: countDeadLetters(db),
         failedOutboxId: push.stalledOutboxId,
@@ -177,12 +191,15 @@ export async function POST(request: Request) {
     // sync would not be. Nobody chose that — the two halves were written at
     // different times.
     //
-    // Captured before any read: a cursor set to a time after the read began
-    // could skip a row written during it. Overlapping costs a repeat upsert.
+    // The hub's own clock, reported back to the screen. It is deliberately
+    // NOT what the cursors are set to any more — see commitPull.
     const nowStr = new Date().toISOString();
 
     /** Tables whose fetch failed this run. Their cursors are left where they were. */
     const pullFailures: { table: string; error: string }[] = [];
+
+    /** Whether any pull wrote rows, so the screens on this hub can be told. */
+    let pulledSomething = false;
 
     /**
      * Fetches one table's changes since its own cursor.
@@ -201,8 +218,22 @@ export async function POST(request: Request) {
       }
     };
 
-    /** Moves a table's cursor up. Only called once that table's rows are written. */
-    const commitPull = (table: string) => setPullCursor(db, organizationId, table, nowStr);
+    /**
+     * Moves a table's cursor up to the newest row it just wrote, in the cloud's
+     * clock rather than this machine's. Only called once the rows are on disk.
+     *
+     * The cursor used to be `nowStr`, the hub's clock. On a hub whose clock
+     * ran ahead of the cloud, a result completed on the web in that gap was
+     * stamped earlier than the cursor and never pulled — the result existed,
+     * reception here just never saw it. Any row is stamped by the cloud, so
+     * the cursor is taken from the rows and the two clocks never meet.
+     */
+    const commitPull = (table: string, rows: Array<Record<string, any>>, column: 'updated_at' | 'created_at' = 'updated_at') => {
+      // Profiles and prices are fetched whole every time (fetchAllRemoteRows
+      // applies no cursor to them), so their rows are not news.
+      if (rows.length > 0 && table !== 'profiles' && table !== 'test_prices') pulledSomething = true;
+      setPullCursor(db, organizationId, table, cursorAfter(rows, column, getPullCursor(db, organizationId, table)));
+    };
 
     // Pull Organization
     const { data: orgData } = await supabase.from('organizations').select('*').eq('id', organizationId).maybeSingle();
@@ -264,7 +295,7 @@ export async function POST(request: Request) {
         );
       });
     }
-    if (profilesData) commitPull('profiles');
+    if (profilesData) commitPull('profiles', profilesData);
 
     // Pull Referring Facilities
     const facs = await pullSince('referring_facilities');
@@ -286,7 +317,7 @@ export async function POST(request: Request) {
         insertFac.run(f.id, f.organization_id, f.name, f.address, f.phone, f.email, f.commission_type, f.commission_value, f.is_active ? 1 : 0, f.created_at, f.updated_at);
       });
     }
-    if (facs) commitPull('referring_facilities');
+    if (facs) commitPull('referring_facilities', facs);
 
     // Pull Referring Doctors
     const docs = await pullSince('referring_doctors');
@@ -308,7 +339,7 @@ export async function POST(request: Request) {
         insertDoc.run(d.id, d.organization_id, d.facility_id, d.name, d.phone, d.email, d.commission_type, d.commission_value, d.is_active ? 1 : 0, d.created_at, d.updated_at);
       });
     }
-    if (docs) commitPull('referring_doctors');
+    if (docs) commitPull('referring_doctors', docs);
 
     // Pull Test Prices (Note: pull all as it is very small)
     const prices = await pullSince('test_prices');
@@ -325,7 +356,7 @@ export async function POST(request: Request) {
         insertPrice.run(p.organization_id, p.test_id, p.test_name, p.price, p.commission_type || 'percentage', p.commission_value ?? 0);
       });
     }
-    if (prices) commitPull('test_prices');
+    if (prices) commitPull('test_prices', prices);
 
     // Pull Custom Tests
     const cTests = await pullSince('custom_tests');
@@ -356,7 +387,7 @@ export async function POST(request: Request) {
         );
       });
     }
-    if (cTests) commitPull('custom_tests');
+    if (cTests) commitPull('custom_tests', cTests);
 
     // Pull Radiology Templates
     const templates = await pullSince('radiology_templates');
@@ -375,7 +406,7 @@ export async function POST(request: Request) {
         insertTemplate.run(t.id, t.organization_id, t.key, t.name, t.findings, t.impression, t.created_at, t.created_by, t.updated_at);
       });
     }
-    if (templates) commitPull('radiology_templates');
+    if (templates) commitPull('radiology_templates', templates);
 
     // Pull Patient Profiles
     const patientProfiles = await pullSince('patient_profiles');
@@ -400,7 +431,7 @@ export async function POST(request: Request) {
         );
       });
     }
-    if (patientProfiles) commitPull('patient_profiles');
+    if (patientProfiles) commitPull('patient_profiles', patientProfiles);
 
     // Pull Patients
     const patients = await pullSince('patients');
@@ -456,7 +487,7 @@ export async function POST(request: Request) {
         );
       });
     }
-    if (patients) commitPull('patients');
+    if (patients) commitPull('patients', patients);
 
     // Pull Patient Tests
     const patientTests = await pullSince('patient_tests');
@@ -496,7 +527,7 @@ export async function POST(request: Request) {
         );
       });
     }
-    if (patientTests) commitPull('patient_tests');
+    if (patientTests) commitPull('patient_tests', patientTests);
 
     // Pull Billing Accounts
     try {
@@ -517,7 +548,7 @@ export async function POST(request: Request) {
           insertAcc.run(a.id, a.organization_id, a.name, a.owner_patient_id, a.balance, a.credit_limit, a.type, a.created_at, a.updated_at);
         });
       }
-      if (accounts) commitPull('billing_accounts');
+      if (accounts) commitPull('billing_accounts', accounts);
     } catch (pullAccError: any) {
       // Cursor deliberately not advanced, so these rows are pulled again.
       console.error('[Sync] Failed to store billing_accounts:', pullAccError.message);
@@ -544,7 +575,7 @@ export async function POST(request: Request) {
           insertTx.run(t.id, t.organization_id, t.billing_account_id, t.patient_id || null, t.type, t.amount, t.description, t.reference_id || null, t.payment_method || null, t.created_by || null, t.created_at);
         });
       }
-      if (txs) commitPull('billing_ledger_transactions');
+      if (txs) commitPull('billing_ledger_transactions', txs, 'created_at');
     } catch (pullTxError: any) {
       // Cursor deliberately not advanced, so these rows are pulled again.
       console.error('[Sync] Failed to store billing_ledger_transactions:', pullTxError.message);
@@ -573,7 +604,7 @@ export async function POST(request: Request) {
           insertCharge.run(c.id, c.organization_id, c.patient_id, c.billing_account_id || null, c.department, c.receipt_number, c.amount, c.payment_method, c.status || 'paid', c.description || null, c.created_by || null, c.created_at);
         });
       }
-      if (charges) commitPull('external_department_charges');
+      if (charges) commitPull('external_department_charges', charges, 'created_at');
     } catch (pullChargeError: any) {
       // Cursor deliberately not advanced, so these rows are pulled again.
       console.error('[Sync] Failed to store external_department_charges:', pullChargeError.message);
@@ -584,6 +615,11 @@ export async function POST(request: Request) {
     // organisation-wide "we are up to date" write here: that is what let a
     // failed pull be skipped for good.
     const deadLetterCount = countDeadLetters(db);
+
+    // Rows that arrived from the cloud are a change like any other: a result
+    // entered on the web has just landed on this hub, and reception here
+    // should not have to wait for its next poll to hear about it.
+    if (pulledSomething) notifyChange();
 
     return NextResponse.json({
       status: pullFailures.length > 0 ? 'partial_sync' : 'synced',

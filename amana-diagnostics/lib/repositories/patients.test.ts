@@ -8,6 +8,9 @@ import {
   localPatientsRepository,
   cloudPatientsRepository,
   REALTIME_FALLBACK_POLL_MS,
+  REALTIME_DEBOUNCE_MS,
+  REALTIME_REOPEN_BASE_MS,
+  LOCAL_FALLBACK_POLL_MS,
 } from './patients';
 import {
   formatSlipNumber, slipPrefixFor, toPatient, toPatientProfile,
@@ -333,17 +336,194 @@ describe('Cloud realtime subscription', () => {
     vi.advanceTimersByTime(REALTIME_FALLBACK_POLL_MS * 2);
     expect(callback).toHaveBeenCalledTimes(2);
 
+    // Joining is worth one read of its own: whatever changed before the
+    // channel was up was never delivered. After that, silence.
     statusCallback?.('SUBSCRIBED');
     vi.advanceTimersByTime(REALTIME_FALLBACK_POLL_MS * 3);
-    expect(callback).toHaveBeenCalledTimes(2);
+    expect(callback).toHaveBeenCalledTimes(3);
 
     // And nothing keeps ticking after the screen is gone.
     statusCallback?.('CHANNEL_ERROR');
     unsubscribe();
     vi.advanceTimersByTime(REALTIME_FALLBACK_POLL_MS * 3);
-    expect(callback).toHaveBeenCalledTimes(2);
+    expect(callback).toHaveBeenCalledTimes(3);
 
     vi.useRealTimers();
+  });
+
+  /**
+   * supabase.channel(topic) hands back an existing channel with the same
+   * topic, and removeChannel only drops it from that list once the server has
+   * acknowledged the leave. A screen that unsubscribed and subscribed again
+   * inside that window — reception changing its date window — was handed the
+   * channel that was on its way out, whose subscribe() then did nothing: no
+   * join, no events, no status, so not even the fallback poll started. That
+   * is a reception desk that stops hearing about results until it is reloaded.
+   */
+  it('never reuses a topic, so a dying channel cannot be handed back', () => {
+    const topics: string[] = [];
+    const channel = { on: vi.fn().mockReturnThis(), subscribe: vi.fn().mockReturnValue('handle') };
+    createClientMock.mockReturnValue({
+      channel: (topic: string) => { topics.push(topic); return channel; },
+      removeChannel: vi.fn(),
+    });
+
+    cloudPatientsRepository.subscribe('org-1', vi.fn())();
+    cloudPatientsRepository.subscribe('org-1', vi.fn())();
+
+    expect(topics).toHaveLength(2);
+    expect(topics[0]).not.toBe(topics[1]);
+    expect(topics.every(t => t.startsWith('patients-org-org-1'))).toBe(true);
+  });
+
+  /**
+   * CLOSED is the server ending the subscription — an expired token, a
+   * realtime restart. The library does not rejoin after it. Left alone, the
+   * screen was on the fallback poll for the rest of the day, twenty seconds
+   * behind, with nobody knowing.
+   */
+  it('replaces a channel the server closed, and ignores the old one afterwards', () => {
+    vi.useFakeTimers();
+
+    const statusCallbacks: Array<(s: string) => void> = [];
+    const handles: string[] = [];
+    const removeChannel = vi.fn();
+    createClientMock.mockReturnValue({
+      channel: () => {
+        const handle = `handle-${handles.length + 1}`;
+        handles.push(handle);
+        return {
+          on: vi.fn().mockReturnThis(),
+          subscribe: vi.fn((cb: (s: string) => void) => { statusCallbacks.push(cb); return handle; }),
+        };
+      },
+      removeChannel,
+    });
+
+    const callback = vi.fn();
+    const unsubscribe = cloudPatientsRepository.subscribe('org-1', callback);
+    expect(handles).toHaveLength(1);
+
+    statusCallbacks[0]('CLOSED');
+    // Polling in the meantime, as for any other outage.
+    vi.advanceTimersByTime(REALTIME_FALLBACK_POLL_MS);
+    expect(callback).toHaveBeenCalledTimes(1);
+
+    // A new channel, after a short wait, with the old one removed.
+    vi.advanceTimersByTime(REALTIME_REOPEN_BASE_MS);
+    expect(handles).toHaveLength(2);
+    expect(removeChannel).toHaveBeenCalledWith('handle-1');
+
+    // The old channel's opinions no longer count.
+    statusCallbacks[0]('SUBSCRIBED');
+    vi.advanceTimersByTime(REALTIME_DEBOUNCE_MS);
+    expect(callback).toHaveBeenCalledTimes(1);
+
+    // The new one joining stops the poll and catches up once.
+    statusCallbacks[1]('SUBSCRIBED');
+    vi.advanceTimersByTime(REALTIME_DEBOUNCE_MS);
+    expect(callback).toHaveBeenCalledTimes(2);
+    vi.advanceTimersByTime(REALTIME_FALLBACK_POLL_MS * 3);
+    expect(callback).toHaveBeenCalledTimes(2);
+
+    unsubscribe();
+    expect(removeChannel).toHaveBeenCalledWith('handle-2');
+    vi.useRealTimers();
+  });
+
+  it('does not open a replacement after the screen has unsubscribed', () => {
+    vi.useFakeTimers();
+
+    const handles: string[] = [];
+    let statusCallback: ((s: string) => void) | undefined;
+    createClientMock.mockReturnValue({
+      channel: () => {
+        handles.push('h');
+        return { on: vi.fn().mockReturnThis(), subscribe: vi.fn((cb: any) => { statusCallback = cb; return 'h'; }) };
+      },
+      removeChannel: vi.fn(),
+    });
+
+    const unsubscribe = cloudPatientsRepository.subscribe('org-1', vi.fn());
+    statusCallback?.('CHANNEL_ERROR');
+    unsubscribe();
+    vi.advanceTimersByTime(REALTIME_REOPEN_BASE_MS * 4);
+
+    expect(handles).toHaveLength(1);
+    vi.useRealTimers();
+  });
+});
+
+/**
+ * The hub has an event stream now (app/api/events). The version poll is what
+ * it was before, kept as the fallback for when the stream is down.
+ */
+describe('Hub change stream', () => {
+  /** A stand-in for the browser's EventSource. */
+  class FakeEventSource {
+    static instances: FakeEventSource[] = [];
+    url: string;
+    onopen: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    closed = false;
+    listeners: Record<string, Array<() => void>> = {};
+    constructor(url: string) { this.url = url; FakeEventSource.instances.push(this); }
+    addEventListener(event: string, fn: () => void) { (this.listeners[event] ||= []).push(fn); }
+    emit(event: string) { (this.listeners[event] || []).forEach(fn => fn()); }
+    close() { this.closed = true; }
+  }
+
+  beforeEach(() => {
+    FakeEventSource.instances = [];
+    (globalThis as any).EventSource = FakeEventSource;
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ version: 'v1' }) });
+  });
+  afterEach(() => {
+    delete (globalThis as any).EventSource;
+    vi.useRealTimers();
+  });
+
+  it('listens to the stream and re-reads on each change, without polling', () => {
+    vi.useFakeTimers();
+    const callback = vi.fn();
+    const unsubscribe = localPatientsRepository.subscribe('org-1', callback);
+
+    const source = FakeEventSource.instances[0];
+    expect(source.url).toBe('/api/events?organizationId=org-1');
+    source.onopen?.();
+
+    source.emit('change');
+    source.emit('change');
+    vi.advanceTimersByTime(REALTIME_DEBOUNCE_MS);
+    // A burst is one read.
+    expect(callback).toHaveBeenCalledTimes(1);
+
+    vi.advanceTimersByTime(LOCAL_FALLBACK_POLL_MS * 3);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    unsubscribe();
+    expect(source.closed).toBe(true);
+  });
+
+  it('falls back to the version poll while the stream is down, and catches up when it returns', async () => {
+    vi.useFakeTimers();
+    const callback = vi.fn();
+    const unsubscribe = localPatientsRepository.subscribe('org-1', callback);
+    const source = FakeEventSource.instances[0];
+    source.onopen?.();
+
+    source.onerror?.();
+    await vi.advanceTimersByTimeAsync(LOCAL_FALLBACK_POLL_MS * 2);
+    expect(fetchMock.mock.calls.some(c => String(c[0]).includes('action=version'))).toBe(true);
+
+    // Back up: whatever happened in between is read once, and the poll stops.
+    const polls = fetchMock.mock.calls.length;
+    source.onopen?.();
+    expect(callback).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(LOCAL_FALLBACK_POLL_MS * 3);
+    expect(fetchMock.mock.calls.length).toBe(polls);
+
+    unsubscribe();
   });
 });
 

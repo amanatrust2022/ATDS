@@ -23,8 +23,76 @@
   min-height: 0;
 }
 
+/* --- The tray: one sheet, or the pair in print order ------------------
+ *
+ * After registration the two 80mm tickets sit side by side, receipt then
+ * slip, the way they come off the printer; the dialog is sized for that. On
+ * a phone they stack, first above second, so the reading order is still the
+ * print order. The captions are app chrome and follow the theme; the paper
+ * under them does not. */
+
+.sheetPair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 320px));
+  justify-content: center;
+  gap: var(--space-5) var(--space-5);
+}
+
+@media (max-width: 720px) {
+  .sheetPair {
+    grid-template-columns: minmax(0, 320px);
+  }
+}
+
+.sheet {
+  margin: 0 auto;
+  width: 100%;
+  max-width: 320px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.sheetCaption {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+  padding: 0 var(--space-1);
+  font-size: var(--text-xs);
+  line-height: 1.4;
+}
+
+/* Its place in the print order. A number, so it survives greyscale. */
+.sheetOrdinal {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  border-radius: var(--radius-full);
+  background: var(--accent-solid);
+  color: var(--accent-solid-text);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-bold);
+  font-variant-numeric: tabular-nums;
+}
+
+.sheetName {
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+}
+
+.sheetHandoff {
+  color: var(--text-muted);
+}
+
 /* The sheet itself. Fixed colours, fixed type — this is the paper. */
 .paper {
+  width: 100%;
   max-width: 320px;
   margin: 0 auto;
   padding: 12px 14px;
@@ -216,8 +284,25 @@
   font-weight: bold;
   text-align: center;
   margin: 8px 0 10px;
-  border-bottom: 1px solid #000;
   padding-bottom: 4px;
+}
+
+/* The receipt rules its title off; the slip does not. As printed. */
+.docTitleRuled {
+  border-bottom: 1px solid #000;
+}
+
+/* Which of the pair this is and whose hands it ends up in — boxed so it reads
+ * at a glance on a thermal print, and in words so it needs no colour. */
+.copyTag {
+  border: 1px solid #000;
+  padding: 3px 6px;
+  margin: 0 0 10px;
+  font-size: 10px;
+  font-weight: bold;
+  letter-spacing: 0.06em;
+  text-align: center;
+  text-transform: uppercase;
 }
 
 .rows {
