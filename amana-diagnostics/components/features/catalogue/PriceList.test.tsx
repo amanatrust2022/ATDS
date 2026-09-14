@@ -1,95 +1,65 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 /**
- * Characterisation tests for the price and commission catalogue.
+ * Characterisation tests for the price and commission list.
  *
- * This screen sets what every test costs and what a referrer earns on it, and
- * it saves the whole catalogue in one write. Two things therefore matter more
- * than anything visual: that a save carries values the screen never showed —
- * because the filters hide rows, and the write does not — and that leaving with
- * unsaved edits cannot happen silently.
- *
- * Written before the rebuild. See decision #28.
+ * This used to be a standalone screen that fetched its own catalogue and
+ * prices; it is now a tab of the catalogue screen, driven entirely by props,
+ * so an edit here and an edit in the investigations tab can never disagree
+ * about which test prices are current. Two things still matter more than
+ * anything visual: that a save carries values the screen never showed —
+ * because the filters hide rows, and the write does not — and that leaving
+ * with unsaved edits cannot happen silently.
  */
 
-const ORG = { id: 'org-1', name: 'Riverside Diagnostics', slug: 'riverside' };
-
-let authState: any;
-vi.mock('@/components/AuthProvider', () => ({ useAuth: () => authState }));
-
-vi.mock('@/components/Notices', () => ({
-  useNotices: () => ({ ask: vi.fn(async () => true), notify: vi.fn(), askFor: vi.fn() }),
-}));
-
-vi.mock('@/components/RequireRole', () => ({
-  default: ({ children }: any) => <>{children}</>,
-}));
-
-
-const { storeFns, CATALOGUE } = vi.hoisted(() => ({
-  CATALOGUE: [
-  {
-    id: 'fbc', name: 'Full Blood Count', department: 'lab' as const,
-    category: 'Haematology', specimen: 'Blood', parameters: [],
-  },
-  {
-    id: 'mp', name: 'Malaria Parasite', department: 'lab' as const,
-    category: 'Haematology', specimen: 'Blood', parameters: [],
-  },
-  {
-    id: 'cxr', name: 'Chest X-Ray', department: 'radiology' as const,
-    category: 'Imaging', specimen: 'N/A', parameters: [],
-  },
-  ],
+const { storeFns } = vi.hoisted(() => ({
   storeFns: {
-    fetchTestPrices: vi.fn(async (_orgId: string): Promise<any[]> => []),
-    fetchCustomTests: vi.fn(async (_orgId: string): Promise<any[]> => []),
     upsertTestPrices: vi.fn(async (_rows: any[], _orgId: string) => {}),
+    recordAudit: vi.fn(async () => ({})),
   },
 }));
 
 vi.mock('@/lib/store', async () => {
   const actual = await vi.importActual<any>('@/lib/store');
-  return { ...actual, ...storeFns, TEST_CATALOGUE: CATALOGUE };
+  return { ...actual, ...storeFns };
 });
 
-import { ShellSlotProvider, useShellSlotValue } from '@/components/shell';
-import ReferralPricingScreen from './ReferralPricingScreen';
+import { PriceList } from './PriceList';
 
-function SlotActions() {
-  const { actions } = useShellSlotValue();
-  return <div>{actions}</div>;
-}
-
-function renderScreen() {
-  return render(
-    <ShellSlotProvider>
-      <SlotActions />
-      <ReferralPricingScreen />
-    </ShellSlotProvider>,
-  );
-}
+const CATALOGUE = [
+  { id: 'fbc', name: 'Full Blood Count', department: 'lab' as const, category: 'Haematology', specimen: 'Blood', parameters: [] },
+  { id: 'mp', name: 'Malaria Parasite', department: 'lab' as const, category: 'Haematology', specimen: 'Blood', parameters: [] },
+  { id: 'cxr', name: 'Chest X-Ray', department: 'radiology' as const, category: 'Imaging', specimen: 'N/A', parameters: [] },
+];
 
 const PRICES = [
-  { organization_id: ORG.id, test_id: 'fbc', test_name: 'Full Blood Count', price: 3000, commission_type: 'percentage' as const, commission_value: 10 },
-  { organization_id: ORG.id, test_id: 'cxr', test_name: 'Chest X-Ray', price: 8000, commission_type: 'flat' as const, commission_value: 500 },
+  { organization_id: 'org-1', test_id: 'fbc', test_name: 'Full Blood Count', price: 3000, commission_type: 'percentage' as const, commission_value: 10 },
+  { organization_id: 'org-1', test_id: 'cxr', test_name: 'Chest X-Ray', price: 8000, commission_type: 'flat' as const, commission_value: 500 },
 ];
 
 beforeEach(() => {
   vi.clearAllMocks();
-  authState = { organization: ORG, profile: { id: 'me', role: 'admin' } };
-  storeFns.fetchTestPrices.mockResolvedValue(PRICES);
-  storeFns.fetchCustomTests.mockResolvedValue([]);
 });
 
 const priceBox = (testName: string) => screen.getByLabelText(new RegExp(`price.*${testName}`, 'i'));
 const saveButton = () => screen.getByRole('button', { name: /save/i });
 
-describe('Price and commission catalogue', () => {
+function renderList(overrides: Partial<React.ComponentProps<typeof PriceList>> = {}) {
+  return render(
+    <PriceList
+      organizationId="org-1"
+      catalogue={CATALOGUE}
+      prices={PRICES}
+      {...overrides}
+    />,
+  );
+}
+
+describe('Price list', () => {
   it('shows the saved price and commission for each test', async () => {
-    renderScreen();
+    renderList();
     await screen.findByText('Full Blood Count');
 
     expect((priceBox('Full Blood Count') as HTMLInputElement).value).toBe('3000');
@@ -99,7 +69,7 @@ describe('Price and commission catalogue', () => {
   });
 
   it('has nothing to save until something is edited', async () => {
-    renderScreen();
+    renderList();
     await screen.findByText('Full Blood Count');
 
     expect(saveButton()).toBeDisabled();
@@ -108,16 +78,8 @@ describe('Price and commission catalogue', () => {
     await waitFor(() => expect(saveButton()).toBeEnabled());
   });
 
-  /**
-   * Typing a price and then clearing it again is not an edit.
-   *
-   * The dirty check compared a map keyed by test id, and clearing the box wrote
-   * a 0 under a key the saved map had never had — so the screen believed there
-   * were unsaved changes for the rest of the session and the button never went
-   * back to "All saved".
-   */
   it('goes back to having nothing to save when an edit is undone', async () => {
-    renderScreen();
+    renderList();
     await screen.findByText('Malaria Parasite');
 
     fireEvent.change(priceBox('Malaria Parasite'), { target: { value: '1500' } });
@@ -127,20 +89,12 @@ describe('Price and commission catalogue', () => {
     await waitFor(() => expect(saveButton()).toBeDisabled());
   });
 
-  /**
-   * The one that matters.
-   *
-   * The save writes the whole catalogue, and the filters hide rows. A price
-   * edited before a filter was applied must still be in the write, and a test
-   * hidden behind the filter must keep the price it already had.
-   */
   it('saves rows the filter is hiding, with the values they already had', async () => {
-    renderScreen();
+    renderList();
     await screen.findByText('Full Blood Count');
 
     fireEvent.change(priceBox('Full Blood Count'), { target: { value: '3500' } });
 
-    // Narrow to radiology — the blood tests leave the screen.
     fireEvent.change(screen.getByLabelText(/department/i), { target: { value: 'radiology' } });
     await waitFor(() => expect(screen.queryByText('Full Blood Count')).not.toBeInTheDocument());
 
@@ -151,7 +105,6 @@ describe('Price and commission catalogue', () => {
 
     expect(rows).toHaveLength(CATALOGUE.length);
     expect(rows.find((r: any) => r.test_id === 'fbc')).toMatchObject({ price: 3500 });
-    // Hidden, untouched, and still 8000 rather than zeroed.
     expect(rows.find((r: any) => r.test_id === 'cxr')).toMatchObject({
       price: 8000,
       commission_type: 'flat',
@@ -160,7 +113,7 @@ describe('Price and commission catalogue', () => {
   });
 
   it('zeroes the commission value when the type is set to none', async () => {
-    renderScreen();
+    renderList();
     await screen.findByText('Full Blood Count');
 
     const type = screen.getByLabelText(/commission type.*Full Blood Count/i);
@@ -177,7 +130,7 @@ describe('Price and commission catalogue', () => {
   });
 
   it('filters by department, category and search together', async () => {
-    renderScreen();
+    renderList();
     await screen.findByText('Full Blood Count');
 
     fireEvent.change(screen.getByPlaceholderText(/search/i), { target: { value: 'malaria' } });
@@ -188,29 +141,50 @@ describe('Price and commission catalogue', () => {
 
   it('reports a failed save instead of appearing to succeed', async () => {
     storeFns.upsertTestPrices.mockRejectedValueOnce(new Error('price list locked'));
-    renderScreen();
+    renderList();
     await screen.findByText('Full Blood Count');
 
     fireEvent.change(priceBox('Full Blood Count'), { target: { value: '3500' } });
     fireEvent.click(saveButton());
 
     expect(await screen.findByText(/price list locked/i)).toBeInTheDocument();
-    // Still unsaved, so the desk can try again without retyping.
     await waitFor(() => expect(saveButton()).toBeEnabled());
   });
 
-  it('has nothing left to save once a save succeeds', async () => {
-    renderScreen();
+  it('has nothing left to save once a save succeeds, and records an audit row per changed test', async () => {
+    renderList({ actorId: 'me', actorName: 'Amina Bello' });
     await screen.findByText('Full Blood Count');
 
     fireEvent.change(priceBox('Full Blood Count'), { target: { value: '3500' } });
     fireEvent.click(saveButton());
 
     await waitFor(() => expect(saveButton()).toBeDisabled());
+    expect(storeFns.recordAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'price.changed',
+        entity_id: 'fbc',
+        actor_name: 'Amina Bello',
+        before: expect.objectContaining({ price: 3000 }),
+        after: expect.objectContaining({ price: 3500 }),
+      }),
+    );
+    // Only the test that changed gets a row.
+    expect(storeFns.recordAudit).toHaveBeenCalledTimes(1);
+  });
+
+  it('tells the caller once the save lands, so it can refetch', async () => {
+    const onSaved = vi.fn();
+    renderList({ onSaved });
+    await screen.findByText('Full Blood Count');
+
+    fireEvent.change(priceBox('Full Blood Count'), { target: { value: '3500' } });
+    fireEvent.click(saveButton());
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
   });
 
   it('warns before the tab is closed with unsaved edits, and not otherwise', async () => {
-    renderScreen();
+    renderList();
     await screen.findByText('Full Blood Count');
 
     const clean = new Event('beforeunload', { cancelable: true });
@@ -225,12 +199,31 @@ describe('Price and commission catalogue', () => {
     expect(dirty.defaultPrevented).toBe(true);
   });
 
-  it('gives every price and commission box a name of its own', async () => {
-    renderScreen();
+  it('holds a fresher price list back while the grid is dirty, and offers to reload it', async () => {
+    const { rerender } = renderList();
     await screen.findByText('Full Blood Count');
 
-    // Every row has three controls and they are otherwise identical, so without
-    // the test name in the label they are all just "edit text".
+    fireEvent.change(priceBox('Full Blood Count'), { target: { value: '3500' } });
+    await waitFor(() => expect(saveButton()).toBeEnabled());
+
+    // Someone else's save comes in through the prop while this one is mid-edit.
+    const fresher = [...PRICES.map((p) => (p.test_id === 'fbc' ? { ...p, price: 3200 } : p))];
+    rerender(<PriceList organizationId="org-1" catalogue={CATALOGUE} prices={fresher} />);
+
+    // The edit in progress is not clobbered...
+    expect((priceBox('Full Blood Count') as HTMLInputElement).value).toBe('3500');
+    // ...but the screen says so, and offers a way to take the newer figures.
+    expect(await screen.findByText(/changed elsewhere/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /reload/i }));
+    await waitFor(() => expect((priceBox('Full Blood Count') as HTMLInputElement).value).toBe('3200'));
+    expect(saveButton()).toBeDisabled();
+  });
+
+  it('gives every price and commission box a name of its own', async () => {
+    renderList();
+    await screen.findByText('Full Blood Count');
+
     for (const t of CATALOGUE) {
       expect(screen.getByLabelText(new RegExp(`price.*${t.name}`, 'i'))).toBeInTheDocument();
       expect(screen.getByLabelText(new RegExp(`commission type.*${t.name}`, 'i'))).toBeInTheDocument();

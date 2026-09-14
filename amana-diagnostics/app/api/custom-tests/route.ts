@@ -205,7 +205,7 @@ export async function POST(request: Request) {
       
       const host = request.headers.get('host') || 'localhost:3000';
       const protocol = host.startsWith('localhost') || host.startsWith('127.0.0.1') ? 'http' : 'https';
-      const pricingLink = `${protocol}://${host}/${org?.slug || 'workspace'}/admin/referrals/pricing`;
+      const pricingLink = `${protocol}://${host}/${org?.slug || 'workspace'}/admin/tests?tab=pending`;
 
       const emailSubject = `Action Required: New Investigation Added — ${test.name}`;
       const emailHtml = `

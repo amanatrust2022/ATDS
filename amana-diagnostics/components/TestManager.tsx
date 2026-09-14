@@ -23,6 +23,7 @@ import {
   SegmentedControl,
   Select,
 } from '@/components/ui';
+import { diffOf } from '@/lib/audit';
 import {
   Test,
   TEST_CATALOGUE,
@@ -31,6 +32,7 @@ import {
   deleteCustomTest,
   fetchCustomTests,
   fetchTestPrices,
+  recordAudit,
   setCustomCatalogueCache,
   updateCustomTest,
   upsertTestPrices,
@@ -49,23 +51,46 @@ interface Props {
   organizationId: string;
   restrictDepartment?: 'lab' | 'radiology';
   onClose?: () => void;
+  /**
+   * Prices owned by a parent that also renders the price list, so the two
+   * views of the same numbers never disagree. When omitted (a department
+   * bench opening this to add one test) the component fetches its own copy,
+   * as it always did.
+   */
+  prices?: TestPrice[];
+  /** Called after a price write, so the parent can refetch and pass fresh rows back down. */
+  onPricesChanged?: () => void;
+  initialTab?: 'catalogue' | 'pending';
 }
 
 type Format = 'parameterized' | 'freetext';
 
 const BLANK_PARAM: Parameter = { name: '', unit: '', range: '' };
 
-export default function TestManager({ organizationId, restrictDepartment, onClose }: Props) {
+export default function TestManager({
+  organizationId,
+  restrictDepartment,
+  onClose,
+  prices,
+  onPricesChanged,
+  initialTab,
+}: Props) {
   const { ask } = useNotices();
   const { profile } = useAuth();
   const isAdmin = profile?.role === 'admin';
+  const auditActor = {
+    organization_id: organizationId,
+    actor_id: profile?.id ?? null,
+    actor_name: profile?.full_name ?? null,
+  };
 
   const [catalogue, setCatalogue] = useState<Test[]>([]);
   const [pendingTests, setPendingTests] = useState<Test[]>([]);
   const [customTests, setCustomTests] = useState<Test[]>([]);
-  const [testPrices, setTestPrices] = useState<TestPrice[]>([]);
+  const [ownPrices, setOwnPrices] = useState<TestPrice[]>([]);
+  const testPrices = prices ?? ownPrices;
 
-  const [activeTab, setActiveTab] = useState<'catalogue' | 'pending'>('catalogue');
+  const [activeTab, setActiveTab] = useState<'catalogue' | 'pending'>(initialTab ?? 'catalogue');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [editingTest, setEditingTest] = useState<Test | null>(null);
@@ -102,13 +127,12 @@ export default function TestManager({ organizationId, restrictDepartment, onClos
     setLoading(true);
     setError('');
     try {
-      const [dbCustom, priceData] = await Promise.all([
+      const [dbCustom] = await Promise.all([
         fetchCustomTests(organizationId),
-        fetchTestPrices(organizationId),
+        prices ? Promise.resolve() : fetchTestPrices(organizationId).then(setOwnPrices),
       ]);
       setCustomTests(dbCustom);
       setCustomCatalogueCache(dbCustom);
-      setTestPrices(priceData);
 
       // A custom row either overrides a built-in of the same id, replaces it,
       // or is a test of its own. Deactivated ones wait in Pending Pricing.
@@ -217,6 +241,37 @@ export default function TestManager({ organizationId, restrictDepartment, onClos
 
   const isFreeText = formFormat === 'freetext' || formDept === 'radiology';
 
+  /** A failed audit write does not undo a save that already landed — it is
+   * folded into the same non-blocking warning the email notice uses. */
+  const noteAuditFailure = (err: unknown) => {
+    console.warn('Failed to record an audit entry:', err);
+    setWarnMsg((prev) =>
+      prev || 'The change was made, but its audit entry could not be recorded.',
+    );
+  };
+
+  const auditPriceChange = async (
+    testId: string,
+    label: string,
+    before: { price: number; commission_type: string; commission_value: number },
+    after: { price: number; commission_type: string; commission_value: number },
+  ) => {
+    const diff = diffOf(before, after, ['price', 'commission_type', 'commission_value']);
+    if (Object.keys(diff.after).length === 0) return;
+    try {
+      await recordAudit({
+        ...auditActor,
+        action: 'price.changed',
+        entity_type: 'test_price',
+        entity_id: testId,
+        entity_label: label,
+        ...diff,
+      });
+    } catch (err) {
+      noteAuditFailure(err);
+    }
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     clearMessages();
@@ -269,6 +324,28 @@ export default function TestManager({ organizationId, restrictDepartment, onClos
           ],
           organizationId,
         );
+        onPricesChanged?.();
+
+        try {
+          await recordAudit({
+            ...auditActor,
+            action: 'catalogue.test_added',
+            entity_type: 'custom_test',
+            entity_id: testId,
+            entity_label: formName.trim(),
+            after: { department: formDept, category: finalCategory },
+          });
+        } catch (err) {
+          noteAuditFailure(err);
+        }
+        if (isAdmin) {
+          await auditPriceChange(
+            testId,
+            formName.trim(),
+            { price: 0, commission_type: 'none', commission_value: 0 },
+            { price: formPrice, commission_type: formCommType, commission_value: formCommValue },
+          );
+        }
 
         if (isAdmin) {
           setSuccessMsg('Test added to the catalogue and priced.');
@@ -308,13 +385,35 @@ export default function TestManager({ organizationId, restrictDepartment, onClos
           }
         }
       } else {
+        const before = editingTest!;
         await updateCustomTest(
           testId,
           { ...testPayload, is_active: isAdmin ? true : editingTest!.is_active },
           organizationId,
         );
 
+        const testDiff = diffOf(
+          { name: before.name, department: before.department, category: before.category, specimen: before.specimen },
+          { name: testPayload.name, department: testPayload.department, category: testPayload.category, specimen: testPayload.specimen },
+          ['name', 'department', 'category', 'specimen'],
+        );
+        if (Object.keys(testDiff.after).length > 0) {
+          try {
+            await recordAudit({
+              ...auditActor,
+              action: 'catalogue.test_updated',
+              entity_type: 'custom_test',
+              entity_id: testId,
+              entity_label: formName.trim(),
+              ...testDiff,
+            });
+          } catch (err) {
+            noteAuditFailure(err);
+          }
+        }
+
         if (isAdmin) {
+          const priorPrice = testPrices.find((p) => p.test_id === testId);
           await upsertTestPrices(
             [
               {
@@ -327,6 +426,17 @@ export default function TestManager({ organizationId, restrictDepartment, onClos
               },
             ],
             organizationId,
+          );
+          onPricesChanged?.();
+          await auditPriceChange(
+            testId,
+            formName.trim(),
+            {
+              price: priorPrice?.price ?? 0,
+              commission_type: priorPrice?.commission_type ?? 'none',
+              commission_value: priorPrice?.commission_value ?? 0,
+            },
+            { price: formPrice, commission_type: formCommType, commission_value: formCommValue },
           );
           if (activeTab === 'pending') setActiveTab('catalogue');
           setSuccessMsg('Test details and price updated.');
@@ -360,10 +470,24 @@ export default function TestManager({ organizationId, restrictDepartment, onClos
     setSaving(true);
     clearMessages();
     try {
-      await deleteCustomTest(editingTest.id, organizationId);
+      const retired = editingTest;
+      await deleteCustomTest(retired.id, organizationId);
       setEditingTest(null);
       await loadCatalogue();
       setSuccessMsg('Test removed from the catalogue.');
+      try {
+        await recordAudit({
+          ...auditActor,
+          action: 'catalogue.test_retired',
+          entity_type: 'custom_test',
+          entity_id: retired.id,
+          entity_label: retired.name,
+          before: { is_active: true },
+          after: { is_active: false },
+        });
+      } catch (err) {
+        noteAuditFailure(err);
+      }
     } catch (err: any) {
       setError(err?.message || 'Could not remove that test.');
     } finally {

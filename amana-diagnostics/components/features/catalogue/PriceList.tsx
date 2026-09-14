@@ -1,11 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { RiRadarLine, RiSaveLine, RiTestTubeLine } from '@remixicon/react';
 
-import { useAuth } from '@/components/AuthProvider';
-import RequireRole from '@/components/RequireRole';
-import { useShellSlot } from '@/components/shell';
 import {
   Alert,
   Button,
@@ -19,15 +16,9 @@ import {
   SkeletonRows,
   Table,
 } from '@/components/ui';
-import {
-  TEST_CATALOGUE,
-  Test,
-  fetchCustomTests,
-  fetchTestPrices,
-  upsertTestPrices,
-} from '@/lib/store';
+import { Test, TestPrice, recordAudit, upsertTestPrices } from '@/lib/store';
 
-import styles from './pricing.module.css';
+import styles from './PriceList.module.css';
 
 type CommissionType = 'percentage' | 'flat' | 'none';
 
@@ -61,63 +52,62 @@ const settled = (d: Draft) => ({
   commissionValue: d.commissionType === 'none' ? 0 : num(d.commissionValue),
 });
 
-function TestPricingPage() {
-  const { organization } = useAuth();
+const rowsFrom = (prices: TestPrice[]): Record<string, Draft> => {
+  const out: Record<string, Draft> = {};
+  prices.forEach((p) => {
+    out[p.test_id] = {
+      price: p.price ? String(p.price) : '',
+      commissionType: (p.commission_type as CommissionType) || 'percentage',
+      commissionValue: p.commission_value ? String(p.commission_value) : '',
+    };
+  });
+  return out;
+};
 
-  const [catalogue, setCatalogue] = useState<Test[]>([]);
+interface PriceListProps {
+  organizationId: string;
+  catalogue: Test[];
+  prices: TestPrice[];
+  loading?: boolean;
+  actorId?: string | null;
+  actorName?: string | null;
+  /** Called after a successful save, so the caller can refetch and pass fresh prices back down. */
+  onSaved?: () => void;
+  onDirtyChange?: (dirty: boolean) => void;
+}
+
+/**
+ * The price and commission list, as a tab of the catalogue rather than a
+ * screen of its own.
+ *
+ * It used to fetch its own catalogue and prices; now the catalogue screen
+ * owns both, so an edit made from the Investigations tab shows up here
+ * without a reload and vice versa. It stays mounted while another tab is
+ * showing (see TestCatalogueScreen), so a half-finished round of price
+ * edits survives a tab switch.
+ */
+export function PriceList({
+  organizationId,
+  catalogue,
+  prices,
+  loading,
+  actorId,
+  actorName,
+  onSaved,
+  onDirtyChange,
+}: PriceListProps) {
   const [draft, setDraft] = useState<Record<string, Draft>>({});
   const [saved, setSaved] = useState<Record<string, Draft>>({});
-  const [loading, setLoading] = useState(true);
+  // Rows that arrived from the `prices` prop while the grid was dirty. Applying
+  // them straight over an edit in progress would throw the edit away silently;
+  // this holds them until the desk chooses to reload.
+  const [pendingSaved, setPendingSaved] = useState<Record<string, Draft> | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [search, setSearch] = useState('');
   const [dept, setDept] = useState<'all' | 'lab' | 'radiology'>('all');
   const [category, setCategory] = useState('');
-
-  useEffect(() => {
-    if (!organization?.id) return;
-    let live = true;
-    Promise.all([fetchTestPrices(organization.id), fetchCustomTests(organization.id)]).then(
-      ([priceRows, customTests]) => {
-        if (!live) return;
-
-        const rows: Record<string, Draft> = {};
-        priceRows.forEach((p) => {
-          rows[p.test_id] = {
-            price: p.price ? String(p.price) : '',
-            commissionType: (p.commission_type as CommissionType) || 'percentage',
-            commissionValue: p.commission_value ? String(p.commission_value) : '',
-          };
-        });
-        setDraft(rows);
-        setSaved(rows);
-
-        // A custom test overrides the built-in of the same id, and one turned
-        // off disappears from the list entirely.
-        const merged = [...TEST_CATALOGUE];
-        customTests.forEach((ct) => {
-          const idx = merged.findIndex((t) => t.id === ct.id);
-          if (idx !== -1) {
-            if (ct.is_active === false) merged.splice(idx, 1);
-            else merged[idx] = ct;
-          } else if (ct.is_active !== false) {
-            merged.push(ct);
-          }
-        });
-        setCatalogue(merged);
-        setLoading(false);
-      },
-    );
-    return () => {
-      live = false;
-    };
-  }, [organization?.id]);
-
-  const edit = (id: string, patch: Partial<Draft>) => {
-    setSuccess('');
-    setDraft((prev) => ({ ...prev, [id]: { ...(prev[id] ?? BLANK), ...patch } }));
-  };
 
   const changed = useCallback(
     (id: string) => {
@@ -135,6 +125,45 @@ function TestPricingPage() {
   // Only tests actually in the catalogue count. Comparing the two maps whole
   // let a key for a test that no longer exists hold the screen dirty forever.
   const isDirty = useMemo(() => catalogue.some((t) => changed(t.id)), [catalogue, changed]);
+  const isDirtyRef = useRef(isDirty);
+  isDirtyRef.current = isDirty;
+
+  useEffect(() => {
+    onDirtyChange?.(isDirty);
+  }, [isDirty, onDirtyChange]);
+
+  const initializedRef = useRef(false);
+  useEffect(() => {
+    const rows = rowsFrom(prices);
+    if (!initializedRef.current) {
+      initializedRef.current = true;
+      setDraft(rows);
+      setSaved(rows);
+      return;
+    }
+    if (isDirtyRef.current) {
+      setPendingSaved(rows);
+    } else {
+      setDraft(rows);
+      setSaved(rows);
+      setPendingSaved(null);
+    }
+    // Only the incoming rows decide whether to resync — isDirty is read from
+    // the ref so this does not refire on every keystroke.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prices]);
+
+  const handleReload = () => {
+    if (!pendingSaved) return;
+    setDraft(pendingSaved);
+    setSaved(pendingSaved);
+    setPendingSaved(null);
+  };
+
+  const edit = (id: string, patch: Partial<Draft>) => {
+    setSuccess('');
+    setDraft((prev) => ({ ...prev, [id]: { ...(prev[id] ?? BLANK), ...patch } }));
+  };
 
   const categories = useMemo(
     () => Array.from(new Set(catalogue.map((t) => t.category))),
@@ -152,17 +181,17 @@ function TestPricingPage() {
   }, [catalogue, category, dept, search]);
 
   const handleSave = useCallback(async () => {
-    if (!organization?.id) return;
     setSaving(true);
     setError('');
     try {
       // The whole catalogue, not the filtered view. The filters hide rows; the
       // write must not, or narrowing to radiology before saving would wipe
       // every price in the lab.
+      const changedTests = catalogue.filter((t) => changed(t.id));
       const rows = catalogue.map((t) => {
         const s = settled(draft[t.id] ?? BLANK);
         return {
-          organization_id: organization.id,
+          organization_id: organizationId,
           test_id: t.id,
           test_name: t.name,
           price: s.price,
@@ -170,36 +199,50 @@ function TestPricingPage() {
           commission_value: s.commissionValue,
         };
       });
-      await upsertTestPrices(rows, organization.id);
+      await upsertTestPrices(rows, organizationId);
       setSaved(draft);
+      setPendingSaved(null);
       setSuccess(`Saved ${rows.length} prices.`);
+
+      // One audit row per test actually changed. A failure here does not
+      // unwind the save that already happened — it is only logged.
+      await Promise.all(
+        changedTests.map(async (t) => {
+          const before = settled(saved[t.id] ?? BLANK);
+          const after = settled(draft[t.id] ?? BLANK);
+          try {
+            await recordAudit({
+              organization_id: organizationId,
+              actor_id: actorId ?? null,
+              actor_name: actorName ?? null,
+              action: 'price.changed',
+              entity_type: 'test_price',
+              entity_id: t.id,
+              entity_label: t.name,
+              before: {
+                price: before.price,
+                commission_type: before.commissionType,
+                commission_value: before.commissionValue,
+              },
+              after: {
+                price: after.price,
+                commission_type: after.commissionType,
+                commission_value: after.commissionValue,
+              },
+            });
+          } catch (auditErr) {
+            console.warn('Failed to record a price-change audit entry for', t.id, auditErr);
+          }
+        }),
+      );
+
+      onSaved?.();
     } catch (e: any) {
       setError(e?.message || 'Could not save the price list.');
     } finally {
       setSaving(false);
     }
-  }, [catalogue, draft, organization?.id]);
-
-  useShellSlot(
-    {
-      subtitle: 'What each test costs, and what a referrer earns on it.',
-      actions: (
-        <div className={styles['unsaved']}>
-          {isDirty && <span className={styles['unsavedNote']}>Unsaved changes</span>}
-          <Button
-            intent="primary"
-            icon={<RiSaveLine size={15} />}
-            loading={saving}
-            disabled={!isDirty}
-            onClick={handleSave}
-          >
-            {isDirty ? 'Save price list' : 'All saved'}
-          </Button>
-        </div>
-      ),
-    },
-    [isDirty, saving, handleSave],
-  );
+  }, [catalogue, changed, draft, saved, organizationId, actorId, actorName, onSaved]);
 
   // A price list is dozens of small edits and one write. Closing the tab
   // halfway through lost the lot, silently.
@@ -216,6 +259,7 @@ function TestPricingPage() {
   const priced = catalogue.filter((t) => settled(draft[t.id] ?? BLANK).price > 0);
   const earning = catalogue.filter((t) => settled(draft[t.id] ?? BLANK).commissionValue > 0);
   const total = priced.reduce((sum, t) => sum + settled(draft[t.id] ?? BLANK).price, 0);
+  const changedCount = catalogue.filter((t) => changed(t.id)).length;
 
   const stats = [
     { label: 'Tests', value: String(catalogue.length) },
@@ -319,6 +363,19 @@ function TestPricingPage() {
 
   return (
     <div className={styles['screen']}>
+      <div className={styles['toolbar']}>
+        {isDirty && <span className={styles['unsavedNote']}>Unsaved changes</span>}
+        <Button
+          intent="primary"
+          icon={<RiSaveLine size={15} />}
+          loading={saving}
+          disabled={!isDirty}
+          onClick={handleSave}
+        >
+          {isDirty ? 'Save price list' : 'All saved'}
+        </Button>
+      </div>
+
       {error && (
         <Alert tone="critical" live>
           {error}
@@ -327,6 +384,20 @@ function TestPricingPage() {
       {success && !isDirty && (
         <Alert tone="success" live>
           {success}
+        </Alert>
+      )}
+      {pendingSaved && (
+        <Alert
+          tone="warning"
+          live
+          title="Prices changed elsewhere"
+          actions={
+            <Button intent="secondary" size="sm" onClick={handleReload}>
+              Reload
+            </Button>
+          }
+        >
+          Reloading discards {changedCount} unsaved edit{changedCount === 1 ? '' : 's'}.
         </Alert>
       )}
 
@@ -414,14 +485,5 @@ function TestPricingPage() {
           ))
       )}
     </div>
-  );
-}
-
-/** Only these roles may open this screen — see components/RequireRole.tsx. */
-export default function GuardedTestPricingPage(props: any) {
-  return (
-    <RequireRole allow={['admin']}>
-      <TestPricingPage {...props} />
-    </RequireRole>
   );
 }
