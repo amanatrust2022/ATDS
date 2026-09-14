@@ -51,3 +51,16 @@ px tsc --noEmit\).
 - Tested on Vercel staging with a real login.
 - \AGENTS.md\ is updated if any architectural decision was made.
 
+<!-- BEGIN:audit-trail-rules -->
+# Audit Trail
+
+- **Every admin mutation records an audit row.** Call `recordAudit(input)` from `@/lib/store` after every successful admin write. A failure to log must never unwind the change — catch and warn, do not throw.
+- **Undo is a new row, not a deletion.** When reversing an action, write a second audit row with `action: 'X.reversed'` and `reverses_id` pointing at the original entry's id. Never delete or update the first row.
+- **`commission.settled` carries `after: { reference, count, amount }`.** `commission.reversed` carries `reason` and `reverses_id`.
+<!-- END:audit-trail-rules -->
+
+<!-- BEGIN:hub-referrer-hazard -->
+# Hub Referrer Update Hazard
+
+- The SQLite hub schema has `is_active`, `commission_type`, and `commission_value` as `NOT NULL` on `referring_doctors` and `referring_facilities`. When calling `updateReferringDoctor` or `updateReferringFacility` on the hub (via `/api/referrals`), you MUST pass the **full row**, not just the changed fields. A partial update that omits `commission_type` will fail with a NOT NULL constraint error. Always fetch the current row first and spread it: `{ ...fullRow, is_active: false }`.
+<!-- END:hub-referrer-hazard -->
