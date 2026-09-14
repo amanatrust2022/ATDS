@@ -4,7 +4,7 @@
  *
  * It reproduces the exact geometry the printed report uses (see
  * lib/templates.ts → getResultTemplate): a real A4 sheet, the @page margins
- * (20px left/right, 15mm bottom, and 0 top on the FIRST page), the body's 10px
+ * (20px left/right, 20mm bottom, and 0 top on the FIRST page), the body's 10px
  * top padding, and the same report classes — so what sits here is where it lands
  * on paper. The letterhead is sanitised through the same cleanLetterhead used at
  * print time, then a sample report title + patient block follow it for context.
@@ -20,7 +20,7 @@ const MM = 96 / 25.4;              // px per mm at 96dpi
 const PAGE_W = 210 * MM;           // A4 width  ≈ 793.7px
 const PAGE_H = 297 * MM;           // A4 height ≈ 1122.5px
 const MARGIN_X = 20;               // @page margin-left / margin-right (px)
-const MARGIN_BOTTOM = 15 * MM;     // @page margin-bottom (15mm)
+const MARGIN_BOTTOM = 20 * MM;     // @page margin-bottom (20mm, same as the top)
 const PAD_TOP = 10;                // body padding-top on print
 const FOOTER_GAP = 12;             // clearance kept above the running footer
 const SCALE = 0.72;                // shrink the sheet to fit the settings column
@@ -41,7 +41,7 @@ export default function LetterheadA4Preview({ html, footerHtml, bgHtml, bgTop = 
   // the clear strip the full-page frame reserves above it.
   const contentTop = PAD_TOP + (bgClean ? bgTop : 0);
   // And where it has to stop. The footer is a fixed layer at the foot of the
-  // page *area* — 15mm above the paper edge, not on it — and the report reserves
+  // page *area* — 20mm above the paper edge, not on it — and the report reserves
   // its height plus a gap on every page so nothing prints underneath it. The
   // preview drew the footer 6px from the paper edge and left the body running
   // straight into it, which is the one thing it was there to show.
@@ -96,7 +96,7 @@ export default function LetterheadA4Preview({ html, footerHtml, bgHtml, bgTop = 
                 className={styles.guideLabel}
                 style={{ right: MARGIN_X + 4, top: PAGE_H - MARGIN_BOTTOM + 4 }}
               >
-                bottom margin · 15&nbsp;mm
+                bottom margin · 20&nbsp;mm
               </div>
 
               {/* When a full-page background is used, show the clear area the report

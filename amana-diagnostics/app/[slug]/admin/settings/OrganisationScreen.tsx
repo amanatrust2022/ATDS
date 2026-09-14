@@ -335,6 +335,7 @@ function OrganizationSettings() {
                 <LetterheadDesigner
                   value={formData.letterheadFooterHtml}
                   defaultHeight={90}
+                  minHeight={20}
                   onChange={(val) => setFormData((fd) => ({ ...fd, letterheadFooterHtml: val }))}
                 />
               </div>

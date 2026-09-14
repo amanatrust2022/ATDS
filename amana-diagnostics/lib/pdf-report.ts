@@ -748,7 +748,6 @@ export function buildReportPdfDefinition(
                 fontSize: 10,
                 bold: true,
                 alignment: 'center',
-                border: [false, true, false, false],
                 margin: [0, 4, 0, 0],
               },
             ]

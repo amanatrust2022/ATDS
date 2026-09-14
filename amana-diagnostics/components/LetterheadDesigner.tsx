@@ -85,7 +85,11 @@ interface Props {
   value: string;
   onChange: (html: string) => void;
   defaultHeight?: number; // starting canvas height when empty (footer strips want a small one)
+  minHeight?: number;     // smallest canvas allowed (a footer can be a single 20px rule)
 }
+
+const MIN_H = 80;
+const MAX_H = 1400;
 
 const FONTS = [
   "'Times New Roman', Times, serif",
@@ -343,7 +347,7 @@ function rotate(vx: number, vy: number, deg: number) {
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
-export default function LetterheadDesigner({ value, onChange, defaultHeight = DEFAULT_H }: Props) {
+export default function LetterheadDesigner({ value, onChange, defaultHeight = DEFAULT_H, minHeight = MIN_H }: Props) {
   const { notify } = useNotices();
   const [els, setEls] = useState<El[]>([]);
   const [height, setHeight] = useState(defaultHeight);
@@ -743,7 +747,7 @@ export default function LetterheadDesigner({ value, onChange, defaultHeight = DE
       const h = Math.round(CANVAS_W * nar);
       checkpoint('import');
       const el: El = { ...baseEl('image', 1), src, x: 0, y: 0, w: CANVAS_W, h, iw: CANVAS_W, ih: h, ox: 0, oy: 0, nar };
-      apply([el], Math.max(80, Math.min(1400, h)));
+      apply([el], Math.max(minHeight, Math.min(MAX_H, h)));
       setSelId(el.id);
     } catch (err) {
       console.error('Letterhead import failed:', err);
@@ -753,7 +757,7 @@ export default function LetterheadDesigner({ value, onChange, defaultHeight = DE
     }
   };
 
-  const setHeightSafe = (h: number) => { checkpoint('height'); const v = Math.max(80, Math.min(1400, h)); apply(elsRef.current, v); };
+  const setHeightSafe = (h: number) => { checkpoint('height'); const v = Math.max(minHeight, Math.min(MAX_H, h)); apply(elsRef.current, v); };
 
   // Align the selected element to the page (canvas) edges or centre.
   const alignEl = (how: 'left' | 'hcenter' | 'right' | 'top' | 'vcenter' | 'bottom') => {

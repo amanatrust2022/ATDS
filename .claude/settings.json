@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(npx vitest run lib/templates.test.ts components/LetterheadA4Preview.test.tsx --pool=forks 2>&1)",
+      "PowerShell(npx tsc --noEmit 2>&1)"
+    ]
+  }
+}

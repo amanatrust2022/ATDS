@@ -534,7 +534,7 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
       <div class="sig-box">
         ${completedTests[0]?.completedBySignatureUrl
           ? `<div style="margin-bottom:6px;">
-               <img src="${esc(completedTests[0].completedBySignatureUrl)}" style="max-height:55px; max-width:160px; object-fit:contain; display:block; margin:0;" alt="Signature" />
+               <img src="${esc(completedTests[0].completedBySignatureUrl)}" style="max-height:55px; max-width:160px; object-fit:contain; display:block; margin:0 0 0 auto;" alt="Signature" />
              </div>`
           : '<div style="height:55px;"></div>'
         }
@@ -572,7 +572,8 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
            The clear area at the top of each page comes from the repeating
            spacer row instead, which is in the flow and therefore honest. */
         margin-top: ${cleanBgHtml ? '0' : '20mm'};
-        margin-bottom: 15mm;
+        /* The same 20mm as the top, so the paper is bordered evenly. */
+        margin-bottom: 20mm;
         margin-left: 20px;
         margin-right: 20px;
       }
@@ -654,15 +655,13 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
       th { background: #0563c1; color: white; padding: 6px 8px; text-align: left; font-size: 11pt; }
       td { padding: 5px 8px; border-bottom: 1px solid #eee; font-size: 11pt; }
       .notes { padding: 6px 12px; font-size: 10pt; background: #fffbe6; border-top: 1px solid #eee; font-style: italic; }
-      /* The signature closes the report, at the extreme lower left of the last
-         page. It used to sit hard against the right margin, which on a report
-         carrying a full-page frame or a right-hand watermark put the person who
-         released the result on top of the letterhead's own artwork. Bottom left
-         is also where a signature is looked for on a clinical document.
-         page-break-inside keeps the name with the line above it. */
-      .sig-section { margin-top: 28px; display: flex; justify-content: flex-start; page-break-inside: avoid; }
-      .sig-box { text-align: left; width: 220px; }
-      .sig-line { border-top: 1px solid #333; padding-top: 4px; font-size: 10pt; color: #333; }
+      /* The signature closes the report at the lower right of the last page,
+         with no rule over the name — the signature image is the mark, and the
+         name sits directly beneath it. page-break-inside keeps the name with
+         the signature above it. */
+      .sig-section { margin-top: 28px; display: flex; justify-content: flex-end; page-break-inside: avoid; }
+      .sig-box { text-align: right; width: 220px; }
+      .sig-line { padding-top: 4px; font-size: 10pt; color: #333; }
       .sig-title { font-size: 9pt; color: #555; padding-top: 2px; }
       
       /* Responsive styles */

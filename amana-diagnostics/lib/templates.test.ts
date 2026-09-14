@@ -70,18 +70,18 @@ describe('text a person typed, on the way into a report', () => {
 });
 
 describe('where the signature sits', () => {
-  it('closes the report at the extreme lower left', () => {
+  it('closes the report at the lower right', () => {
     const html = getResultTemplate(patient(), [test()]);
 
-    expect(html).toContain('.sig-section { margin-top: 28px; display: flex; justify-content: flex-start;');
-    expect(html).toContain('.sig-box { text-align: left;');
+    expect(html).toContain('.sig-section { margin-top: 28px; display: flex; justify-content: flex-end;');
+    expect(html).toContain('.sig-box { text-align: right;');
     // ...and after the end-of-report marker, not before it.
     expect(html.indexOf('END OF REPORT')).toBeLessThan(html.indexOf('<div class="sig-section">'));
   });
 
-  it('keeps the signature off the right margin, where a frame or watermark lives', () => {
+  it('puts no rule over the name', () => {
     const html = getResultTemplate(patient(), [test()]);
-    expect(html).not.toContain('justify-content: flex-end');
+    expect(html).not.toMatch(/\.sig-line \{[^}]*border-top/);
   });
 
   it('prints the title of whoever released the result, when there is one', () => {
@@ -123,7 +123,7 @@ describe('the running footer', () => {
     // 90px of footer + the 12px gap, kept clear on every page by the repeating
     // spacer row — not by a page margin the fixed footer sits above.
     expect(html).toContain('<tfoot><tr><td><div style="height:102px"></div></td></tr></tfoot>');
-    expect(html).toContain('margin-bottom: 15mm;');
+    expect(html).toContain('margin-bottom: 20mm;');
   });
 
   it('measures the footer it was actually given', () => {
