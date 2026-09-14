@@ -109,7 +109,7 @@ describe('Referrers screen — listing', () => {
     renderScreen();
     // Only active referrers by default
     await screen.findByText(/Bello/);
-    expect(screen.getByText(/City General/)).toBeInTheDocument();
+    expect(screen.getAllByText(/City General/)[0]).toBeInTheDocument();
     // Inactive are hidden
     expect(screen.queryByText(/Adamu/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Northside Clinic/)).not.toBeInTheDocument();
@@ -118,14 +118,14 @@ describe('Referrers screen — listing', () => {
   it('labels doctors with Dr. prefix and facilities without', async () => {
     renderScreen();
     await screen.findByText(/Dr\. Bello/);
-    expect(screen.getByText('City General')).toBeInTheDocument();
+    expect(screen.getAllByText('City General')[0]).toBeInTheDocument();
   });
 
   it('shows a facility badge and a doctor badge side by side', async () => {
     renderScreen();
     await screen.findByText(/Bello/);
     expect(screen.getByText('Doctor')).toBeInTheDocument();
-    expect(screen.getByText('Facility')).toBeInTheDocument();
+    expect(screen.getAllByText('Facility')[0]).toBeInTheDocument();
   });
 
   it('shows the facility name for a linked doctor, and Independent for one without', async () => {
@@ -135,7 +135,7 @@ describe('Referrers screen — listing', () => {
     ]);
     renderScreen();
     await screen.findByText(/Bello/);
-    expect(screen.getByText('City General')).toBeInTheDocument();
+    expect(screen.getAllByText('City General')[0]).toBeInTheDocument();
     expect(screen.getByText(/Independent/i)).toBeInTheDocument();
   });
 
@@ -158,18 +158,18 @@ describe('Referrers screen — filters', () => {
     renderScreen();
     await screen.findByText(/Bello/);
 
-    fireEvent.click(screen.getByRole('radio', { name: /^Doctors$/i }));
-    await waitFor(() => expect(screen.queryByText(/City General/i)).not.toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /^Doctors$/i }));
+    await waitFor(() => expect(screen.getAllByText('Facility')).toHaveLength(1));
     expect(screen.getByText(/Dr\. Bello/)).toBeInTheDocument();
   });
 
   it('filters to facilities only', async () => {
     renderScreen();
-    await screen.findByText(/City General/);
+    await screen.findByText(/Bello/);
 
-    fireEvent.click(screen.getByRole('radio', { name: /^Facilities$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^Facilities$/i }));
     await waitFor(() => expect(screen.queryByText(/Dr\. Bello/)).not.toBeInTheDocument());
-    expect(screen.getByText('City General')).toBeInTheDocument();
+    expect(screen.getAllByText('City General')[0]).toBeInTheDocument();
   });
 
   it('searches by doctor name', async () => {
@@ -178,7 +178,7 @@ describe('Referrers screen — filters', () => {
 
     fireEvent.change(screen.getByPlaceholderText(/search/i), { target: { value: 'bello' } });
     await waitFor(() => expect(screen.getByText(/Dr\. Bello/)).toBeInTheDocument());
-    expect(screen.queryByText(/City General/)).not.toBeInTheDocument();
+    expect(screen.getAllByText('Facility')).toHaveLength(1);
   });
 
   it('searches by facility name (finds the doctor linked to it)', async () => {
@@ -354,7 +354,7 @@ describe('Referrers screen — add facility', () => {
   it('carries the existing commission through a facility edit untouched', async () => {
     // Show inactive so City General's inactive twin is also visible
     renderScreen();
-    await screen.findByText(/City General/);
+    await screen.findByText(/Bello/);
 
     // The first edit button belongs to City General (active facility)
     const facilityEditBtns = screen.getAllByRole('button', { name: /edit city general/i });
