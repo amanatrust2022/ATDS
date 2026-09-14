@@ -6,8 +6,10 @@ actually caused it, and where the guard against it now lives.
 Two conventions:
 
 - **"Released?"** means *has this reached the clinic*. The last release tag is
-  `v1.2.20` (6 July 2026), so everything below is unreleased on the desktop app.
-  The web build tracks `main` and gets fixes as they are pushed.
+  `v1.2.21` (13 September 2026); anything below marked "Released: no" that
+  predates it went out in that release. The web build tracks `main` and gets
+  fixes as they are pushed, and the on-premise hubs update themselves from
+  Supabase Storage on their next restart.
 - Anything marked **self-inflicted** was introduced during this refactor, not
   found in the original code. They are listed with everything else on purpose.
 
@@ -274,6 +276,49 @@ The flags now write a draft into the comment box as results are entered
 
 **Guard:** `autoComment.test.ts` (13 cases, including "offers no diagnosis") and
 two cases in `DepartmentPage.test.tsx`.
+
+### Every download button on the download page was a 404
+`E-15`. Released: **yes**, in v1.2.21.
+
+Found while cutting v1.2.21. The page offers "Download Local Hub installer
+v1.2.20 (.exe)" and links to
+`voltex-technologies/redian-releases/releases/download/v1.2.20/…`. That
+repository is not publicly readable and has no release in it. Every build this
+project has ever shipped — v1.2.10 through v1.2.20 — is in
+`amanatrust2022/amana-releases`, which is the repository
+`.github/workflows/release.yml` uploads to and has always uploaded to.
+
+So the download page has been serving a broken link for every version of the
+product, to anyone who has ever tried to install it from the web.
+
+The link base now names the repository the installers are actually published
+to. `git ls-remote --tags` on both repositories is how this was settled rather
+than guessed: one answers with the release history, the other refuses to answer
+at all.
+
+### The app checked for updates at an address that has never held one
+`E-16`. Released: **partly** — see below.
+
+The same wrong repository, in the place it costs most:
+`src-tauri/tauri.conf.json` → `plugins.updater.endpoints`. An installed copy of
+DiagnosticOS asks
+`voltex-technologies/redian-releases/releases/latest/download/latest.json`
+every four hours, gets nothing, and reports itself up to date. Meanwhile
+`release.yml` writes `latest.json` into `amana-releases` on every tagged build.
+The auto-updater the release process is built around has never had anything to
+find.
+
+The endpoint now points at `amana-releases`.
+
+**This does not rescue the machines already out there.** The endpoint is
+compiled into the binary, so every clinic running v1.2.20 keeps asking the old
+address and will never be offered v1.2.21. Those machines need v1.2.21
+installed by hand, once. From v1.2.21 onward the address is right and
+auto-update works as designed.
+
+**Guard:** nothing automated — a workflow cannot prove a URL is the one someone
+meant. `RELEASE.md` now names both pointers and says what each costs when it is
+wrong, which is the only guard available.
 
 ### Radiology reports printed the word "IMPRESSION" twice
 `E-14`. Released: no.

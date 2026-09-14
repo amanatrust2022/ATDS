@@ -26,7 +26,13 @@ import styles from '../landing.module.css';
  */
 
 const CURRENT_VERSION: string = pkg.version;
-const RELEASES = 'https://github.com/voltex-technologies/redian-releases/releases/download';
+// Where the installers actually are. This pointed at
+// voltex-technologies/redian-releases, which has never received a release:
+// every build this pipeline has ever published — v1.2.10 through v1.2.20 — is
+// in amanatrust2022/amana-releases, which is what .github/workflows/release.yml
+// uploads to. So every download button on this page 404'd, for every version,
+// for as long as the page has existed.
+const RELEASES = 'https://github.com/amanatrust2022/amana-releases/releases/download';
 const DOWNLOAD_URL = `${RELEASES}/v${CURRENT_VERSION}/Redian_${CURRENT_VERSION}_x64-setup.exe`;
 const DOWNLOAD_URL_MSI = `${RELEASES}/v${CURRENT_VERSION}/Redian_${CURRENT_VERSION}_x64_en-US.msi`;
 
