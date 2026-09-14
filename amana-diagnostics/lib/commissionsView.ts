@@ -69,6 +69,58 @@ export function totalsFor(entries: CommissionEntry[]): CommissionTotals {
   };
 }
 
+/* ========================================================================
+ * Ageing
+ * ==================================================================== */
+
+export type AgeBucket = '0-30' | '31-60' | '61-90' | '90+';
+
+export const AGE_BUCKETS: AgeBucket[] = ['0-30', '31-60', '61-90', '90+'];
+
+export const AGE_BUCKET_LABEL: Record<AgeBucket, string> = {
+  '0-30': 'Under a month',
+  '31-60': '1–2 months',
+  '61-90': '2–3 months',
+  '90+': 'Over 3 months',
+};
+
+const DAY_MS = 86_400_000;
+
+/** Whole days since the visit that earned the commission. */
+export function ageOf(entry: CommissionEntry, now: Date): number {
+  const t = new Date(entry.registeredAt).getTime();
+  if (Number.isNaN(t)) return 0;
+  return Math.max(Math.floor((now.getTime() - t) / DAY_MS), 0);
+}
+
+export function bucketOf(days: number): AgeBucket {
+  if (days <= 30) return '0-30';
+  if (days <= 60) return '31-60';
+  if (days <= 90) return '61-90';
+  return '90+';
+}
+
+/**
+ * What is still owed, by how long it has been owed. Paid entries are not
+ * aged — a settled commission has no age worth worrying about.
+ */
+export function ageingBuckets(
+  entries: CommissionEntry[],
+  now: Date,
+): Record<AgeBucket, { count: number; amount: number }> {
+  const out = Object.fromEntries(AGE_BUCKETS.map((b) => [b, { count: 0, amount: 0 }])) as Record<
+    AgeBucket,
+    { count: number; amount: number }
+  >;
+  for (const e of entries) {
+    if (e.commissionStatus === 'paid') continue;
+    const b = out[bucketOf(ageOf(e, now))];
+    b.count += 1;
+    b.amount += e.commissionAmount;
+  }
+  return out;
+}
+
 export interface ReferrerGroup {
   name: string;
   type: 'doctor' | 'facility';

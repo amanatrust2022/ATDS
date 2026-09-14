@@ -22,6 +22,7 @@ import {
   LoadingPanel,
   SegmentedControl,
   Select,
+  Stat,
   Table,
 } from '@/components/ui';
 import {
@@ -41,7 +42,7 @@ import {
 } from '@/lib/staffPerformance';
 import { avatarHue, initialsOf, roleInfo } from '@/lib/staffRoles';
 
-import { TrendChart } from '@/components/features/reports/TrendChart';
+import { TrendChart } from './TrendChart';
 
 import styles from './performance.module.css';
 
@@ -52,7 +53,7 @@ const RANGE_OPTIONS: { value: DateRange; label: string }[] = [
   { value: 'today', label: 'Today' },
   { value: '7days', label: '7 days' },
   { value: '30days', label: '30 days' },
-  { value: 'all', label: 'All time' },
+  { value: 'all', label: 'Past year' },
 ];
 
 /**
@@ -132,28 +133,28 @@ export function StaffPerformance({
       </Card>
 
       <div className={styles['kpis']}>
-        <Kpi
+        <Stat
           label="Tests signed off"
           value={String(totals.totalTestsCount)}
           note="Completed and released in this period"
           icon={<RiFileList3Line size={18} />}
           tone="success"
         />
-        <Kpi
+        <Stat
           label="Clinical revenue"
           value={naira(totals.totalClinicalRevenue)}
           note={`Commissions: ${naira(totals.totalCommissions)}`}
           icon={<RiCoinsLine size={18} />}
           tone="info"
         />
-        <Kpi
+        <Stat
           label="Turnaround"
           value={totals.avgTAT > 0 ? formatTAT(totals.avgTAT) : '—'}
           note="Average, arrival to signature"
           icon={<RiTimeLine size={18} />}
           tone="accent"
         />
-        <Kpi
+        <Stat
           label="Collected"
           value={`${totals.collectionRate.toFixed(1)}%`}
           note={`Still owed: ${naira(totals.outstandingReceivables)}`}
@@ -371,34 +372,5 @@ export function StaffPerformance({
         </div>
       </div>
     </div>
-  );
-}
-
-function Kpi({
-  label,
-  value,
-  note,
-  icon,
-  tone,
-}: {
-  label: string;
-  value: string;
-  note: string;
-  icon: React.ReactNode;
-  tone: 'success' | 'info' | 'accent' | 'warning';
-}) {
-  return (
-    <Card as="div" className={styles['kpi']}>
-      <CardBody>
-        <div className={styles['kpiHead']}>
-          <span className={styles['kpiLabel']}>{label}</span>
-          <span className={styles['kpiIcon']} data-tone={tone} aria-hidden="true">
-            {icon}
-          </span>
-        </div>
-        <p className={styles['kpiValue']}>{value}</p>
-        <p className={styles['kpiNote']}>{note}</p>
-      </CardBody>
-    </Card>
   );
 }

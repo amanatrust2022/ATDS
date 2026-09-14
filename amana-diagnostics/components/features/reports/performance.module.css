@@ -60,59 +60,6 @@
   gap: var(--space-4);
 }
 
-.kpiHead {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-}
-
-.kpiLabel {
-  font-size: var(--text-2xs);
-  font-weight: var(--weight-semibold);
-  letter-spacing: var(--tracking-caps);
-  text-transform: uppercase;
-  color: var(--text-muted);
-}
-
-.kpiIcon {
-  display: inline-flex;
-  padding: var(--space-1);
-  border-radius: var(--radius-sm);
-}
-
-.kpiIcon[data-tone='success'] {
-  background: var(--success-subtle);
-  color: var(--success-text);
-}
-.kpiIcon[data-tone='info'] {
-  background: var(--info-subtle);
-  color: var(--info-text);
-}
-.kpiIcon[data-tone='accent'] {
-  background: var(--accent-subtle);
-  color: var(--accent-subtle-text);
-}
-.kpiIcon[data-tone='warning'] {
-  background: var(--warning-subtle);
-  color: var(--warning-text);
-}
-
-.kpiValue {
-  margin: var(--space-3) 0 0;
-  font-size: var(--text-2xl);
-  font-weight: var(--weight-bold);
-  line-height: 1;
-  color: var(--text-primary);
-  font-variant-numeric: tabular-nums;
-}
-
-.kpiNote {
-  margin: var(--space-2) 0 0;
-  font-size: var(--text-xs);
-  color: var(--text-secondary);
-}
-
 /* --- Leaderboard and the side column --- */
 
 .split {

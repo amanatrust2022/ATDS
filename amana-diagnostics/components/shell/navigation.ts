@@ -21,7 +21,7 @@ export interface NavEntry {
   /** Which roles see it. Empty means everyone signed in. */
   roles: Role[];
   /** The heading this sits under in the rail. */
-  group: 'Workspace' | 'Administration' | 'Referrals' | 'Account';
+  group: 'Workspace' | 'Administration' | 'Account';
   /** Matches child routes too — /admin/staff is still "Staff". */
   exact?: boolean;
   /** Words the command palette should also match on. */
@@ -75,6 +75,14 @@ export const NAV: NavEntry[] = [
     keywords: ['dashboard', 'overview', 'revenue', 'waiting', 'exceptions', 'home'],
   },
   {
+    id: 'reports',
+    label: 'Reports',
+    path: (s) => `/${s}/admin/reports`,
+    roles: ['admin'],
+    group: 'Administration',
+    keywords: ['performance', 'staff', 'revenue', 'turnaround', 'commission', 'ageing', 'audit'],
+  },
+  {
     id: 'patients',
     label: 'Patients',
     path: (s) => `/${s}/admin/patients`,
@@ -83,68 +91,52 @@ export const NAV: NavEntry[] = [
     keywords: ['records', 'history', 'search'],
   },
   {
-    id: 'tests',
-    label: 'Test catalogue',
-    path: (s) => `/${s}/admin/tests`,
-    roles: ['admin'],
-    group: 'Administration',
-    keywords: ['investigations', 'panel', 'parameters'],
-  },
-  {
     id: 'staff',
-    label: 'Staff',
+    label: 'People',
     path: (s) => `/${s}/admin/staff`,
     roles: ['admin'],
     group: 'Administration',
-    keywords: ['users', 'invite', 'roles', 'permissions'],
+    keywords: ['staff', 'users', 'invite', 'roles', 'permissions', 'team'],
   },
   {
-    id: 'org-settings',
-    label: 'Organisation',
-    path: (s) => `/${s}/admin/settings`,
+    id: 'tests',
+    label: 'Catalogue',
+    path: (s) => `/${s}/admin/tests`,
     roles: ['admin'],
     group: 'Administration',
-    keywords: ['letterhead', 'branding', 'logo', 'address'],
+    keywords: ['investigations', 'tests', 'panel', 'parameters', 'price', 'pricing', 'tariff', 'cost'],
   },
   {
     id: 'referrals',
-    label: 'Overview',
+    label: 'Referrers',
     path: (s) => `/${s}/admin/referrals`,
     roles: ['admin'],
-    group: 'Referrals',
-    exact: true,
-  },
-  {
-    id: 'referral-doctors',
-    label: 'Doctors',
-    path: (s) => `/${s}/admin/referrals/doctors`,
-    roles: ['admin'],
-    group: 'Referrals',
-    keywords: ['referring', 'physician'],
-  },
-  {
-    id: 'referral-facilities',
-    label: 'Facilities',
-    path: (s) => `/${s}/admin/referrals/facilities`,
-    roles: ['admin'],
-    group: 'Referrals',
-    keywords: ['clinic', 'hospital', 'partner'],
-  },
-  {
-    id: 'referral-pricing',
-    label: 'Pricing',
-    path: (s) => `/${s}/admin/referrals/pricing`,
-    roles: ['admin'],
-    group: 'Referrals',
-    keywords: ['price', 'cost', 'tariff'],
+    group: 'Administration',
+    keywords: ['referring', 'doctors', 'facilities', 'clinic', 'hospital', 'partner', 'physician'],
   },
   {
     id: 'referral-commissions',
-    label: 'Commissions',
+    label: 'Payouts',
     path: (s) => `/${s}/admin/referrals/commissions`,
     roles: ['admin'],
-    group: 'Referrals',
-    keywords: ['payout', 'earnings'],
+    group: 'Administration',
+    keywords: ['commissions', 'payout', 'earnings', 'owed', 'settle'],
+  },
+  {
+    id: 'org-settings',
+    label: 'Settings',
+    path: (s) => `/${s}/admin/settings`,
+    roles: ['admin'],
+    group: 'Administration',
+    keywords: ['organisation', 'letterhead', 'branding', 'logo', 'address', 'facility'],
+  },
+  {
+    id: 'audit',
+    label: 'Audit log',
+    path: (s) => `/${s}/admin/audit`,
+    roles: ['admin'],
+    group: 'Administration',
+    keywords: ['history', 'who changed', 'log', 'undo'],
   },
   {
     id: 'profile',
@@ -208,9 +200,7 @@ export function crumbsFor(
 
   const trail: { label: string; href?: string }[] = [];
 
-  if (entry.group === 'Referrals') {
-    trail.push({ label: 'Referrals', href: `/${slug}/admin/referrals` });
-  } else if (entry.group === 'Administration' && entry.id !== 'admin') {
+  if (entry.group === 'Administration' && entry.id !== 'admin') {
     trail.push({ label: 'Administration', href: `/${slug}/admin` });
   }
 

@@ -26,6 +26,8 @@ vi.mock('@/components/RequireRole', () => ({
 }));
 
 const update = vi.fn();
+const recordAudit = vi.fn(async () => ({}));
+vi.mock('@/lib/store', () => ({ recordAudit: (...args: unknown[]) => recordAudit(...args as []) }));
 const eq = vi.fn(async () => ({ error: null }));
 vi.mock('@/lib/supabase', () => ({
   createClient: () => ({
@@ -65,6 +67,7 @@ const org = (over: Record<string, unknown> = {}) => ({
 
 beforeEach(() => {
   update.mockClear();
+  recordAudit.mockClear();
   eq.mockClear();
   refreshOrg.mockClear();
   localStorage.setItem('amana_local_mode', 'false');
@@ -119,6 +122,7 @@ describe('The organisation settings screen', () => {
     const note = await screen.findByRole('status');
     expect(note).toHaveTextContent(/updated/i);
     expect(refreshOrg).toHaveBeenCalled();
+    expect(recordAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'settings.saved', before: { name: 'Kano Diagnostics' }, after: { name: 'Kano Diagnostics Ltd' } }));
   });
 
   it('says when saving failed, where a screen reader will hear it', async () => {
@@ -133,10 +137,31 @@ describe('The organisation settings screen', () => {
 
   it('offers header, footer and full-page sections and says which are empty', () => {
     render(<OrganisationScreen />);
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Letterhead' }));
 
     expect(screen.getByRole('button', { name: /^header/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /footer.*none yet/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /full page.*none yet/i })).toBeInTheDocument();
+  });
+
+  it('keeps letterhead edits across tabs and records a letterhead audit entry', async () => {
+    render(<OrganisationScreen />);
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Letterhead' }));
+    const designer = screen.getAllByTestId('designer')[0]!;
+    fireEvent.change(designer, { target: { value: '<p>New header</p>' } });
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Facility details' }));
+    const event = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Letterhead' }));
+    expect(screen.getAllByTestId('designer')[0]).toBe(designer);
+    expect(designer).toHaveValue('<p>New header</p>');
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    await waitFor(() => expect(recordAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'letterhead.saved', after: { bytes: expect.any(Number) } })));
+    expect(recordAudit).not.toHaveBeenCalledWith(expect.objectContaining({ action: 'settings.saved' }));
+    const savedEvent = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(savedEvent);
+    expect(savedEvent.defaultPrevented).toBe(false);
   });
 
   it('shows the workspace id as information, not as an error', () => {

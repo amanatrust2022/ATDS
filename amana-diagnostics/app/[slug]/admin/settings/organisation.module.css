@@ -148,6 +148,11 @@
 .actions {
   display: flex;
   justify-content: flex-end;
+  position: sticky;
+  bottom: 0;
+  z-index: var(--z-sticky);
+  background: var(--surface-raised);
+  padding: var(--space-3) 0;
 }
 
 /* --- Workspace id ------------------------------------------------------- */

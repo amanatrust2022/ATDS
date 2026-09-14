@@ -26,8 +26,9 @@ let authState: any;
 vi.mock('@/components/AuthProvider', () => ({ useAuth: () => authState }));
 
 const ask = vi.fn(async () => true);
+const notify = vi.fn();
 vi.mock('@/components/Notices', () => ({
-  useNotices: () => ({ ask, notify: vi.fn(), askFor: vi.fn() }),
+  useNotices: () => ({ ask, notify, askFor: vi.fn() }),
 }));
 
 vi.mock('next/navigation', () => ({
@@ -98,6 +99,7 @@ beforeEach(() => {
   tables = { profiles: STAFF, invitations: INVITES };
   inserted.length = 0;
   ask.mockClear();
+  notify.mockClear();
   localStorage.clear();
   // Cloud mode: the local-mode branch reads staff over /api/profiles instead,
   // which is the same list by a different route.
@@ -110,13 +112,6 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllGlobals();
 });
-
-/** Radix activates a tab on mousedown, not on a synthetic click. */
-function selectTab(name: RegExp) {
-  const tab = screen.getByRole('tab', { name });
-  fireEvent.mouseDown(tab);
-  return tab;
-}
 
 // ── The directory ────────────────────────────────────────────────────────────
 
@@ -277,8 +272,8 @@ describe('opening someone profile', () => {
 
 // ── The performance tab ──────────────────────────────────────────────────────
 
-describe('the performance dashboard', () => {
-  it('is not fetched until the tab is opened', async () => {
+describe('reports live outside People', () => {
+  it('does not fetch performance from the directory', async () => {
     render(<StaffScreen />);
     await screen.findByText('Bala Yusuf');
 
@@ -288,27 +283,26 @@ describe('the performance dashboard', () => {
       );
     expect(calls()).toHaveLength(0);
 
-    selectTab(/Performance/);
-    await waitFor(() => expect(calls().length).toBeGreaterThan(0));
-    expect(String(calls()[0][0])).toContain('organizationId=org-1');
+    expect(screen.queryByRole('tab', { name: /Performance/ })).toBeNull();
   });
 
-  it('survives a response that is missing its arrays', async () => {
-    // The dashboard reads perfData.completedTests.filter(...) directly and the
-    // only guard was `!perfData`, so `{}` threw during render and took the
-    // whole admin screen to a blank page.
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => new Response(JSON.stringify({}), { status: 200 })),
-    );
+});
 
+describe('People role undo', () => {
+  it('restores the previous role and links the second audit row', async () => {
     render(<StaffScreen />);
     await screen.findByText('Bala Yusuf');
-    selectTab(/Performance/);
-
-    // Still standing: the tab strip is on the page rather than a blank body.
-    await waitFor(() =>
-      expect(screen.getByRole('tab', { name: /Team directory/ })).toBeTruthy(),
-    );
+    const select = screen.getAllByRole('combobox').find(s => (s as HTMLSelectElement).value === 'lab')!;
+    fireEvent.change(select, { target: { value: 'radiology' } });
+    await waitFor(() => expect(notify).toHaveBeenCalled());
+    const calls = () => vi.mocked(fetch).mock.calls.filter(c => String(c[0]).includes('/api/staff/update'));
+    const first = JSON.parse(calls()[0]![1]!.body as string);
+    expect(first).toMatchObject({ previousRole: 'lab', role: 'radiology' });
+    const options = notify.mock.calls[0]![1];
+    expect(options.action.label).toBe('Undo');
+    await options.action.run();
+    expect(JSON.parse(calls()[1]![1]!.body as string)).toMatchObject({
+      staffId: 's2', role: 'lab', previousRole: 'radiology', reversesId: first.auditId,
+    });
   });
 });

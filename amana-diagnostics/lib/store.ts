@@ -16,6 +16,8 @@ import { getPatientsRepository, refreshOnWake, type PatientQuery } from './repos
 export type { PatientQuery } from './repositories/patients';
 import { getBillingRepository } from './repositories/billing';
 import { getAuditRepository, type AuditQuery } from './repositories/audit';
+import { getStaffRepository, type StaffMember } from './repositories/staff';
+export type { StaffMember } from './repositories/staff';
 import { newAuditEntry, type AuditEntry, type AuditInput } from './audit';
 import { getRuntimeMode } from './runtimeMode';
 
@@ -675,6 +677,11 @@ export const markCommissionPaid = async (patientId: number | string, notes?: str
 
 export const markCommissionsUnpaid = async (patientIds: (number | string)[]): Promise<void> =>
   getCommissionsRepository().markUnpaid(patientIds);
+
+// ─── STAFF ────────────────────────────────────────────────────────────────────
+
+export const fetchStaff = async (organizationId: string): Promise<StaffMember[]> =>
+  getStaffRepository().list(organizationId);
 
 // ─── AUDIT LOG ────────────────────────────────────────────────────────────────
 

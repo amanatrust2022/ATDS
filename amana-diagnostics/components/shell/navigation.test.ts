@@ -32,8 +32,11 @@ describe('what the shell puts at the top of each screen', () => {
     ['/acme/lab', 'Laboratory'],
     ['/acme/radiology', 'Radiology'],
     ['/acme/admin', 'Today'],
-    ['/acme/admin/staff', 'Staff'],
-    ['/acme/admin/referrals/commissions', 'Commissions'],
+    ['/acme/admin/staff', 'People'],
+    ['/acme/admin/reports', 'Reports'],
+    ['/acme/admin/audit', 'Audit log'],
+    ['/acme/admin/referrals/commissions', 'Payouts'],
+    ['/acme/admin/referrals', 'Referrers'],
     ['/acme/settings', 'My profile'],
   ])('%s is headed "%s"', (path, label) => {
     expect(activeEntry(path, 'acme', 'admin')?.label).toBe(label);
@@ -83,11 +86,19 @@ describe('roles', () => {
 });
 
 describe('breadcrumbs', () => {
-  it('puts a referral screen under Referrals', () => {
-    expect(crumbsFor('/acme/admin/referrals/doctors', 'acme', 'admin')).toEqual([
-      { label: 'Referrals', href: '/acme/admin/referrals' },
-      { label: 'Doctors' },
+  it('puts payouts under Administration, not under a group of its own', () => {
+    // The Referrals group is gone: doctors and facilities are one screen, and
+    // the price list lives with the catalogue. Payouts is a peer of the rest.
+    expect(crumbsFor('/acme/admin/referrals/commissions', 'acme', 'admin')).toEqual([
+      { label: 'Administration', href: '/acme/admin' },
+      { label: 'Payouts' },
     ]);
+  });
+
+  it('keeps the removed referral routes out of the rail', () => {
+    for (const id of ['referral-doctors', 'referral-facilities', 'referral-pricing']) {
+      expect(entryById(id)).toBeUndefined();
+    }
   });
 
   it('does not put the dashboard under itself', () => {

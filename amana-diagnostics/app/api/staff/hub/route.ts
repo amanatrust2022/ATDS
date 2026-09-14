@@ -26,30 +26,77 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Not available in cloud mode' }, { status: 404 });
   }
   try {
-    const { action, staffId, role } = await request.json();
+    const {
+      action, staffId, role,
+      // The screen's audit row for this change. The hub writes it now and the
+      // command carries the same id, so the cloud's route finds it already
+      // there and does not write a second.
+      auditId, previousRole, reversesId, actorId, actorName, entityLabel,
+    } = await request.json();
     if (!staffId || !action) {
       return NextResponse.json({ error: 'Missing staffId or action' }, { status: 400 });
     }
 
     const db = getDb();
-    const existing = db.prepare('SELECT id FROM profiles WHERE id = ?').get(staffId);
+    const existing = db.prepare('SELECT id, organization_id, role, full_name FROM profiles WHERE id = ?').get(staffId) as any;
     if (!existing) {
       return NextResponse.json({ error: 'Staff member not found on this hub' }, { status: 404 });
     }
+
+    const audit = (
+      auditAction: 'staff.role_changed' | 'staff.removed',
+      before: Record<string, unknown>,
+      after: Record<string, unknown>,
+    ) => {
+      const row = {
+        id: auditId || crypto.randomUUID(),
+        organization_id: existing.organization_id,
+        actor_id: actorId ?? null,
+        actor_name: actorName ?? null,
+        action: auditAction,
+        entity_type: 'profile',
+        entity_id: staffId,
+        entity_label: entityLabel ?? existing.full_name ?? null,
+        before,
+        after,
+        reason: null,
+        reverses_id: reversesId ?? null,
+        origin: 'hub',
+        created_at: new Date().toISOString(),
+      };
+      db.prepare(`
+        INSERT OR IGNORE INTO audit_log
+          (id, organization_id, actor_id, actor_name, action, entity_type, entity_id, entity_label, before, after, reason, reverses_id, origin, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        row.id, row.organization_id, row.actor_id, row.actor_name, row.action, row.entity_type, row.entity_id,
+        row.entity_label, JSON.stringify(row.before), JSON.stringify(row.after), row.reason, row.reverses_id,
+        row.origin, row.created_at,
+      );
+      queueSync(db, 'audit_log', 'INSERT', row.id, row);
+      return row.id;
+    };
 
     if (action === 'update_role') {
       if (!role || !ASSIGNABLE_ROLES.includes(role)) {
         return NextResponse.json({ error: `Unknown role: ${role}` }, { status: 400 });
       }
       db.prepare('UPDATE profiles SET role = ? WHERE id = ?').run(role, staffId);
-      queueSync(db, `${COMMAND_PREFIX}api/staff/update`, 'INSERT', `${staffId}:role`, { action, staffId, role });
-      return NextResponse.json({ success: true, queued: true });
+      const id = audit('staff.role_changed', { role: previousRole ?? existing.role ?? null }, { role });
+      queueSync(db, `${COMMAND_PREFIX}api/staff/update`, 'INSERT', `${staffId}:role`, {
+        action, staffId, role, auditId: id, previousRole: previousRole ?? existing.role ?? null,
+        reversesId: reversesId ?? null, actorName: actorName ?? null,
+      });
+      return NextResponse.json({ success: true, queued: true, auditId: id });
     }
 
     if (action === 'remove_staff') {
       db.prepare('UPDATE profiles SET organization_id = NULL WHERE id = ?').run(staffId);
-      queueSync(db, `${COMMAND_PREFIX}api/staff/update`, 'INSERT', `${staffId}:remove`, { action, staffId });
-      return NextResponse.json({ success: true, queued: true });
+      const id = audit('staff.removed', { role: existing.role ?? null }, {});
+      queueSync(db, `${COMMAND_PREFIX}api/staff/update`, 'INSERT', `${staffId}:remove`, {
+        action, staffId, auditId: id, actorName: actorName ?? null,
+      });
+      return NextResponse.json({ success: true, queued: true, auditId: id });
     }
 
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 });

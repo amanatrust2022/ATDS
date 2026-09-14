@@ -4,47 +4,20 @@ import RequireRole from '@/components/RequireRole';
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase';
 import { useAuth } from '@/components/AuthProvider';
-import { RiAlertLine, RiCheckDoubleLine, RiLineChartLine, RiTeamLine } from '@remixicon/react';
-import { useParams } from 'next/navigation';
 
-import { Tabs, TabPanel } from '@/components/ui';
 import { useShellSlot } from '@/components/shell';
-import { printHtml } from '@/lib/templates';
 import { apiBase, reachableOrigin } from '@/lib/cloudOrigin';
-import { accessToken, bearerHeaders, jsonAuthHeaders } from '@/lib/authHeaders';
+import { accessToken, jsonAuthHeaders } from '@/lib/authHeaders';
 import { useRuntimeMode } from '@/lib/useRuntimeMode';
-import { orgName } from '@/lib/branding';
-import { buildStaffAuditHtml } from '@/lib/staffAudit';
-import {
-  filterByRange,
-  searchStaff,
-  sortStaff,
-  staffRows,
-  totalsFor,
-  type DateRange,
-  type PerformanceData,
-  type SortField,
-} from '@/lib/staffPerformance';
+import { roleInfo } from '@/lib/staffRoles';
 
 import { StaffDirectory } from './StaffDirectory';
-import { StaffPerformance } from './StaffPerformance';
 import { StaffProfileModal } from './StaffProfileModal';
 import styles from './staff.module.css';
 
-async function withTimeout(promise: any, ms: number, onWarning: () => void): Promise<any> {
-  const timer = setTimeout(onWarning, ms);
-  try {
-    return await promise;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 function StaffManagement() {
-  const { ask } = useNotices();
+  const { ask, notify } = useNotices();
   const { profile, organization } = useAuth();
-  const params = useParams();
-  const slug = params?.slug as string;
   const [staff, setStaff] = useState<any[]>([]);
   const [invites, setInvites] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -53,13 +26,6 @@ function StaffManagement() {
   const [submitting, setSubmitting] = useState(false);
   const [inviteLink, setInviteLink] = useState('');
   const [selectedStaff, setSelectedStaff] = useState<any | null>(null);
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
-  const [activeTab, setActiveTab] = useState<'directory' | 'performance'>('directory');
-  const [perfData, setPerfData] = useState<PerformanceData | null>(null);
-  const [loadingPerf, setLoadingPerf] = useState(false);
-  const [dateRange, setDateRange] = useState<DateRange>('30days');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [sortField, setSortField] = useState<SortField>('revenue');
   const supabase = createClient();
 
   // What this screen contributes to the shell's header, now that the shell is
@@ -68,7 +34,7 @@ function StaffManagement() {
   // refresh is running.
   useShellSlot(
     {
-      subtitle: 'Invite users and manage roles for your workspace.',
+      subtitle: 'Who works here, and what each of them can do.',
       actions: loadingRefresh ? (
         <span className={styles['refreshing']} role="status">
           Updating…
@@ -78,44 +44,12 @@ function StaffManagement() {
     [loadingRefresh],
   );
 
-  const fetchPerformanceData = async () => {
-    if (!organization) return;
-    setLoadingPerf(true);
-    try {
-      // The route answers only an administrator's session now. On a hub the
-      // header is harmless; the hub trusts its own network.
-      const res = await fetch(`/api/admin/performance?organizationId=${organization.id}`, {
-        headers: await bearerHeaders(),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        // Four arrays, guaranteed here rather than assumed four hundred lines
-        // below. The dashboard reads `perfData.completedTests.filter(...)`
-        // directly, and the only guard was `!perfData` — so a response that
-        // came back missing any one of these (a partial failure in the route,
-        // an older deployment) threw during render and took the whole admin
-        // screen down to a blank page.
-        setPerfData({
-          completedTests: data?.completedTests ?? [],
-          ledgerTransactions: data?.ledgerTransactions ?? [],
-          externalCharges: data?.externalCharges ?? [],
-          patientBilling: data?.patientBilling ?? [],
-        });
-      }
-    } catch (e) {
-      console.error('Failed to fetch performance data:', e);
-      showToast('Failed to load performance metrics.', 'error');
-    } finally {
-      setLoadingPerf(false);
-    }
-  };
-
   const isLocalMode = useRuntimeMode() === 'local';
 
-  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 4000);
-  };
+  // The screen used to draw its own toast with a setTimeout, beside the
+  // app's notices. It is the app's notices now, which is also where Undo lives.
+  const showToast = (message: string, type: 'success' | 'error' = 'success') =>
+    notify(message, type === 'error' ? 'error' : 'success');
 
   const fetchData = async (isBackground = false) => {
     if (!organization) return;
@@ -213,12 +147,6 @@ function StaffManagement() {
       supabase.removeChannel(subscription);
     };
   }, [organization]);
-
-  useEffect(() => {
-    if (activeTab === 'performance' && organization) {
-      fetchPerformanceData();
-    }
-  }, [activeTab, organization]);
 
   const [sendingEmail, setSendingEmail] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -343,15 +271,50 @@ function StaffManagement() {
     return 'ok';
   };
 
-  const updateRole = async (id: string, role: string) => {
+  /**
+   * Changing what a colleague can do, with a way back.
+   *
+   * A confirm dialog before every change makes the ninety-nine deliberate
+   * ones slower and does not stop the hundredth. An Undo on the notice
+   * afterwards makes the mistaken one recoverable. The audit row goes in
+   * with the change — on the cloud the route writes it, on a hub the hub
+   * does — and the undo is a second row pointing back at it.
+   */
+  const updateRole = async (
+    id: string,
+    role: string,
+    undo?: { reversesId: string; previousRole: string },
+  ) => {
+    const member = staff.find((s) => s.id === id);
+    const previousRole: string | undefined = undo?.previousRole ?? member?.role;
+    const auditId = crypto.randomUUID();
     try {
       const outcome = await callStaffEndpoint(
-        { action: 'update_role', staffId: id, role },
+        {
+          action: 'update_role', staffId: id, role,
+          auditId, previousRole, reversesId: undo?.reversesId ?? null,
+          actorId: profile?.id ?? null, actorName: profile?.full_name ?? null,
+          entityLabel: member?.full_name ?? null,
+        },
         'Failed to update role',
       );
-      showToast(outcome === 'queued'
-        ? 'Staff role updated. It reaches the cloud with the next sync.'
-        : 'Staff role updated successfully!');
+      const who = member?.full_name || 'This person';
+      const label = roleInfo(role).label;
+      if (undo) {
+        showToast(`${who} is ${label} again.`);
+      } else {
+        notify(
+          outcome === 'queued'
+            ? `${who} is now ${label}. The cloud follows with the next sync.`
+            : `${who} is now ${label}.`,
+          {
+            tone: 'success',
+            ...(previousRole
+              ? { action: { label: 'Undo', run: () => updateRole(id, previousRole, { reversesId: auditId, previousRole: role }) } }
+              : {}),
+          },
+        );
+      }
     } catch (err: any) {
       console.warn('Failed to update role:', err);
       showToast(err.message || 'Failed to update role.', 'error');
@@ -374,11 +337,17 @@ function StaffManagement() {
   };
 
   const removeStaff = async (s: any) => {
-    if (!await ask(`Remove ${s.full_name || 'this staff member'} from the workspace?`)) return;
+    // No undo for this one: the cloud route cannot act on someone who no
+    // longer belongs to the clinic. So it is a question, and it says so.
+    if (!await ask(`Remove ${s.full_name || 'this staff member'} from the workspace? This cannot be undone — they would need a new invitation.`)) return;
 
     try {
       const outcome = await callStaffEndpoint(
-        { action: 'remove_staff', staffId: s.id },
+        {
+          action: 'remove_staff', staffId: s.id,
+          auditId: crypto.randomUUID(), actorId: profile?.id ?? null,
+          actorName: profile?.full_name ?? null, entityLabel: s.full_name ?? null,
+        },
         'Failed to remove staff',
       );
       showToast(outcome === 'queued'
@@ -392,44 +361,9 @@ function StaffManagement() {
     fetchData(true);
   };
 
-  const handleExport = () => {
-    if (!perfData) return;
-    const now = new Date();
-    const filtered = filterByRange(perfData, dateRange, now);
-    printHtml(
-      buildStaffAuditHtml({
-        clinicName: orgName(organization),
-        range: dateRange,
-        totals: totalsFor(filtered),
-        rows: sortStaff(searchStaff(staffRows(staff, filtered), searchQuery), sortField),
-        now,
-      }),
-    );
-  };
-
   return (
     <div className={styles['screen']}>
-      {toast && (
-        <div className={styles['toast']} data-tone={toast.type} role="status">
-          {toast.type === 'success' ? <RiCheckDoubleLine size={18} /> : <RiAlertLine size={18} />}
-          {toast.message}
-        </div>
-      )}
-
-      {/* A real tab strip: arrow keys move between tabs, only the selected one
-        * is in the tab order, and each panel is associated with its tab. The
-        * two bare <button>s this replaces had none of that. */}
-      <Tabs
-        value={activeTab}
-        onValueChange={(v) => setActiveTab(v as 'directory' | 'performance')}
-        ariaLabel="Staff sections"
-        items={[
-          { value: 'directory', label: 'Team directory', icon: <RiTeamLine size={16} />, count: staff.length },
-          { value: 'performance', label: 'Performance', icon: <RiLineChartLine size={16} /> },
-        ]}
-      >
-        <TabPanel value="directory">
-          <StaffDirectory
+      <StaffDirectory
             staff={staff}
             invites={invites}
             loading={loading}
@@ -444,25 +378,7 @@ function StaffManagement() {
             onRoleChange={updateRole}
             onSelect={setSelectedStaff}
             myId={profile?.id}
-          />
-        </TabPanel>
-
-        <TabPanel value="performance">
-          <StaffPerformance
-            data={perfData}
-            loading={loadingPerf}
-            staff={staff}
-            dateRange={dateRange}
-            onDateRangeChange={setDateRange}
-            searchQuery={searchQuery}
-            onSearchChange={setSearchQuery}
-            sortField={sortField}
-            onSortChange={setSortField}
-            onExport={handleExport}
-            onSelect={setSelectedStaff}
-          />
-        </TabPanel>
-      </Tabs>
+      />
 
       <StaffProfileModal
         member={selectedStaff}

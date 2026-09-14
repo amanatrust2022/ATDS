@@ -423,5 +423,5 @@ export const RANGE_LABEL: Record<DateRange, string> = {
   today: 'Today',
   '7days': 'Last 7 Days',
   '30days': 'Last 30 Days',
-  all: 'All Time',
+  all: 'Past Year',
 };

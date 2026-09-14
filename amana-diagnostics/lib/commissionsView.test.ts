@@ -3,6 +3,8 @@ import { describe, it, expect } from 'vitest';
 import {
   filterEntries,
   totalsFor,
+  ageingBuckets,
+  bucketOf,
   groupByReferrer,
   csvCell,
   buildCommissionCsv,
@@ -168,5 +170,29 @@ describe('the printed statement', () => {
 
   it('escapes the five characters that matter', () => {
     expect(escapeHtml(`<&">'`)).toBe('&lt;&amp;&quot;&gt;&#39;');
+  });
+});
+
+describe('ageing', () => {
+  const NOW = new Date('2026-09-14T12:00:00.000Z');
+  const daysAgo = (d: number) => new Date(NOW.getTime() - d * 86_400_000).toISOString();
+  const owed = (days: number, amount: number, status: 'pending' | 'paid' = 'pending') =>
+    ({ registeredAt: daysAgo(days), commissionAmount: amount, commissionStatus: status }) as any;
+
+  it('puts each entry in the bucket its age falls in, at the edges', () => {
+    expect(bucketOf(30)).toBe('0-30');
+    expect(bucketOf(31)).toBe('31-60');
+    expect(bucketOf(90)).toBe('61-90');
+    expect(bucketOf(91)).toBe('90+');
+  });
+
+  it('sums what is owed by bucket and ignores what is paid', () => {
+    const b = ageingBuckets([owed(5, 100), owed(45, 200), owed(45, 50), owed(200, 1000), owed(200, 999, 'paid')], NOW);
+    expect(b).toEqual({
+      '0-30': { count: 1, amount: 100 },
+      '31-60': { count: 2, amount: 250 },
+      '61-90': { count: 0, amount: 0 },
+      '90+': { count: 1, amount: 1000 },
+    });
   });
 });

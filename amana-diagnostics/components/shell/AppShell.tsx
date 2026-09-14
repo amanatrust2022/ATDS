@@ -6,8 +6,8 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   RiHospitalLine, RiTestTubeLine, RiRadarLine, RiDashboardLine, RiGroupLine,
-  RiFlaskLine, RiTeamLine, RiBuilding2Line, RiUserHeartLine, RiHomeSmileLine,
-  RiPriceTag3Line, RiHandCoinLine, RiUserLine, RiMenuFoldLine, RiMenuUnfoldLine,
+  RiFlaskLine, RiTeamLine, RiBuilding2Line, RiUserHeartLine,
+  RiHandCoinLine, RiUserLine, RiMenuFoldLine, RiMenuUnfoldLine, RiBarChartBoxLine, RiHistoryLine,
   RiLogoutCircleLine, RiSearchLine, RiMoonLine, RiSunLine, RiComputerLine,
 } from '@remixicon/react';
 
@@ -36,15 +36,14 @@ const NAV_ICONS: Record<string, ReactNode> = {
   lab: <RiTestTubeLine size={17} />,
   radiology: <RiRadarLine size={17} />,
   admin: <RiDashboardLine size={17} />,
+  reports: <RiBarChartBoxLine size={17} />,
   patients: <RiGroupLine size={17} />,
   tests: <RiFlaskLine size={17} />,
   staff: <RiTeamLine size={17} />,
   'org-settings': <RiBuilding2Line size={17} />,
   referrals: <RiUserHeartLine size={17} />,
-  'referral-doctors': <RiUserHeartLine size={17} />,
-  'referral-facilities': <RiHomeSmileLine size={17} />,
-  'referral-pricing': <RiPriceTag3Line size={17} />,
   'referral-commissions': <RiHandCoinLine size={17} />,
+  audit: <RiHistoryLine size={17} />,
   profile: <RiUserLine size={17} />,
 };
 

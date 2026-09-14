@@ -77,9 +77,11 @@ export function Tabs({
   );
 }
 
-export function TabPanel({ value, children }: { value: string; children: ReactNode }) {
+export function TabPanel({ value, children, keepMounted, hidden }: {
+  value: string; children: ReactNode; keepMounted?: boolean; hidden?: boolean;
+}) {
   return (
-    <RadixTabs.Content value={value} className={styles['panel']}>
+    <RadixTabs.Content value={value} forceMount={keepMounted ? true : undefined} {...(hidden === undefined ? {} : { hidden })} className={styles['panel']}>
       {children}
     </RadixTabs.Content>
   );

@@ -4,13 +4,15 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/components/AuthProvider';
 import { useNotices } from '@/components/Notices';
 import { createClient } from '@/lib/supabase';
+import { recordAudit } from '@/lib/store';
+import { diffOf } from '@/lib/audit';
 import { getRuntimeMode } from '@/lib/runtimeMode';
 import { RiSave3Line, RiHospitalLine } from '@remixicon/react';
 import dynamic from 'next/dynamic';
 import LetterheadA4Preview from '@/components/LetterheadA4Preview';
 import { splitLetterhead, combineLetterhead } from '@/lib/letterheadStyles';
 import {
-  Alert, Button, Card, CardBody, CardHeader, Field, Input, SegmentedControl, Textarea,
+  Alert, Badge, Tabs, TabPanel, Button, Card, CardBody, CardHeader, Field, Input, SegmentedControl, Textarea,
 } from '@/components/ui';
 
 import { useShellSlot } from '@/components/shell/ShellSlot';
@@ -81,7 +83,7 @@ const readableSize = (bytes: number) =>
   bytes >= 1_000_000 ? `${(bytes / 1_000_000).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1000))} KB`;
 
 function OrganizationSettings() {
-  const { organization, refreshOrg } = useAuth();
+  const { organization, refreshOrg, profile } = useAuth();
   const { ask } = useNotices();
   const supabase = createClient();
 
@@ -97,19 +99,28 @@ function OrganizationSettings() {
     letterheadBgTop: 170,
     letterheadBgBottom: 90,
   });
+  const [tab, setTab] = useState('details');
+  const [saved, setSaved] = useState<typeof formData | null>(null);
+  const isDirty = saved !== null && JSON.stringify(saved) !== JSON.stringify(formData);
+  useEffect(() => {
+    if (!isDirty) return;
+    const guard = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
+    window.addEventListener('beforeunload', guard);
+    return () => window.removeEventListener('beforeunload', guard);
+  }, [isDirty]);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
   const [section, setSection] = useState<Section>('header');
 
   // The heading is the shell's (decision #30); this is the sentence under it.
-  useShellSlot({ subtitle: 'Facility details, contact information and the printed letterhead.' });
+  useShellSlot({ subtitle: 'Facility details, contact information and the printed letterhead.', actions: isDirty ? <Badge tone="warning">Unsaved changes</Badge> : undefined }, [isDirty]);
 
   // Pre-fill from live org data, once.
   useEffect(() => {
     if (organization && !isInitialized) {
       const { header, footer, bg, bgTop, bgBottom } = splitLetterhead(organization.letterhead_html);
-      setFormData({
+      const initial = {
         name: organization.name || '',
         letterheadLine2: organization.letterhead_line2 || '',
         email: organization.email || '',
@@ -120,7 +131,9 @@ function OrganizationSettings() {
         letterheadBgHtml: bg,
         letterheadBgTop: bgTop,
         letterheadBgBottom: bgBottom,
-      });
+      };
+      setFormData(initial);
+      setSaved(initial);
       setIsInitialized(true);
     }
   }, [organization, isInitialized]);
@@ -189,6 +202,18 @@ function OrganizationSettings() {
         if (error) throw error;
       }
 
+      const details = diffOf(saved ?? {}, formData, ['name', 'letterheadLine2', 'email', 'phone', 'address']);
+      const letterhead = diffOf(saved ?? {}, formData, ['letterheadHtml', 'letterheadFooterHtml', 'letterheadBgHtml', 'letterheadBgTop', 'letterheadBgBottom']);
+      setSaved(formData);
+      const actor = { organization_id: organization.id, actor_id: profile?.id ?? null, actor_name: profile?.full_name ?? null, entity_type: 'organization' as const, entity_id: organization.id, entity_label: formData.name };
+      try {
+        if (Object.keys(details.after).length) await recordAudit({ ...actor, action: 'settings.saved', ...details });
+        if (Object.keys(letterhead.after).length) await recordAudit({ ...actor, action: 'letterhead.saved', after: { bytes: size } });
+      } catch (auditError) {
+        await refreshOrg();
+        setMessage({ text: 'Settings saved, but the audit entry could not be recorded. ' + (auditError instanceof Error ? auditError.message : ''), type: 'error' });
+        return;
+      }
       await refreshOrg();
       setMessage({
         text: 'Settings updated. Printed reports will now use the new letterhead.',
@@ -235,6 +260,66 @@ function OrganizationSettings() {
             </Alert>
           )}
 
+          <form onSubmit={handleSave} className={styles['form']}>
+            <Tabs value={tab} onValueChange={setTab} ariaLabel="Settings sections" items={[{ value: 'details', label: 'Facility details' }, { value: 'letterhead', label: 'Letterhead' }]}>
+            <TabPanel value="details" keepMounted hidden={tab !== 'details'}>
+            <Field
+              label="Facility name (official title)"
+              hint="The main title of your organisation, used in dashboard headers and on invoices."
+              required
+            >
+              <Input
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                placeholder="e.g. Northgate Diagnostic Centre"
+                required
+              />
+            </Field>
+
+            <div>
+              <div className={styles['fallbackFields']}>
+                <p className={styles['fallbackNote']}>
+                  Used by basic printouts (such as reception slips) and wherever no custom
+                  letterhead has been designed.
+                </p>
+                <Field label="Letterhead line 2">
+                  <Input
+                    value={formData.letterheadLine2}
+                    onChange={(e) => setFormData({ ...formData, letterheadLine2: e.target.value })}
+                    placeholder="e.g. AND CLINICAL SERVICES LIMITED"
+                  />
+                </Field>
+                <Field label="Physical address">
+                  <Textarea
+                    value={formData.address}
+                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                    placeholder="Full physical address for reports…"
+                    rows={3}
+                  />
+                </Field>
+                <div className={styles['pair']}>
+                  <Field label="Phone number(s)">
+                    <Input
+                      value={formData.phone}
+                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                      placeholder="+234 803 339 0574"
+                    />
+                  </Field>
+                  <Field label="Contact email">
+                    <Input
+                      type="email"
+                      value={formData.email}
+                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                      placeholder="info@facility.com"
+                    />
+                  </Field>
+                </div>
+              </div>
+            </div>
+
+
+            </TabPanel>
+            <TabPanel value="letterhead" keepMounted hidden={tab !== "letterhead"}>
           {/* Letterhead preview — real A4 page geometry */}
           <div className={styles['preview']}>
             <p className={styles['previewLabel']}>
@@ -259,20 +344,6 @@ function OrganizationSettings() {
               </Alert>
             )}
           </div>
-
-          <form onSubmit={handleSave} className={styles['form']}>
-            <Field
-              label="Facility name (official title)"
-              hint="The main title of your organisation, used in dashboard headers and on invoices."
-              required
-            >
-              <Input
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="e.g. Northgate Diagnostic Centre"
-                required
-              />
-            </Field>
 
             <div>
               <p className={styles['hint']}>
@@ -388,48 +459,9 @@ function OrganizationSettings() {
               </div>
             </div>
 
-            <details className={styles['fallbacks']}>
-              <summary>Standard fields &amp; contact fallbacks</summary>
-              <div className={styles['fallbackFields']}>
-                <p className={styles['fallbackNote']}>
-                  Used by basic printouts (such as reception slips) and wherever no custom
-                  letterhead has been designed.
-                </p>
-                <Field label="Letterhead line 2">
-                  <Input
-                    value={formData.letterheadLine2}
-                    onChange={(e) => setFormData({ ...formData, letterheadLine2: e.target.value })}
-                    placeholder="e.g. AND CLINICAL SERVICES LIMITED"
-                  />
-                </Field>
-                <Field label="Physical address">
-                  <Textarea
-                    value={formData.address}
-                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                    placeholder="Full physical address for reports…"
-                    rows={3}
-                  />
-                </Field>
-                <div className={styles['pair']}>
-                  <Field label="Phone number(s)">
-                    <Input
-                      value={formData.phone}
-                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                      placeholder="+234 803 339 0574"
-                    />
-                  </Field>
-                  <Field label="Contact email">
-                    <Input
-                      type="email"
-                      value={formData.email}
-                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                      placeholder="info@facility.com"
-                    />
-                  </Field>
-                </div>
-              </div>
-            </details>
 
+            </TabPanel>
+            </Tabs>
             <div className={styles['actions']}>
               <Button
                 type="submit"

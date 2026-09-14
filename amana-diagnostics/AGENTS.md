@@ -79,6 +79,10 @@ that asks "are we on a hub?", or anything that asks "are we online?".
 
 ## What not to touch
 
+Role-change Undo callbacks capture the original render. Pass the newly assigned
+role explicitly as the reversal's previous role; reading captured staff state
+records an incorrect before-value in the audit log.
+
 `lib/` is the good part of this codebase — typed repositories, real tests,
 atomic wallet operations. The overhaul is a layer replacement, not a rewrite.
 Do not restructure data access in the course of a UI change.

@@ -1,0 +1,53 @@
+/* Reports: the clinic's figures over a period, and the commission it owes
+ * by how long it has owed it. */
+
+.screen {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.screen > * {
+  min-width: 0;
+}
+
+.ageing {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding-top: var(--space-4);
+}
+
+.buckets {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.loading {
+  padding: var(--space-4);
+}
+
+.link {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--text-link);
+  text-decoration: none;
+}
+
+.link:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 720px) {
+  .screen {
+    padding: var(--space-4);
+  }
+
+  .buckets {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
