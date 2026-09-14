@@ -41,6 +41,8 @@ import {
 } from '@/lib/staffPerformance';
 import { avatarHue, initialsOf, roleInfo } from '@/lib/staffRoles';
 
+import { TrendChart } from '@/components/features/reports/TrendChart';
+
 import styles from './performance.module.css';
 
 /** Money, the way this product writes it everywhere else. */
@@ -166,70 +168,7 @@ export function StaffPerformance({
           subtitle="Billed value of tests signed off, by day"
         />
         <CardBody>
-          {trend.length > 1 ? (
-            <div className={styles['chart']}>
-              <svg
-                viewBox={`0 0 ${geo.width} ${geo.height}`}
-                className={styles['chartSvg']}
-                role="img"
-                aria-label={`Revenue from ${trend[0]?.dateLabel} to ${trend[trend.length - 1]?.dateLabel}, peaking at ${naira(geo.maxRev)}`}
-              >
-                <defs>
-                  <linearGradient id="staffChartFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" className={styles['fillTop']} />
-                    <stop offset="100%" className={styles['fillBottom']} />
-                  </linearGradient>
-                </defs>
-
-                {[0, 0.25, 0.5, 0.75, 1].map((ratio, i) => {
-                  const y = geo.paddingTop + ratio * geo.chartHeight;
-                  const labelVal = Math.round(geo.maxRev - ratio * geo.maxRev);
-                  return (
-                    <g key={i}>
-                      <line
-                        x1={geo.paddingLeft}
-                        y1={y}
-                        x2={geo.width - geo.paddingRight}
-                        y2={y}
-                        className={styles['gridLine']}
-                        strokeDasharray="4 4"
-                      />
-                      <text
-                        x={geo.paddingLeft - 10}
-                        y={y + 4}
-                        textAnchor="end"
-                        className={styles['axisLabel']}
-                      >
-                        ₦{labelVal >= 1000 ? `${Math.round(labelVal / 1000)}k` : labelVal}
-                      </text>
-                    </g>
-                  );
-                })}
-
-                <path d={geo.areaPath} fill="url(#staffChartFill)" />
-                <path d={geo.linePath} className={styles['trendLine']} />
-
-                {geo.points.map((p, idx) => (
-                  <g key={idx}>
-                    <circle cx={p.x} cy={p.y} r="4" className={styles['node']} />
-                    <text
-                      x={p.x}
-                      y={geo.height - 5}
-                      textAnchor="middle"
-                      className={styles['axisLabel']}
-                    >
-                      {p.label}
-                    </text>
-                    <title>{`${p.label}: ${naira(p.val)}`}</title>
-                  </g>
-                ))}
-              </svg>
-            </div>
-          ) : (
-            <EmptyState title="Not enough history" compact>
-              Pick a longer period to see a trend.
-            </EmptyState>
-          )}
+          <TrendChart trend={trend} geo={geo} />
         </CardBody>
       </Card>
 

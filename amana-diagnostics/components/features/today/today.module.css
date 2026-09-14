@@ -1,0 +1,328 @@
+/* Today: the control tower.
+ *
+ * Money and throughput along the top, then what needs someone beside the
+ * floor, then the trend, then who sent and who did. Every colour is a
+ * semantic token; the only tone-carrying marks are the severity rail on an
+ * inbox row and the icon chips, and both come with a word. */
+
+.page {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+/* A grid that is a flex item takes its min-content width unless told not
+ * to, and on a phone that is wider than the phone. */
+.page > * {
+  min-width: 0;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.rowFive {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.twoUp {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: var(--space-5);
+  align-items: start;
+}
+
+.sectionHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin: 0 0 var(--space-3);
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+}
+
+.sectionMeta {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.truncNote {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.stale {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+/* --- Exceptions ------------------------------------------------------------ */
+
+.inbox {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.inboxRow {
+  display: grid;
+  grid-template-columns: 4px minmax(0, 1fr) auto;
+  gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-3) var(--space-4) var(--space-3) 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.inboxRow:last-child {
+  border-bottom: 0;
+}
+
+.sev {
+  align-self: stretch;
+  border-radius: var(--radius-full);
+  background: var(--border-default);
+}
+
+.sev3 {
+  background: var(--critical-solid);
+}
+.sev2 {
+  background: var(--warning-solid);
+}
+.sev1 {
+  background: var(--info-solid);
+}
+.sev0 {
+  background: var(--border-strong);
+}
+
+.inboxText {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.inboxTitle {
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium);
+  color: var(--text-primary);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.inboxTitle:hover {
+  color: var(--text-link);
+  text-decoration: underline;
+}
+
+.inboxDetail {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.inboxAct {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.sevWord {
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.allClear {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-5) var(--space-4);
+  color: var(--success-text);
+  font-size: var(--text-md);
+}
+
+/* --- Floor ----------------------------------------------------------------- */
+
+.floor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.floorCard {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--surface-raised);
+  color: inherit;
+  text-decoration: none;
+}
+
+.floorCard:hover {
+  border-color: var(--border-default);
+  background: var(--surface-hover);
+}
+
+.floorCard:focus-visible {
+  outline: var(--focus-width) solid var(--focus-color);
+  outline-offset: var(--focus-offset);
+}
+
+.floorName {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+}
+
+.floorOldest {
+  margin-top: 2px;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.floorOldestLong {
+  color: var(--warning-text);
+}
+
+.floorNums {
+  display: flex;
+  gap: var(--space-4);
+}
+
+.floorNum {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  min-width: 3.5em;
+}
+
+.floorFigure {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
+  line-height: 1;
+  color: var(--text-primary);
+}
+
+.floorLabel {
+  margin-top: 2px;
+  font-size: var(--text-2xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* --- Department share ------------------------------------------------------ */
+
+.depts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.deptHead {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  font-size: var(--text-sm);
+  margin-bottom: var(--space-1);
+}
+
+.deptName {
+  color: var(--text-primary);
+  font-weight: var(--weight-medium);
+}
+
+.deptValue {
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.bar {
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: var(--surface-sunken);
+  overflow: hidden;
+}
+
+.barSvg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.barFill {
+  fill: var(--accent-solid);
+}
+
+.barFill[data-dept='radiology'] {
+  fill: var(--info-solid);
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+/* --- Responsive -------------------------------------------------------------- */
+
+@media (max-width: 1024px) {
+  .row,
+  .rowFive {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .twoUp {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 560px) {
+  .page {
+    padding: var(--space-4);
+    gap: var(--space-4);
+  }
+
+  .row,
+  .rowFive {
+    gap: var(--space-3);
+  }
+
+  .inboxRow {
+    grid-template-columns: 4px minmax(0, 1fr);
+  }
+
+  .inboxAct {
+    grid-column: 2;
+    justify-content: flex-start;
+  }
+
+  .floorNums {
+    gap: var(--space-3);
+  }
+}

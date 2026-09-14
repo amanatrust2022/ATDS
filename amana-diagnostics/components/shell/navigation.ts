@@ -67,12 +67,12 @@ export const NAV: NavEntry[] = [
   },
   {
     id: 'admin',
-    label: 'Dashboard',
+    label: 'Today',
     path: (s) => `/${s}/admin`,
     roles: ['admin'],
     group: 'Administration',
     exact: true,
-    keywords: ['overview', 'revenue', 'performance'],
+    keywords: ['dashboard', 'overview', 'revenue', 'waiting', 'exceptions', 'home'],
   },
   {
     id: 'patients',

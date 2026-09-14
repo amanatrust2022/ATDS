@@ -31,7 +31,7 @@ describe('what the shell puts at the top of each screen', () => {
     ['/acme/reception', 'Reception'],
     ['/acme/lab', 'Laboratory'],
     ['/acme/radiology', 'Radiology'],
-    ['/acme/admin', 'Dashboard'],
+    ['/acme/admin', 'Today'],
     ['/acme/admin/staff', 'Staff'],
     ['/acme/admin/referrals/commissions', 'Commissions'],
     ['/acme/settings', 'My profile'],
@@ -91,7 +91,7 @@ describe('breadcrumbs', () => {
   });
 
   it('does not put the dashboard under itself', () => {
-    expect(crumbsFor('/acme/admin', 'acme', 'admin')).toEqual([{ label: 'Dashboard' }]);
+    expect(crumbsFor('/acme/admin', 'acme', 'admin')).toEqual([{ label: 'Today' }]);
   });
 });
 

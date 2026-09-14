@@ -1,0 +1,66 @@
+/* The revenue-over-time area chart, shared by Today and Reports.
+ *
+ * Thin marks, a recessive grid, text in text ink. Two pixels of line and a
+ * faint fill under it are the whole encoding; the tooltip on each point
+ * carries the figure, so no number is printed on every mark. */
+
+.chart {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.chartSvg {
+  display: block;
+  width: 100%;
+  min-width: 460px;
+  height: auto;
+  overflow: visible;
+}
+
+.gridLine {
+  stroke: var(--border-subtle);
+  stroke-width: 1;
+}
+
+/* SVG text takes its colour from the theme like everything else, so the axis
+ * is still readable on a dark ground. */
+.axisLabel {
+  fill: var(--text-muted);
+  font-size: 8px;
+  font-weight: var(--weight-semibold);
+}
+
+.trendLine {
+  fill: none;
+  stroke: var(--accent-solid);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.node {
+  fill: var(--surface-raised);
+  stroke: var(--accent-solid);
+  stroke-width: 2;
+}
+
+/* A wider, invisible target than the mark itself, so the tooltip is reachable. */
+.hit {
+  fill: transparent;
+  cursor: default;
+}
+
+.hit:hover + .node,
+.hit:focus + .node {
+  r: 5;
+}
+
+.fillTop {
+  stop-color: var(--accent-solid);
+  stop-opacity: 0.18;
+}
+
+.fillBottom {
+  stop-color: var(--accent-solid);
+  stop-opacity: 0;
+}
