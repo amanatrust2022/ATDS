@@ -11,7 +11,7 @@ import { Tabs, TabPanel } from '@/components/ui';
 import { useShellSlot } from '@/components/shell';
 import { printHtml } from '@/lib/templates';
 import { apiBase, reachableOrigin } from '@/lib/cloudOrigin';
-import { accessToken, jsonAuthHeaders } from '@/lib/authHeaders';
+import { accessToken, bearerHeaders, jsonAuthHeaders } from '@/lib/authHeaders';
 import { useRuntimeMode } from '@/lib/useRuntimeMode';
 import { orgName } from '@/lib/branding';
 import { buildStaffAuditHtml } from '@/lib/staffAudit';
@@ -82,7 +82,11 @@ function StaffManagement() {
     if (!organization) return;
     setLoadingPerf(true);
     try {
-      const res = await fetch(`/api/admin/performance?organizationId=${organization.id}`);
+      // The route answers only an administrator's session now. On a hub the
+      // header is harmless; the hub trusts its own network.
+      const res = await fetch(`/api/admin/performance?organizationId=${organization.id}`, {
+        headers: await bearerHeaders(),
+      });
       if (res.ok) {
         const data = await res.json();
         // Four arrays, guaranteed here rather than assumed four hundred lines

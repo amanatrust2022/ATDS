@@ -93,6 +93,8 @@ describe('commission', () => {
   it('works out a percentage or a fixed fee when no amount was stored', () => {
     expect(commissionOf({ price: 10000, commission_type: 'percentage', commission_value: 10 })).toBe(1000);
     expect(commissionOf({ price: 10000, commission_type: 'fixed', commission_value: 750 })).toBe(750);
+    // What the price list actually writes. This used to come back as 0.
+    expect(commissionOf({ price: 10000, commission_type: 'flat', commission_value: 750 })).toBe(750);
   });
 
   it('is nothing when no commission was agreed', () => {

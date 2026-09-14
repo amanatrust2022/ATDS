@@ -2,6 +2,10 @@ import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/localDb';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { isHubServer } from '@/lib/runtimeMode';
+import { requireAdmin, assertSameOrganization, authErrorResponse } from '@/lib/apiAuth';
+
+/** How far back the report reaches when the caller does not say. */
+const DEFAULT_SINCE_DAYS = 365;
 
 export async function GET(request: Request) {
   try {
@@ -12,8 +16,23 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Missing organizationId' }, { status: 400 });
     }
 
+    // A bound on the window. This used to return every row the clinic had
+    // ever written, for a report that shows at most the last thirty days.
+    const sinceParam = searchParams.get('since');
+    const since = sinceParam && !Number.isNaN(Date.parse(sinceParam))
+      ? new Date(sinceParam).toISOString()
+      : new Date(Date.now() - DEFAULT_SINCE_DAYS * 86_400_000).toISOString();
+
     // The server knows what it is; the browser does not get to say.
     const isLocalServer = isHubServer();
+
+    // A hub is trusted on its own network, as every hub route is. The cloud
+    // holds the service-role key and answers only to an administrator of the
+    // clinic being asked about. This route had no check at all before.
+    if (!isLocalServer) {
+      const caller = await requireAdmin(request);
+      assertSameOrganization(caller, orgId);
+    }
 
     if (isLocalServer) {
       const db = getDb();
@@ -33,27 +52,28 @@ export async function GET(request: Request) {
         FROM patient_tests t
         LEFT JOIN patients p ON t.patient_id = p.id
         WHERE t.organization_id = ? AND t.status = 'completed' AND t.completed_by IS NOT NULL
-      `).all(orgId) as any[];
+          AND t.completed_at >= ?
+      `).all(orgId, since) as any[];
 
       // 2. Fetch transaction statistics (revenue collected by reception staff)
       const ledgerTransactions = db.prepare(`
         SELECT created_by, amount, created_at, type
         FROM billing_ledger_transactions
-        WHERE organization_id = ? AND created_by IS NOT NULL
-      `).all(orgId) as any[];
+        WHERE organization_id = ? AND created_by IS NOT NULL AND created_at >= ?
+      `).all(orgId, since) as any[];
 
       const externalCharges = db.prepare(`
         SELECT created_by, amount, created_at
         FROM external_department_charges
-        WHERE organization_id = ? AND created_by IS NOT NULL
-      `).all(orgId) as any[];
+        WHERE organization_id = ? AND created_by IS NOT NULL AND created_at >= ?
+      `).all(orgId, since) as any[];
 
       // 3. Fetch summary metrics for Billing Health (total billables)
       const patientBilling = db.prepare(`
         SELECT total_amount, net_amount, registered_at as created_at
         FROM patients
-        WHERE organization_id = ?
-      `).all(orgId) as any[];
+        WHERE organization_id = ? AND registered_at >= ?
+      `).all(orgId, since) as any[];
 
       return NextResponse.json({
         completedTests,
@@ -86,10 +106,11 @@ export async function GET(request: Request) {
           `)
           .eq('organization_id', orgId)
           .eq('status', 'completed')
-          .not('completed_by', 'is', null),
-        supabaseAdmin.from('billing_ledger_transactions').select('created_by, amount, created_at, type').eq('organization_id', orgId).not('created_by', 'is', null),
-        supabaseAdmin.from('external_department_charges').select('created_by, amount, created_at').eq('organization_id', orgId).not('created_by', 'is', null),
-        supabaseAdmin.from('patients').select('total_amount, net_amount, registered_at').eq('organization_id', orgId)
+          .not('completed_by', 'is', null)
+          .gte('completed_at', since),
+        supabaseAdmin.from('billing_ledger_transactions').select('created_by, amount, created_at, type').eq('organization_id', orgId).not('created_by', 'is', null).gte('created_at', since),
+        supabaseAdmin.from('external_department_charges').select('created_by, amount, created_at').eq('organization_id', orgId).not('created_by', 'is', null).gte('created_at', since),
+        supabaseAdmin.from('patients').select('total_amount, net_amount, registered_at').eq('organization_id', orgId).gte('registered_at', since)
       ]);
 
       // Map Supabase nested join response to flat patient_created_at
@@ -111,6 +132,9 @@ export async function GET(request: Request) {
       });
     }
   } catch (error: any) {
+    const denied = authErrorResponse(error);
+    if (denied) return NextResponse.json({ error: denied.error }, { status: denied.status });
+
     console.error('API GET /api/admin/performance error:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

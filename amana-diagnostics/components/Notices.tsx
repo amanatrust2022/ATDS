@@ -24,11 +24,36 @@ import styles from './Notices.module.css';
 
 export type Tone = 'success' | 'error' | 'info';
 
+/**
+ * Something the reader can do about the message — "Undo", usually.
+ *
+ * A confirm dialog before a role change or a settlement makes every one of
+ * them slower, and people click OK without reading. An undo after it makes
+ * the mistaken one recoverable and the other ninety-nine free. The card
+ * stays longer when it carries an action, so there is time to notice.
+ */
+export interface NoticeAction {
+  label: string;
+  run: () => void | Promise<void>;
+}
+
+export interface NoticeOptions {
+  tone?: Tone;
+  action?: NoticeAction;
+  /** How long a non-error notice stays. Errors stay until dismissed. */
+  timeoutMs?: number;
+}
+
 interface Notice {
   id: number;
   message: string;
   tone: Tone;
+  action?: NoticeAction;
 }
+
+const DEFAULT_TIMEOUT_MS = 4500;
+/** Long enough to read, decide and reach the button. */
+const ACTION_TIMEOUT_MS = 8000;
 
 interface Question {
   message: string;
@@ -38,7 +63,8 @@ interface Question {
 }
 
 interface NoticeApi {
-  notify: (message: string, tone?: Tone) => void;
+  /** The tone alone, as the seventy call sites that replaced `alert` pass it, or options. */
+  notify: (message: string, toneOrOptions?: Tone | NoticeOptions) => void;
   ask: (message: string) => Promise<boolean>;
   askFor: (message: string, initial?: string) => Promise<string | null>;
 }
@@ -61,11 +87,17 @@ export function NoticeProvider({ children }: { children: React.ReactNode }) {
     setNotices(list => list.filter(n => n.id !== id));
   }, []);
 
-  const notify = useCallback((message: string, tone: Tone = 'info') => {
+  const notify = useCallback((message: string, toneOrOptions: Tone | NoticeOptions = 'info') => {
+    const options: NoticeOptions =
+      typeof toneOrOptions === 'string' ? { tone: toneOrOptions } : toneOrOptions;
+    const tone = options.tone ?? 'info';
     const id = nextId.current++;
-    setNotices(list => [...list, { id, message, tone }]);
+    setNotices(list => [...list, { id, message, tone, ...(options.action ? { action: options.action } : {}) }]);
     // Errors stay until dismissed; the rest clear themselves.
-    if (tone !== 'error') setTimeout(() => dismiss(id), 4500);
+    if (tone !== 'error') {
+      const timeout = options.timeoutMs ?? (options.action ? ACTION_TIMEOUT_MS : DEFAULT_TIMEOUT_MS);
+      setTimeout(() => dismiss(id), timeout);
+    }
   }, [dismiss]);
 
   const ask = useCallback((message: string) => new Promise<boolean>(resolve => {
@@ -81,11 +113,13 @@ export function NoticeProvider({ children }: { children: React.ReactNode }) {
   return (
     <NoticeContext.Provider value={api}>
       {children}
-      <NoticeStack notices={notices} onDismiss={dismiss} />
+      <NoticeStack notices={notices} onDismiss={dismiss} onFailure={notify} />
       {question && <QuestionDialog question={question} onDone={() => setQuestion(null)} />}
     </NoticeContext.Provider>
   );
 }
+
+type NoticeFailure = (message: string, options: NoticeOptions) => void;
 
 /**
  * Two live regions, not one.
@@ -94,17 +128,25 @@ export function NoticeProvider({ children }: { children: React.ReactNode }) {
  * behind whatever the screen reader was already saying. An error interrupts;
  * a confirmation waits its turn.
  */
-function NoticeStack({ notices, onDismiss }: { notices: Notice[]; onDismiss: (id: number) => void }) {
+function NoticeStack({
+  notices,
+  onDismiss,
+  onFailure,
+}: {
+  notices: Notice[];
+  onDismiss: (id: number) => void;
+  onFailure: NoticeFailure;
+}) {
   const errors = notices.filter(n => n.tone === 'error');
   const rest = notices.filter(n => n.tone !== 'error');
 
   return (
     <div className={styles.stack}>
       <div role="alert" aria-live="assertive" className={styles.region}>
-        {errors.map(n => <NoticeCard key={n.id} notice={n} onDismiss={onDismiss} />)}
+        {errors.map(n => <NoticeCard key={n.id} notice={n} onDismiss={onDismiss} onFailure={onFailure} />)}
       </div>
       <div role="status" aria-live="polite" className={styles.region}>
-        {rest.map(n => <NoticeCard key={n.id} notice={n} onDismiss={onDismiss} />)}
+        {rest.map(n => <NoticeCard key={n.id} notice={n} onDismiss={onDismiss} onFailure={onFailure} />)}
       </div>
     </div>
   );
@@ -117,7 +159,32 @@ const TONE_WORD: Record<Tone, string> = {
   info: 'Note',
 };
 
-function NoticeCard({ notice, onDismiss }: { notice: Notice; onDismiss: (id: number) => void }) {
+function NoticeCard({
+  notice,
+  onDismiss,
+  onFailure,
+}: {
+  notice: Notice;
+  onDismiss: (id: number) => void;
+  onFailure: NoticeFailure;
+}) {
+  const [running, setRunning] = useState(false);
+
+  const act = async () => {
+    if (!notice.action || running) return;
+    setRunning(true);
+    try {
+      await notice.action.run();
+      onDismiss(notice.id);
+    } catch (err) {
+      onDismiss(notice.id);
+      const reason = err instanceof Error ? err.message : String(err);
+      onFailure(`${notice.action.label} did not go through: ${reason}`, { tone: 'error' });
+    } finally {
+      setRunning(false);
+    }
+  };
+
   return (
     // A dismiss button, not a clickable div: the old card could only be
     // dismissed with a mouse, so an error a keyboard user could not clear
@@ -125,6 +192,16 @@ function NoticeCard({ notice, onDismiss }: { notice: Notice; onDismiss: (id: num
     <div className={[styles.card, styles[notice.tone]].join(' ')}>
       <span className={styles.tone}>{TONE_WORD[notice.tone]}</span>
       <span className={styles.message}>{notice.message}</span>
+      {notice.action && (
+        <button
+          type="button"
+          className={styles.action}
+          onClick={() => void act()}
+          disabled={running}
+        >
+          {notice.action.label}
+        </button>
+      )}
       <button
         type="button"
         className={styles.dismiss}

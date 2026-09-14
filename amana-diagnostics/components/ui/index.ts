@@ -72,6 +72,10 @@ export type {
   SortDirection,
 } from './Surface';
 
+export { Stat, formatDelta } from './Stat';
+export type { StatProps, StatDelta } from './Stat';
+export { Sparkline } from './Sparkline';
+
 export { AppearanceProvider, useAppearance, appearanceBootScript } from './ThemeProvider';
 export { ScriptText } from './ScriptText';
 export type { ThemeChoice, Density } from './ThemeProvider';

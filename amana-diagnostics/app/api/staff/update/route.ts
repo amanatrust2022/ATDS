@@ -14,7 +14,13 @@ import { requireAdmin, assertSameOrganization, organizationOfUser, authErrorResp
 export async function POST(request: Request) {
   try {
     const caller = await requireAdmin(request);
-    const { action, staffId, role } = await request.json();
+    const {
+      action, staffId, role,
+      // The screen's audit row for this change, so the log carries one row
+      // whether the call came straight from the browser or through a hub's
+      // outbox — the hub wrote the same id first, and the upsert ignores it.
+      auditId, previousRole, reversesId, actorName,
+    } = await request.json();
 
     if (!staffId || !action) {
       return NextResponse.json({ error: 'Missing staffId or action' }, { status: 400 });
@@ -45,15 +51,38 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'You cannot change your own role' }, { status: 400 });
       }
 
-      // 1. Update Auth metadata
+      // 1. Read what is there. The metadata update below used to replace
+      // user_metadata with `{ role }` alone, dropping organization_id and
+      // the name — so a role change quietly detached the person from the
+      // clinic in the auth service.
+      const { data: { user }, error: userErr } = await supabaseAdmin.auth.admin.getUserById(staffId);
+      if (userErr || !user) throw userErr || new Error('User not found');
+      const { data: current } = await supabaseAdmin
+        .from('profiles').select('role, full_name').eq('id', staffId).maybeSingle();
+
+      // 2. Update Auth metadata
       const { error: authErr } = await supabaseAdmin.auth.admin.updateUserById(staffId, {
-        user_metadata: { role }
+        user_metadata: { ...user.user_metadata, role }
       });
       if (authErr) throw authErr;
 
-      // 2. Update Profiles
+      // 3. Update Profiles
       const { error: profErr } = await supabaseAdmin.from('profiles').update({ role }).eq('id', staffId);
       if (profErr) throw profErr;
+
+      await writeAudit(supabaseAdmin, {
+        id: auditId,
+        organization_id: caller.organizationId!,
+        actor_id: caller.id,
+        actor_name: actorName ?? caller.email,
+        action: 'staff.role_changed',
+        entity_type: 'profile',
+        entity_id: staffId,
+        entity_label: (current as any)?.full_name ?? null,
+        before: { role: previousRole ?? (current as any)?.role ?? null },
+        after: { role },
+        reverses_id: reversesId ?? null,
+      });
 
       return NextResponse.json({ success: true });
     }
@@ -74,11 +103,27 @@ export async function POST(request: Request) {
       if (authErr) throw authErr;
 
       // 3. Update Profiles
+      const { data: removed } = await supabaseAdmin
+        .from('profiles').select('role, full_name').eq('id', staffId).maybeSingle();
       const { error: profErr } = await supabaseAdmin
         .from('profiles')
         .update({ organization_id: null })
         .eq('id', staffId);
       if (profErr) throw profErr;
+
+      await writeAudit(supabaseAdmin, {
+        id: auditId,
+        organization_id: caller.organizationId!,
+        actor_id: caller.id,
+        actor_name: actorName ?? caller.email,
+        action: 'staff.removed',
+        entity_type: 'profile',
+        entity_id: staffId,
+        entity_label: (removed as any)?.full_name ?? null,
+        before: { role: (removed as any)?.role ?? null },
+        after: {},
+        reverses_id: null,
+      });
 
       return NextResponse.json({ success: true });
     }
@@ -95,3 +140,35 @@ export async function POST(request: Request) {
 
 /** The roles the app understands. Anything else is a typo or an attempt. */
 const ASSIGNABLE_ROLES = ['admin', 'reception', 'lab', 'lab_tech', 'radiology'];
+
+/**
+ * The log row for a staff change, written here because this is the only
+ * place the change is certain to have happened. A hub that made the same
+ * change first wrote a row with the same id, so the insert ignores a
+ * duplicate rather than doubling it. A log that cannot be written must not
+ * unwind the change — it is reported and the call still succeeds.
+ */
+async function writeAudit(
+  // Untyped on purpose: there is no generated database type in this repo, and
+  // the client's default generics reject any table name.
+  supabaseAdmin: any,
+  row: {
+    id?: string;
+    organization_id: string;
+    actor_id: string;
+    actor_name: string | null;
+    action: 'staff.role_changed' | 'staff.removed';
+    entity_type: 'profile';
+    entity_id: string;
+    entity_label: string | null;
+    before: Record<string, unknown>;
+    after: Record<string, unknown>;
+    reverses_id: string | null;
+  },
+) {
+  const { error } = await supabaseAdmin.from('audit_log').upsert(
+    { ...row, id: row.id || crypto.randomUUID(), origin: 'cloud', created_at: new Date().toISOString() },
+    { onConflict: 'id', ignoreDuplicates: true },
+  );
+  if (error) console.error('API /api/staff/update: audit row not written:', error.message);
+}

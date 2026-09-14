@@ -205,6 +205,19 @@ export const SYNC_TABLES: readonly SyncTable[] = [
     json: [],
     booleans: [],
   }),
+  // Append-only, like the ledgers: an undo is a second row, never an edit.
+  // Not watched in realtime — nobody sits on the audit screen waiting.
+  table({
+    name: 'audit_log',
+    key: ['id'],
+    cursorColumn: 'created_at',
+    versionColumn: null,
+    conflict: 'cloud-wins',
+    scope: 'organization_id',
+    json: ['before', 'after'],
+    booleans: [],
+    realtime: false,
+  }),
 ];
 
 /**

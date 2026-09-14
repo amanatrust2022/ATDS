@@ -1,0 +1,170 @@
+/* The one stat tile, and the sparkline that sits in it.
+ *
+ * Text wears text ink; only the icon chip and the delta carry a tone, and the
+ * delta only when a sentiment was declared. A row of these should read as a
+ * row of numbers, not a row of colours. */
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-4);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  color: inherit;
+  text-decoration: none;
+}
+
+.dense {
+  padding: var(--space-3);
+  gap: var(--space-1);
+}
+
+.link {
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+.link:hover {
+  border-color: var(--border-default);
+  background: var(--surface-hover);
+}
+
+.link:focus-visible {
+  outline: var(--focus-width) solid var(--focus-color);
+  outline-offset: var(--focus-offset);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.label {
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  padding: var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  color: var(--text-secondary);
+}
+
+.icon[data-tone='accent'] {
+  background: var(--accent-subtle);
+  color: var(--accent-subtle-text);
+}
+.icon[data-tone='success'] {
+  background: var(--success-subtle);
+  color: var(--success-text);
+}
+.icon[data-tone='warning'] {
+  background: var(--warning-subtle);
+  color: var(--warning-text);
+}
+.icon[data-tone='critical'] {
+  background: var(--critical-subtle);
+  color: var(--critical-text);
+}
+.icon[data-tone='info'] {
+  background: var(--info-subtle);
+  color: var(--info-text);
+}
+
+.row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+/* A standalone figure keeps proportional digits — tabular figures make "121"
+ * look loose at this size. Columns of numbers are the Table's job. */
+.value {
+  display: inline-flex;
+  align-items: baseline;
+  min-width: 0;
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-bold);
+  line-height: 1;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.dense .value {
+  font-size: var(--text-xl);
+}
+
+.delta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.deltaValue {
+  font-weight: var(--weight-semibold);
+  font-variant-numeric: tabular-nums;
+}
+
+.deltaLabel {
+  color: var(--text-muted);
+}
+
+.deltaFlat {
+  color: var(--text-muted);
+}
+
+.good {
+  color: var(--success-text);
+}
+
+.bad {
+  color: var(--critical-text);
+}
+
+.note {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+/* --- Sparkline ------------------------------------------------------------ */
+
+.spark {
+  flex-shrink: 0;
+  display: block;
+  overflow: visible;
+}
+
+.sparkArea {
+  fill: var(--accent-solid);
+  fill-opacity: 0.08;
+}
+
+.sparkLine {
+  fill: none;
+  stroke: var(--text-muted);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.sparkEnd {
+  fill: var(--accent-solid);
+  stroke: var(--surface-raised);
+  stroke-width: 1;
+}

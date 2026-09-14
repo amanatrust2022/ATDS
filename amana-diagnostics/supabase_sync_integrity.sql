@@ -144,7 +144,8 @@ begin
       ('patient_tests',               'id',        false),
       ('billing_accounts',            'id',        false),
       ('billing_ledger_transactions', 'id',        false),
-      ('external_department_charges', 'id',        false)
+      ('external_department_charges', 'id',        false),
+      ('audit_log',                   'id',        false)
     ) as v(name, key_column, composite)
   loop
     if to_regclass('public.' || quote_ident(t.name)) is null then
@@ -153,8 +154,8 @@ begin
     end if;
 
     -- 3a. updated_at column and trigger, for tables the hub compares by it.
-    -- The two ledgers are append-only and are pulled by created_at instead.
-    if t.name not in ('billing_ledger_transactions', 'external_department_charges') then
+    -- The ledgers and the audit log are append-only and are pulled by created_at instead.
+    if t.name not in ('billing_ledger_transactions', 'external_department_charges', 'audit_log') then
       if not exists (
         select 1 from information_schema.columns
          where table_schema = 'public' and table_name = t.name and column_name = 'updated_at'

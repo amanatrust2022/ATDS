@@ -15,6 +15,9 @@ import { buildCommissionReport } from './store/commissionReport';
 import { getPatientsRepository, refreshOnWake, type PatientQuery } from './repositories/patients';
 export type { PatientQuery } from './repositories/patients';
 import { getBillingRepository } from './repositories/billing';
+import { getAuditRepository, type AuditQuery } from './repositories/audit';
+import { newAuditEntry, type AuditEntry, type AuditInput } from './audit';
+import { getRuntimeMode } from './runtimeMode';
 
 export type Department = 'lab' | 'radiology';
 export type TestStatus = 'pending' | 'in_progress' | 'completed';
@@ -672,6 +675,24 @@ export const markCommissionPaid = async (patientId: number | string, notes?: str
 
 export const markCommissionsUnpaid = async (patientIds: (number | string)[]): Promise<void> =>
   getCommissionsRepository().markUnpaid(patientIds);
+
+// ─── AUDIT LOG ────────────────────────────────────────────────────────────────
+
+/**
+ * Records that an administrator changed something. Returns the row so the
+ * caller can offer an undo that points back at it.
+ *
+ * The change itself has already happened by the time this is called; a
+ * failure to log it is reported, not allowed to unwind the change.
+ */
+export const recordAudit = async (input: AuditInput): Promise<AuditEntry> => {
+  const entry = newAuditEntry(input, getRuntimeMode() === 'local' ? 'hub' : 'cloud');
+  await getAuditRepository().record(entry);
+  return entry;
+};
+
+export const fetchAuditLog = async (organizationId: string, query?: AuditQuery): Promise<AuditEntry[]> =>
+  getAuditRepository().list(organizationId, query);
 
 // ─── RADIOLOGY TEMPLATES ──────────────────────────────────────────────────────
 

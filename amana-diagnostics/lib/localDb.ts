@@ -42,7 +42,7 @@ function addColumn(db: any, table: string, column: string, definition: string): 
 }
 
 /** Bumped when the expected schema changes, so a machine can say where it is. */
-export const EXPECTED_SCHEMA_VERSION = 2;
+export const EXPECTED_SCHEMA_VERSION = 3;
 
 /** Records which schema this database has been brought up to. */
 function recordSchemaVersion(db: any): void {
@@ -454,6 +454,28 @@ export function initDb(db: any) {
     );
   `);
 
+  // Who changed what, in the administration. Append-only: an undo is a second
+  // row pointing at the first (reverses_id), never an edit of it. Nothing had
+  // this before — a price changed at 11pm was a fact nobody could reconstruct.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS audit_log (
+      id TEXT PRIMARY KEY,
+      organization_id TEXT NOT NULL,
+      actor_id TEXT,
+      actor_name TEXT,
+      action TEXT NOT NULL,
+      entity_type TEXT NOT NULL,
+      entity_id TEXT NOT NULL,
+      entity_label TEXT,
+      before TEXT,
+      after TEXT,
+      reason TEXT,
+      reverses_id TEXT,
+      origin TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+  `);
+
     addColumn(db, 'patients', 'billing_account_id', `billing_account_id TEXT`);
 
     addColumn(db, 'patients', 'patient_profile_id', `patient_profile_id INTEGER`);
@@ -484,6 +506,7 @@ export function initDb(db: any) {
     CREATE INDEX IF NOT EXISTS idx_charges_org ON external_department_charges (organization_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_charges_account ON external_department_charges (billing_account_id);
     CREATE INDEX IF NOT EXISTS idx_outbox_live ON sync_outbox (dead, id);
+    CREATE INDEX IF NOT EXISTS idx_audit_org_created ON audit_log (organization_id, created_at DESC);
   `);
 
   // Two desks counting today's registrations at the same moment both arrive at

@@ -20,6 +20,7 @@ import {
   Radio,
   ResultFlag,
   Select,
+  Stat,
   StatusPill,
   TabPanel,
   Table,
@@ -261,5 +262,21 @@ describe('the component library meets the accessibility floor', () => {
     // used to announce "within reference range", asserting something nothing
     // had checked.
     expect(screen.getByText('Not flagged — no reference range to check against')).toBeTruthy();
+  });
+
+  it('a stat tile, loading, linked and with a trend', async () => {
+    const { container } = render(
+      <div>
+        <Stat
+          label="Billed"
+          value="₦120,000"
+          spark={[1, 3, 2]}
+          delta={{ value: 4, direction: 'up', label: 'vs last week', sentiment: 'good' }}
+        />
+        <Stat label="Waiting" value="3" href="/kano/lab" />
+        <Stat label="Collected" value="0" loading />
+      </div>,
+    );
+    await expectNoViolations(container);
   });
 });

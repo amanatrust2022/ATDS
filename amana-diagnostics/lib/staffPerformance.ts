@@ -119,7 +119,8 @@ export function commissionOf(t: CompletedTest): number {
   if (t.commission_type === 'percentage') {
     return ((t.price || 0) * (t.commission_value || 0)) / 100;
   }
-  if (t.commission_type === 'fixed') return t.commission_value || 0;
+  // The price list writes 'flat'; older rows say 'fixed'. Both are a sum.
+  if (t.commission_type === 'flat' || t.commission_type === 'fixed') return t.commission_value || 0;
   return 0;
 }
 
