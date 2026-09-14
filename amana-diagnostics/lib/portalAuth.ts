@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { isHubServer } from './runtimeMode';
 import { getDb } from './localDb';
 
 let cachedSecret: string | null = null;
@@ -11,9 +12,7 @@ let cachedSecret: string | null = null;
 export function getJwtSecret(): string {
   if (cachedSecret) return cachedSecret;
 
-  const isLocalMode =
-    process.env.NEXT_PUBLIC_LOCAL_SERVER_MODE === 'true' ||
-    process.env.IS_LOCAL_HUB === 'true';
+  const isLocalMode = isHubServer();
 
   if (!isLocalMode) {
     if (!process.env.JWT_SECRET) {

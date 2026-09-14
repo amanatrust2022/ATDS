@@ -1,6 +1,8 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase';
+import { sendPasswordReset } from '@/lib/passwordReset';
+import { useRuntimeMode } from '@/lib/useRuntimeMode';
 import { useRouter } from 'next/navigation';
 import { RiMicroscopeLine, RiLockPasswordLine, RiMailLine, RiEyeLine, RiEyeOffLine, RiComputerLine } from '@remixicon/react';
 import styles from './login.module.css';
@@ -16,15 +18,10 @@ async function withTimeout(promise: any, ms: number, onWarning: () => void): Pro
 }
 
 export default function LoginPage() {
-  const isLocalMode = typeof window !== 'undefined'
-    ? (localStorage.getItem('amana_local_mode') === null
-        ? (window.location.hostname === 'localhost' || 
-           window.location.hostname === '127.0.0.1' || 
-           window.location.hostname.startsWith('192.168.') || 
-           window.location.hostname.startsWith('10.') || 
-           window.location.hostname.startsWith('172.'))
-        : localStorage.getItem('amana_local_mode') === 'true')
-    : (process.env.NEXT_PUBLIC_LOCAL_SERVER_MODE === 'true');
+  // Which back end this screen signs in against — a hub or the cloud. Not
+  // whether there is internet: a hub tries its own credential cache first
+  // and the cloud second either way, so a clinic signs in with or without.
+  const isLocalMode = useRuntimeMode() === 'local';
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -64,7 +61,7 @@ export default function LoginPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email, password })
         });
-        
+
         if (localRes.ok) {
           const localSession = await localRes.json();
           localStorage.setItem('amana_offline_session', JSON.stringify({
@@ -73,7 +70,7 @@ export default function LoginPage() {
             organization: localSession.organization,
             session: null
           }));
-          
+
           // Asynchronously perform background cloud login check to cache/sync session
           supabase.auth.signInWithPassword({ email, password }).then((res: any) => {
             if (res && !res.error && res.data?.user) {
@@ -107,7 +104,7 @@ export default function LoginPage() {
       } catch (err: any) {
         error = { message: err.message || 'Connection failed.', status: 0 };
       }
-      
+
       clearTimeout(timer1);
       clearTimeout(timer2);
 
@@ -141,10 +138,10 @@ export default function LoginPage() {
         return;
       }
 
-      const isNetworkError = error?.message?.includes('fetch') || 
-                             error?.message?.includes('network') || 
-                             error?.message?.includes('timed out') || 
-                             error?.status === 0 || 
+      const isNetworkError = error?.message?.includes('fetch') ||
+                             error?.message?.includes('network') ||
+                             error?.message?.includes('timed out') ||
+                             error?.status === 0 ||
                              (error && typeof window !== 'undefined' && !window.navigator.onLine);
 
       if (isLocalMode && isNetworkError) {
@@ -154,7 +151,7 @@ export default function LoginPage() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email, password })
           });
-          
+
           if (localRes.ok) {
             const localSession = await localRes.json();
             localStorage.setItem('amana_offline_session', JSON.stringify({
@@ -163,7 +160,7 @@ export default function LoginPage() {
               organization: localSession.organization,
               session: null
             }));
-            
+
             window.location.reload();
             return;
           } else {
@@ -191,9 +188,7 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true); setError('');
     try {
-      const resetPromise = supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/update-password`,
-      });
+      const resetPromise = sendPasswordReset(email);
       const { error } = await withTimeout(
         resetPromise,
         10000,

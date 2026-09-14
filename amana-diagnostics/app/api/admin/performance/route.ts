@@ -1,29 +1,30 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/localDb';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
+import { isHubServer } from '@/lib/runtimeMode';
 
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const orgId = searchParams.get('organizationId');
-    const localModeParam = searchParams.get('localMode') === 'true';
 
     if (!orgId) {
       return NextResponse.json({ error: 'Missing organizationId' }, { status: 400 });
     }
 
-    const isLocalServer = process.env.NEXT_PUBLIC_LOCAL_SERVER_MODE === 'true' || localModeParam;
+    // The server knows what it is; the browser does not get to say.
+    const isLocalServer = isHubServer();
 
     if (isLocalServer) {
       const db = getDb();
-      
+
       // 1. Fetch completed tests with patient registration timestamps for Turnaround Time (TAT) and commission tracking
       const completedTests = db.prepare(`
-        SELECT 
-          t.completed_by, 
-          t.test_name, 
-          t.price, 
-          t.completed_at, 
+        SELECT
+          t.completed_by,
+          t.test_name,
+          t.price,
+          t.completed_at,
           t.department,
           t.commission_type,
           t.commission_value,
@@ -73,10 +74,10 @@ export async function GET(request: Request) {
         supabaseAdmin
           .from('patient_tests')
           .select(`
-            completed_by, 
-            test_name, 
-            price, 
-            completed_at, 
+            completed_by,
+            test_name,
+            price,
+            completed_at,
             department,
             commission_type,
             commission_value,

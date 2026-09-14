@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb, queueSync } from '@/lib/localDb';
+import { hubNowIso } from '@/lib/sync/clock';
 import { sendEmail } from '@/lib/brevo';
 import { getNextNumericID } from '@/lib/idGenerator';
 import { partialTestUpdate } from '@/lib/repositories/testUpdate';
@@ -249,7 +250,7 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { action } = body;
     const db = getDb();
-    const nowStr = new Date().toISOString();
+    const nowStr = hubNowIso();
 
     if (action === 'addPatient') {
       const { patient, tests, organizationId } = body;

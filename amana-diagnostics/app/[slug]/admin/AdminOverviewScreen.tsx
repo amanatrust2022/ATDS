@@ -4,6 +4,7 @@ import { useAuth } from '@/components/AuthProvider';
 import { RiTeamLine, RiHospitalLine, RiMailSendLine } from '@remixicon/react';
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase';
+import { getRuntimeMode } from '@/lib/runtimeMode';
 import { Card } from '@/components/ui';
 import { useShellSlot } from '@/components/shell/ShellSlot';
 
@@ -24,15 +25,7 @@ function AdminOverview() {
     async function loadStats() {
       if (!organization) return;
 
-      const isLocalMode = typeof window !== 'undefined'
-        ? (localStorage.getItem('amana_local_mode') === null
-            ? (window.location.hostname === 'localhost' ||
-               window.location.hostname === '127.0.0.1' ||
-               window.location.hostname.startsWith('192.168.') ||
-               window.location.hostname.startsWith('10.') ||
-               window.location.hostname.startsWith('172.'))
-            : localStorage.getItem('amana_local_mode') === 'true')
-        : (process.env.NEXT_PUBLIC_LOCAL_SERVER_MODE === 'true');
+      const isLocalMode = getRuntimeMode() === 'local';
 
       let staffCount = 0;
       let inviteCount = 0;
@@ -60,7 +53,8 @@ function AdminOverview() {
           })
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           .catch((err: any) => {
-            console.warn('Failed to fetch invitations from Supabase (offline fallback):', err);
+            // Invitations live only in the cloud; a hub shows none when it cannot reach it.
+            console.warn('Could not fetch invitations from the cloud:', err);
             return 0;
           });
 

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/components/AuthProvider';
 import { useNotices } from '@/components/Notices';
 import { createClient } from '@/lib/supabase';
+import { getRuntimeMode } from '@/lib/runtimeMode';
 import { RiSave3Line, RiHospitalLine } from '@remixicon/react';
 import dynamic from 'next/dynamic';
 import LetterheadA4Preview from '@/components/LetterheadA4Preview';
@@ -16,16 +17,6 @@ import { useShellSlot } from '@/components/shell/ShellSlot';
 import styles from './organisation.module.css';
 
 const LetterheadDesigner = dynamic(() => import('@/components/LetterheadDesigner'), { ssr: false });
-
-const IS_LOCAL_MODE = typeof window !== 'undefined'
-  ? (localStorage.getItem('amana_local_mode') === null
-      ? (window.location.hostname === 'localhost' ||
-         window.location.hostname === '127.0.0.1' ||
-         window.location.hostname.startsWith('192.168.') ||
-         window.location.hostname.startsWith('10.') ||
-         window.location.hostname.startsWith('172.'))
-      : localStorage.getItem('amana_local_mode') === 'true')
-  : (process.env.NEXT_PUBLIC_LOCAL_SERVER_MODE === 'true');
 
 /** Facility details are typed by a person; the letterhead is HTML. */
 const esc = (value: string) =>
@@ -171,8 +162,12 @@ function OrganizationSettings() {
     };
 
     try {
-      if (IS_LOCAL_MODE) {
-        // 1. Update local DB
+      if (getRuntimeMode() === 'local') {
+        // On a hub the hub's copy is the one every report prints from, and
+        // the hub queues the change for the cloud itself (the sync outbox,
+        // pushed by the engine). This used to also fire a Supabase update
+        // from here and swallow its failure — so a letterhead saved while
+        // the internet was down never reached the cloud at all.
         const res = await fetch('/api/organizations', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -186,19 +181,6 @@ function OrganizationSettings() {
         if (!res.ok) {
           throw new Error('Failed to save settings to the local database.');
         }
-
-        // 2. Try to update Supabase in the background, but don't fail if offline
-        try {
-          const { error } = await supabase
-            .from('organizations')
-            .update(cloudUpdates)
-            .eq('id', organization.id);
-          if (error) {
-            console.warn('Background Supabase settings update failed:', error);
-          }
-        } catch (supabaseErr) {
-          console.warn('Background Supabase settings update threw error:', supabaseErr);
-        }
       } else {
         const { error } = await supabase
           .from('organizations')
@@ -209,9 +191,7 @@ function OrganizationSettings() {
 
       await refreshOrg();
       setMessage({
-        text: IS_LOCAL_MODE
-          ? 'Settings updated. Printed reports will now use the new letterhead (saved locally).'
-          : 'Settings updated. Printed reports will now use the new letterhead.',
+        text: 'Settings updated. Printed reports will now use the new letterhead.',
         type: 'success',
       });
     } catch (err: any) {

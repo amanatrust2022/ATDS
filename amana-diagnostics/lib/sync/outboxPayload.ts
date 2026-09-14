@@ -5,22 +5,11 @@
  * columns as text. Postgres wants the real thing. This is the one place that
  * conversion happens — it used to be copied once for UPDATE and once for
  * INSERT, which is how a column could end up converted on one path and not the
- * other.
+ * other. Which columns are which is read from the sync registry, so a table
+ * declared there once is converted correctly in both directions.
  */
 
-/** Columns held as JSON text locally and as jsonb remotely. */
-const JSON_COLUMNS: Record<string, string[]> = {
-  patient_tests: ['results'],
-  custom_tests: ['parameters'],
-};
-
-/** Columns held as 0/1 locally and as boolean remotely. */
-const BOOLEAN_COLUMNS: Record<string, string[]> = {
-  patients: ['commission_assigned'],
-  referring_doctors: ['is_active'],
-  referring_facilities: ['is_active'],
-  custom_tests: ['is_active'],
-};
+import { syncTable } from './tables';
 
 /**
  * Returns a copy of `row` with this table's JSON and boolean columns converted.
@@ -33,8 +22,9 @@ const BOOLEAN_COLUMNS: Record<string, string[]> = {
  */
 export function toRemotePayload(tableName: string, row: Record<string, any>): Record<string, any> {
   const out = { ...row };
+  const spec = syncTable(tableName);
 
-  for (const col of JSON_COLUMNS[tableName] ?? []) {
+  for (const col of spec?.json ?? []) {
     if (typeof out[col] === 'string') {
       try {
         out[col] = JSON.parse(out[col]);
@@ -45,11 +35,24 @@ export function toRemotePayload(tableName: string, row: Record<string, any>): Re
     }
   }
 
-  for (const col of BOOLEAN_COLUMNS[tableName] ?? []) {
+  for (const col of spec?.booleans ?? []) {
     if (col in out) {
       out[col] = out[col] === 1 || out[col] === true || out[col] === '1';
     }
   }
 
   return out;
+}
+
+/**
+ * The reverse: a cloud row as SQLite can hold it. Booleans become 0/1, and
+ * anything structured becomes JSON text. Typed from the value rather than the
+ * registry so a column added to both schemas needs no further declaration.
+ */
+export function toLocalValue(value: unknown): string | number | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value === 'boolean') return value ? 1 : 0;
+  if (typeof value === 'number' || typeof value === 'string') return value;
+  if (typeof value === 'bigint') return Number(value);
+  return JSON.stringify(value);
 }

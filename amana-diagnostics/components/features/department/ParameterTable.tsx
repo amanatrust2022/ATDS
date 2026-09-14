@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
-import { Field, Input, ResultFlag, ResultDelta, Select, Table } from '@/components/ui';
+import { Field, Input, ResultFlag, ResultDelta, Select, Table, ScriptText } from '@/components/ui';
 import type { TableColumn } from '@/components/ui';
 import {
   deriveFlag,
@@ -114,13 +114,13 @@ export default function ParameterTable({ results, onUpdate, sex = 'unknown' }: P
       key: 'unit',
       header: 'Unit',
       cellClassName: styles['unit'],
-      render: (row) => row.unit || '—',
+      render: (row) => (row.unit ? <ScriptText>{row.unit}</ScriptText> : '—'),
     },
     {
       key: 'range',
       header: 'Reference range',
       cellClassName: styles['range'],
-      render: (row) => row.range || '—',
+      render: (row) => (row.range ? <ScriptText>{row.range}</ScriptText> : '—'),
     },
     {
       key: 'flag',

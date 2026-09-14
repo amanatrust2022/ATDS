@@ -1,6 +1,6 @@
 # Where the project stands
 
-Plain-English status. Last updated **4 September 2026**.
+Plain-English status. Last updated **13 September 2026**.
 For the technical detail behind any of this, see `amana-diagnostics/.agents/AGENTS.md`.
 
 ---
@@ -52,6 +52,11 @@ Along the way it uncovered real bugs that were already live. Every one is logged
 | Two desks could be given the same slip number | Fixed 4 Sep, **needs the SQL applied** |
 | Registration would eventually start failing with a database error | Fixed 4 Sep, **needs the SQL applied** |
 | Every screen got slower every day the clinic stayed open | Fixed 4 Sep, **not yet released** |
+| Changes made on the web did not reach the clinic hub (results, edits, deleted doctors, removed staff) | Fixed 13 Sep, **not yet released; needs the SQL applied** |
+| The hub only synced while someone had the app open in a browser | Fixed 13 Sep, **not yet released** |
+| One change the cloud refused stopped *everything* coming down from the cloud | Fixed 13 Sep, **not yet released** |
+| The app said "Offline" on a hub even with working internet, and skipped sending staff changes and letterhead edits | Fixed 13 Sep, **not yet released** |
+| A change made on the hub while offline could overwrite a later change made on the web | Fixed 13 Sep, **not yet released** |
 
 ---
 
@@ -86,6 +91,36 @@ There is no hurry. The clinic ran without this feature for two years.
 
 ---
 
+## Syncing, in plain terms (13 September)
+
+Two things were true and both are now fixed in the code:
+
+1. **Data went up but did not come down.** A result entered on the hub reached
+   the web. A result entered on the web — or a doctor deleted, a staff member
+   removed, a price changed — did not reliably reach the hub. Three reasons, all
+   fixed: the hub only asked the cloud when a browser tab was open and it had
+   nothing the cloud was refusing; the cloud did not mark some edits as changed,
+   so the hub never asked for them; and nothing at all told the hub about
+   deletions.
+
+2. **"Offline" meant "on the hub".** The app decided you were offline because you
+   were using the clinic's own hub, not because the internet was down. So on a
+   hub with perfectly good internet it still skipped sending some changes (staff
+   roles, the letterhead) to the cloud, and told you they were "saved locally".
+
+Now the hub itself keeps in step with the cloud, all day, whether or not a
+browser is open. The badge at the top of the screen tells the truth: **Offline**
+means the hub cannot reach the internet, **Saving · 3** means three changes are
+on their way, **Sign in to sync** means the hub needs any staff member signed in
+before it can send. Every change made anywhere reaches everywhere else within a
+few seconds when the internet is up, and as soon as it returns when it is not.
+
+There is a new database file to apply: **`amana-diagnostics/supabase_sync_integrity.sql`**
+(step 1 below). Without it, the hub still gets most changes from the web but not
+deletions, and not edits to doctors and facilities.
+
+---
+
 ## What needs you
 
 ### 1. Apply the two database changes — on staging first
@@ -105,6 +140,11 @@ work before you trust them, and both say how to switch them back off.
 - **`supabase_deposit_atomicity.sql`** — until this is applied, two receptionists
   taking a deposit at the same moment can still lose one of them, and reversing
   a mistaken charge does not work at all.
+
+- **`amana-diagnostics/supabase_sync_integrity.sql`** (new, 13 September) — makes
+  the cloud record every change and every deletion so the hub can pick them up.
+  Safe to run more than once; the VERIFY block at the end shows how to check it
+  took. Until it is applied, deletions made on the web do not reach the hub.
 
 Tightening security breaks screens that were quietly relying on being able to
 read everything, and the failure looks like an empty list rather than an error.

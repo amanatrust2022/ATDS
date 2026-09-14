@@ -60,3 +60,33 @@ export function onChange(listener: Listener): () => void {
 export function listenerCount(): number {
   return bus.listeners.size;
 }
+
+/* ── The outbox's own bell ─────────────────────────────────────────────────── */
+
+/**
+ * Rung by `queueSync` alone: something is waiting to go to the cloud. The
+ * sync engine listens and pushes at once, instead of on its next tick.
+ *
+ * Separate from the change bell above on purpose. A pull that lands cloud
+ * rows rings `notifyChange` so the screens re-read — and if the engine
+ * listened to that same bell it would answer its own pull with another run,
+ * for ever.
+ */
+const outboxBus: Bus =
+  (g as typeof g & { __redianOutboxBus?: Bus }).__redianOutboxBus ??
+  ((g as typeof g & { __redianOutboxBus?: Bus }).__redianOutboxBus = { listeners: new Set() });
+
+export function notifyOutbox(): void {
+  if (outboxBus.listeners.size === 0) return;
+  setTimeout(() => {
+    const at = Date.now();
+    outboxBus.listeners.forEach((listener) => {
+      try { listener(at); } catch { /* the engine's problem, not the writer's */ }
+    });
+  });
+}
+
+export function onOutbox(listener: Listener): () => void {
+  outboxBus.listeners.add(listener);
+  return () => { outboxBus.listeners.delete(listener); };
+}

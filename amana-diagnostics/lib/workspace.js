@@ -45,6 +45,20 @@ export function clearPersistedAuthState() {
     console.warn('[workspace] failed to clear Supabase auth storage', error);
   }
 
+  // @supabase/ssr keeps the browser session in cookies, not localStorage.
+  // Without this pass a "signed out" user was signed straight back in on
+  // the next page load.
+  try {
+    document.cookie.split(';').forEach((entry) => {
+      const name = entry.split('=')[0].trim();
+      if (name.startsWith('sb-') || name.startsWith('supabase')) {
+        document.cookie = name + '=; Max-Age=0; path=/';
+      }
+    });
+  } catch (error) {
+    console.warn('[workspace] failed to clear Supabase auth cookies', error);
+  }
+
   try {
     const sessionKeys = [];
     for (let i = 0; i < sessionStorage.length; i += 1) {

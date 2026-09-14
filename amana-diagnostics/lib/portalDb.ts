@@ -1,11 +1,10 @@
 import { getDb } from './localDb';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
+import { isHubServer } from './runtimeMode';
 
+/** Whether the portal is served by a hub (SQLite) or by the cloud. One rule: lib/runtimeMode. */
 export function isLocalMode(): boolean {
-  return (
-    process.env.NEXT_PUBLIC_LOCAL_SERVER_MODE === 'true' ||
-    process.env.IS_LOCAL_HUB === 'true'
-  );
+  return isHubServer();
 }
 
 /**

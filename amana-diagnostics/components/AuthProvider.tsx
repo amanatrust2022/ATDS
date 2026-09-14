@@ -3,6 +3,7 @@ import { createContext, useContext, useEffect, useState, useRef, useCallback, us
 import { createClient } from '@/lib/supabase';
 import { buildFallbackProfile, clearPersistedAuthState } from '@/lib/workspace';
 import { User, Session } from '@supabase/supabase-js';
+import { getRuntimeMode } from '@/lib/runtimeMode';
 
 export type Profile = {
   id: string;
@@ -39,18 +40,6 @@ type AuthContextType = {
   signOut: () => Promise<void>;
   refreshOrg: () => Promise<void>;
 };
-
-function getIsLocalMode(): boolean {
-  if (typeof window === 'undefined') return false;
-  const h = window.location.hostname;
-  const isLocal = (
-    h === 'localhost' || h === '127.0.0.1' ||
-    h.startsWith('192.168.') || h.startsWith('10.') || h.startsWith('172.')
-  );
-  if (!isLocal) return false;
-  const stored = localStorage.getItem('amana_local_mode');
-  return stored !== null ? stored === 'true' : true;
-}
 
 const AuthContext = createContext<AuthContextType>({
   user: null, profile: null, organization: null,
@@ -103,7 +92,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       let prof: any = null;
       let org: any  = null;
-      const IS_LOCAL_MODE = getIsLocalMode();
+      const IS_LOCAL_MODE = getRuntimeMode() === 'local';
 
       // ── Local mode: SQLite first ────────────────────────────────────────
       if (IS_LOCAL_MODE) {
@@ -252,19 +241,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           session:      null,
         }));
 
-        // Back-sync to local SQLite when running in local mode
+        // Cache the cloud's copy on the hub, so the next sign-in here works
+        // with no internet. `source: 'cloud'` says this is a copy, not an
+        // edit: the hub must not queue it to go back up.
         if (IS_LOCAL_MODE) {
           try {
             await fetch('/api/profiles', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(prof),
+              body: JSON.stringify({ ...prof, source: 'cloud' }),
             });
             if (org) {
               await fetch('/api/organizations', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(org),
+                body: JSON.stringify({ ...org, source: 'cloud' }),
               });
             }
           } catch (e) {
@@ -293,18 +284,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // ── Main auth effect ───────────────────────────────────────────────────────
   useEffect(() => {
     let mounted = true;
-
-    // On cloud hostnames, clear any stale local mode flag immediately
-    if (typeof window !== 'undefined') {
-      const h = window.location.hostname;
-      const isLocal = (
-        h === 'localhost' || h === '127.0.0.1' ||
-        h.startsWith('192.168.') || h.startsWith('10.') || h.startsWith('172.')
-      );
-      if (!isLocal && localStorage.getItem('amana_local_mode') === 'true') {
-        localStorage.setItem('amana_local_mode', 'false');
-      }
-    }
 
     // Paint from cache instantly for returning users
     const cachedStr = typeof window !== 'undefined'
@@ -385,9 +364,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setOrganization(null);
     setSession(null);
     setProfileReady(false);
-    supabase.auth.signOut().catch((e: unknown) =>
-      console.warn('[AuthProvider] signOut error:', e)
-    );
+    // Wait for Supabase to end the session — it holds it in a cookie, which
+    // the storage sweep above cannot reach — but not for ever: on a hub with
+    // no internet the request never returns, and the cookie is cleared by
+    // the sweep's cookie pass regardless.
+    await Promise.race([
+      supabase.auth.signOut().catch((e: unknown) => console.warn('[AuthProvider] signOut error:', e)),
+      new Promise((resolve) => setTimeout(resolve, 3000)),
+    ]);
+    clearPersistedAuthState();
   }, []);
 
   // A fresh object here re-rendered every screen in the app on every render of

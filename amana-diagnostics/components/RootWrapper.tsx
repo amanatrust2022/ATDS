@@ -4,6 +4,8 @@ import { useRouter, usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { homePathFor } from '@/components/shell/navigation';
 import BootScreen from '@/components/BootScreen';
+import { getRuntimeMode, rememberRuntimeMode } from '@/lib/runtimeMode';
+import { isRecoveryLink, RESET_PATH } from '@/lib/passwordReset';
 
 const PUBLIC_PATHS = ['/', '/login', '/signup', '/update-password', '/download'];
 
@@ -18,6 +20,19 @@ export default function RootWrapper({ children }: { children: React.ReactNode })
   const [isInitialSyncing, setIsInitialSyncing] = useState(false);
   const [syncProgressText, setSyncProgressText] = useState('Syncing database...');
 
+  /*
+   * A password-reset link that lands anywhere but the reset screen — Supabase
+   * falls back to the site's front page when the return address is not one
+   * it knows — is walked over to the reset screen with its tokens intact.
+   */
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (window.location.pathname === RESET_PATH) return;
+    if (isRecoveryLink(window.location.href)) {
+      window.location.replace(`${RESET_PATH}${window.location.hash}`);
+    }
+  }, []);
+
   useEffect(() => {
     if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js')
@@ -26,93 +41,80 @@ export default function RootWrapper({ children }: { children: React.ReactNode })
     }
   }, []);
 
+  /*
+   * A hub that has never pulled the clinic's data is an empty register. Hold
+   * the boot screen while the first pull runs, so the first thing a
+   * receptionist sees is today's patients rather than nothing. The engine
+   * decides what "never" means (lib/sync/engine.ts); this only asks.
+   */
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (!hasAuthResolved || !user || !organization) return;
+    if (getRuntimeMode() !== 'local') return;
 
-    const localMode = localStorage.getItem('amana_local_mode') === 'true';
-    if (!localMode) return;
-
+    let cancelled = false;
     const checkAndRunInitialSync = async () => {
       try {
-        const statusRes = await fetch(`/api/sync?organizationId=${organization.id}`);
+        const statusRes = await fetch('/api/sync');
         if (!statusRes.ok) return;
+        const status = await statusRes.json();
+        if (!status.enabled || status.initialSyncDone || cancelled) return;
 
-        const statusData = await statusRes.json();
-        
-        if (statusData.lastPullTimestamp === 'Never') {
-          setIsInitialSyncing(true);
-          setSyncProgressText('Downloading workspace database...');
+        setIsInitialSyncing(true);
+        setSyncProgressText('Downloading workspace database...');
 
-          const headers: Record<string, string> = {
-            'Content-Type': 'application/json'
-          };
-          
-          // Get session for Authorization header to satisfy remote database RLS
-          try {
-            const { createClient } = await import('@/lib/supabase');
-            const supabase = createClient();
-            const { data: { session } } = await supabase.auth.getSession();
-            if (session?.access_token) {
-              headers['Authorization'] = `Bearer ${session.access_token}`;
-            }
-          } catch (e) {
-            console.warn('[RootWrapper] Could not retrieve session token for initial sync:', e);
-          }
-
-          const syncRes = await fetch('/api/sync', {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({ organizationId: organization.id })
-          });
-
-          if (!syncRes.ok) {
-            console.error('Initial sync failed');
-            setSyncProgressText('Sync failed. Please check connection and refresh.');
-          } else {
-            setSyncProgressText('Workspace ready!');
-            setTimeout(() => {
-              setIsInitialSyncing(false);
-            }, 800);
-          }
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        try {
+          const { createClient } = await import('@/lib/supabase');
+          const { data: { session } } = await createClient().auth.getSession();
+          if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+        } catch (e) {
+          console.warn('[RootWrapper] Could not retrieve session token for initial sync:', e);
         }
+
+        const syncRes = await fetch('/api/sync', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ organizationId: organization.id }),
+        });
+        const after = syncRes.ok ? await syncRes.json() : null;
+        if (cancelled) return;
+
+        if (after?.initialSyncDone) {
+          setSyncProgressText('Workspace ready!');
+        } else if (after?.status === 'offline') {
+          setSyncProgressText('No connection to the cloud yet. You can start; the download continues when it returns.');
+        } else if (after?.status === 'signed_out') {
+          setSyncProgressText('Sign in to download the workspace.');
+        } else {
+          setSyncProgressText('Still downloading. You can start; the rest arrives in the background.');
+        }
+        setTimeout(() => { if (!cancelled) setIsInitialSyncing(false); }, after?.initialSyncDone ? 800 : 2500);
       } catch (err) {
         console.error('Initial sync check error:', err);
+        if (!cancelled) setIsInitialSyncing(false);
       }
     };
 
     checkAndRunInitialSync();
+    return () => { cancelled = true; };
   }, [user, organization, hasAuthResolved]);
 
+  /*
+   * Ask the server which mode it is serving and remember the answer. This is
+   * the only writer of the mode flag; every reader goes through
+   * lib/runtimeMode. A page load whose guess was wrong reloads so that every
+   * module-load snapshot agrees.
+   */
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const checkConfig = async () => {
       try {
-        const h = window.location.hostname;
-        const isLocalHostname = (
-          h === 'localhost' || h === '127.0.0.1' ||
-          h.startsWith('192.168.') || h.startsWith('10.') || h.startsWith('172.')
-        );
-
-        if (!isLocalHostname) {
-          const current = localStorage.getItem('amana_local_mode');
-          if (current !== 'false') {
-            localStorage.setItem('amana_local_mode', 'false');
-            if (current !== null) window.location.reload();
-          }
-          return;
-        }
-
         const res = await fetch('/api/config');
-        if (res.ok) {
-          const data = await res.json();
-          const currentLocalMode = localStorage.getItem('amana_local_mode');
-          const newLocalMode = String(data.localMode);
-          if (currentLocalMode !== newLocalMode) {
-            localStorage.setItem('amana_local_mode', newLocalMode);
-            window.location.reload();
-          }
-        }
+        if (!res.ok) return;
+        const data = await res.json();
+        const changed = rememberRuntimeMode(data.localMode ? 'local' : 'cloud');
+        if (changed) window.location.reload();
       } catch (err) {
         console.warn('Failed to fetch config from server:', err);
       }

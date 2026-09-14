@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Alert, Button, Checkbox, Dialog, ResultFlag } from '@/components/ui';
+import { Alert, Button, Checkbox, Dialog, ResultFlag, ScriptText } from '@/components/ui';
 import type { criticalRows } from './ParameterTable';
 import styles from './entryForm.module.css';
 
@@ -76,7 +76,7 @@ export function CriticalValueDialog({
             <div>
               <div className={styles['criticalParam']}>{row.parameter}</div>
               <div className={styles['criticalValue']}>
-                {row.result} {row.unit}
+                {row.result} <ScriptText>{row.unit}</ScriptText>
               </div>
               <div className={styles['criticalRange']}>
                 Reference range {row.range || 'not recorded'}

@@ -12,9 +12,10 @@ import TableCell from '@tiptap/extension-table-cell';
 import TableHeader from '@tiptap/extension-table-header';
 import Image from '@tiptap/extension-image';
 import { Extension, Node as TiptapNode } from '@tiptap/core';
+import { Superscript, Subscript, ScriptRecognition } from './scriptMarks';
 
 import {
-  RiBold, RiItalic, RiUnderline, RiStrikethrough, RiListUnordered, RiListOrdered,
+  RiBold, RiItalic, RiUnderline, RiStrikethrough, RiSuperscript, RiSubscript, RiListUnordered, RiListOrdered,
   RiAlignLeft, RiAlignCenter, RiAlignRight, RiAlignJustify,
   RiTable2, RiArrowGoBackLine, RiArrowGoForwardLine,
   RiFontColor, RiImageAddLine, RiMarkPenLine, RiLineHeight, RiSeparator,
@@ -269,6 +270,9 @@ export default function RichTextEditor({
     extensions: [
       StarterKit.configure({ heading: { levels: [1, 2, 3] } }),
       Underline,
+      Superscript,
+      Subscript,
+      ScriptRecognition,
       TextStyle,
       FontSize,
       Color,
@@ -451,6 +455,8 @@ export default function RichTextEditor({
           <IconBtn label="Italic (Ctrl+I)" pressed={editor.isActive('italic')} onClick={() => chain().toggleItalic().run()}><RiItalic size={16} /></IconBtn>
           <IconBtn label="Underline (Ctrl+U)" pressed={editor.isActive('underline')} onClick={() => chain().toggleUnderline().run()}><RiUnderline size={16} /></IconBtn>
           <IconBtn label="Strikethrough" pressed={editor.isActive('strike')} onClick={() => chain().toggleStrike().run()}><RiStrikethrough size={16} /></IconBtn>
+          <IconBtn label="Superscript (Ctrl+.)" pressed={editor.isActive('superscript')} onClick={() => chain().toggleSuperscript().run()}><RiSuperscript size={16} /></IconBtn>
+          <IconBtn label="Subscript (Ctrl+,)" pressed={editor.isActive('subscript')} onClick={() => chain().toggleSubscript().run()}><RiSubscript size={16} /></IconBtn>
 
           {/* Text colour */}
           <div className={styles['menuWrap']}>

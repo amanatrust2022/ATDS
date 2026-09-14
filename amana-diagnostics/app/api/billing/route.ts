@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb, queueSync, inTransaction, HttpError } from '@/lib/localDb';
+import { hubNowIso } from '@/lib/sync/clock';
 
 export async function GET(request: Request) {
   try {
@@ -91,10 +92,14 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { action } = body;
     const db = getDb();
-    const nowStr = new Date().toISOString();
+    const nowStr = hubNowIso();
 
     if (action === 'createAccount') {
-      const { account, initialDeposit, paymentMethod, linkedPatientIds, createdBy, organizationId } = body;
+      const { initialDeposit, paymentMethod, linkedPatientIds, createdBy, organizationId } = body;
+      // Patient ids arrive as numbers. owner_patient_id is a TEXT column, and
+      // a number bound into it lands as "10000039.0" — which then poisons
+      // every later reference to the patient (see queueSync).
+      const account = { ...body.account, owner_patient_id: String(body.account.owner_patient_id) };
       const accountId = crypto.randomUUID();
 
       // 1. Insert billing account

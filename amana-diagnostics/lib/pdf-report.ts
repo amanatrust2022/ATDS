@@ -8,19 +8,27 @@ import { flagColour, type OrgForTemplate } from './templates';
 import { deserializeRadiologyResults, stripImpressionHeading } from './radiology-templates';
 import { SUPPORT_EMAIL, FALLBACK_ORG_NAME } from '@/lib/branding';
 import { letterheadFor } from './letterhead';
+import { scriptsToPdfRuns, markScriptsInHtml } from './scriptNotation';
+
+/** A pdfmake text value with "x10^9/L", "mm3", "CO2", "Ca2+" as real sub- and superscripts. */
+const sci = (v: unknown) => scriptsToPdfRuns(v == null ? '' : String(v));
 
 function parseHtmlToPdfmake(html: string): any[] {
   if (!html) return [];
   
   // Split into tokens: tags and plain text
   const tagRegex = /(<\/?[a-zA-Z0-9]+(?:\s+[^>]*)?>)/g;
-  const tokens = html.split(tagRegex);
+  // Flat "CO2" and "x10^9" in the text become <sub>/<sup> first, so the
+  // PDF shows what the paper does.
+  const tokens = markScriptsInHtml(html).split(tagRegex);
   
   const paragraphs: any[] = [];
   let currentParagraph: any[] = [];
   
   let bold = false;
   let underline = false;
+  let sup = false;
+  let sub = false;
   
   for (const token of tokens) {
     if (!token) continue;
@@ -42,6 +50,14 @@ function parseHtmlToPdfmake(html: string): any[] {
         underline = true;
       } else if (lower === '</u>') {
         underline = false;
+      } else if (lower === '<sup>') {
+        sup = true;
+      } else if (lower === '</sup>') {
+        sup = false;
+      } else if (lower === '<sub>') {
+        sub = true;
+      } else if (lower === '</sub>') {
+        sub = false;
       }
     } else {
       const text = token
@@ -54,6 +70,8 @@ function parseHtmlToPdfmake(html: string): any[] {
       const styles: any = { text };
       if (bold) styles.bold = true;
       if (underline) styles.decoration = 'underline';
+      if (sup) styles.sup = true;
+      if (sub) styles.sub = true;
       currentParagraph.push(styles);
     }
   }
@@ -284,15 +302,15 @@ export function buildReportPdfDefinition(
                   { text: 'Reference Range', style: 'tableHeader', fillColor: '#4472c4', color: 'white' },
                 ],
                 ...extraResults.map(r => [
-                  { text: r.parameter, style: 'tableCell' },
+                  { text: sci(r.parameter), style: 'tableCell' },
                   {
-                    text: `${r.result}${r.flag ? ` (${r.flag})` : ''}`,
+                    text: sci(`${r.result}${r.flag ? ` (${r.flag})` : ''}`),
                     style: 'tableCell',
                     bold: true,
                     color: flagColour(r.flag),
                   },
-                  { text: r.unit || '—', style: 'tableCell', color: '#555' },
-                  { text: r.range || '—', style: 'tableCell', color: '#555' },
+                  { text: sci(r.unit || '—'), style: 'tableCell', color: '#555' },
+                  { text: sci(r.range || '—'), style: 'tableCell', color: '#555' },
                 ])
               ]
             },
@@ -309,7 +327,7 @@ export function buildReportPdfDefinition(
         stackElements.push({
           text: [
             { text: 'Comment: ', bold: true, fontSize: 9 },
-            { text: t.notes, fontSize: 9 }
+            { text: sci(t.notes), fontSize: 9 }
           ],
           margin: [0, 6, 0, 0]
         });
@@ -414,7 +432,7 @@ export function buildReportPdfDefinition(
           const pName = param.replace('Microscopy: ', '');
           microscopyRows.push([
             { text: `${pName}:`, bold: true, fontSize: 9 },
-            { text: val || 'Nil', fontSize: 9 }
+            { text: sci(val || 'Nil'), fontSize: 9 }
           ]);
         } else if (param.startsWith('Culture: ')) {
           const field = param.replace('Culture: ', '');
@@ -605,15 +623,15 @@ export function buildReportPdfDefinition(
                 { text: 'Reference Range', style: 'tableHeader', fillColor: '#4472c4', color: 'white' },
               ],
               ...t.results.map(r => [
-                { text: r.parameter, style: 'tableCell' },
+                { text: sci(r.parameter), style: 'tableCell' },
                 {
-                  text: `${r.result}${r.flag ? ` (${r.flag})` : ''}`,
+                  text: sci(`${r.result}${r.flag ? ` (${r.flag})` : ''}`),
                   style: 'tableCell',
                   bold: true,
                   color: flagColour(r.flag),
                 },
-                { text: r.unit || '—', style: 'tableCell', color: '#555' },
-                { text: r.range || '—', style: 'tableCell', color: '#555' },
+                { text: sci(r.unit || '—'), style: 'tableCell', color: '#555' },
+                { text: sci(r.range || '—'), style: 'tableCell', color: '#555' },
               ])
             ]
           },

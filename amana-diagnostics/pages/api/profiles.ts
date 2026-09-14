@@ -1,11 +1,10 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { getDb } from '../../lib/localDb';
+import { isHubServer } from '../../lib/runtimeMode';
 
 export default function handler(req: NextApiRequest, res: NextApiResponse) {
   // This route only works in local/hub mode (SQLite). On cloud deployments, return 404.
-  const isLocalMode = process.env.NEXT_PUBLIC_LOCAL_SERVER_MODE === 'true' ||
-                      process.env.IS_LOCAL_HUB === 'true';
-  if (!isLocalMode) {
+  if (!isHubServer()) {
     res.status(404).json({ error: 'Not available in cloud mode' });
     return;
   }
@@ -51,7 +50,9 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
     }
 
     if (req.method === 'POST') {
-      const profile = req.body;
+      // Profiles are the cloud's to change (see /api/staff/update); what
+      // arrives here is a cached copy, never an edit, so nothing is queued.
+      const { source: _source, ...profile } = req.body ?? {};
       if (!profile || !profile.id || !profile.full_name || !profile.role) {
         res.status(400).json({ error: 'Missing required profile fields' });
         return;

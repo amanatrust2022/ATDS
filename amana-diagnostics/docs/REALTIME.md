@@ -201,15 +201,27 @@ widened. Both hooks share `lib/notifications.ts`.
 
 ---
 
-## What was not done
+## What was not done — and since has been
 
-- **The hub does not listen to the cloud in real time.** A web-side change
-  reaches a hub screen within 15 seconds (the pull tick), not within one. The
-  hub's Node process would need a Supabase session of its own to open a
-  realtime channel server-side; today the only sessions are in browsers. It
-  is the one remaining hop that is not event-driven.
-- **Conflict resolution stays last-writer-wins by `updated_at`**, and the two
-  sides' `updated_at` come from different clocks. A hub far ahead of the
-  cloud can win a conflict it should lose. Item 5 fixed the pull cursor, not
-  this; it wants a server-assigned stamp on the hub's writes, which is a
-  schema change.
+Both items below were closed on 13 September 2026 by the sync engine. The
+design, and the rules that keep it, are in [SYNC.md](SYNC.md).
+
+- **The hub does not listen to the cloud in real time.** *Now it does.* The
+  engine runs in the hub process with a credential of its own (the service
+  role key, or the most recent staff session), opens a realtime channel on
+  every synced table and on the delete tombstones, and pulls on any event.
+  The 15-second tick is the floor. A web-side result reaches a hub reception
+  desk within the debounce of landing.
+- **Conflict resolution stays last-writer-wins by `updated_at`, and the two
+  sides' `updated_at` come from different clocks.** *Both halves fixed.* Hub
+  writes stamp themselves in the cloud's clock (`lib/sync/clock.ts`, learned
+  from the cloud's `Date` header on every ping), and the push is now
+  conditional the way the pull always was: a hub change does not overwrite a
+  newer cloud copy. No schema change was needed for the stamp; the cloud
+  side gained a trigger (`supabase_sync_integrity.sql`) so that *every*
+  edit moves `updated_at`, which the web app's own updates did not.
+
+What this audit found in September was the hop-by-hop path. What SYNC.md
+found a day later was that the whole return path — cloud to hub — was
+conditional on the push succeeding, which is why "radiology's results
+arrive only sometimes" survived item 5.

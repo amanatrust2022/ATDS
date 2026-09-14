@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase';
 import { RuntimeMode, RUNTIME_MODE } from '@/lib/runtimeMode';
+import { subscribeHubEvents } from '@/lib/hubEvents';
 import { postJson } from './localHttp';
 import {
   formatSlipNumber, slipPrefixFor,
@@ -108,8 +109,6 @@ export interface PatientsRepository {
 }
 
 const ENDPOINT = '/api/patients';
-/** The hub's change stream, served by app/api/events. */
-const EVENTS_ENDPOINT = '/api/events';
 
 /**
  * How often to poll the hub's version stamp while its event stream is down.
@@ -228,14 +227,12 @@ export const localPatientsRepository: PatientsRepository = {
       if (poll) { clearInterval(poll); poll = null; }
     };
 
-    let source: EventSource | null = null;
-    if (typeof EventSource === 'undefined') {
-      startPolling();
-    } else {
-      source = new EventSource(`${EVENTS_ENDPOINT}?organizationId=${organizationId}`);
-      source.addEventListener('change', onChange);
-      let openedBefore = false;
-      source.onopen = () => {
+    // The stream is shared with every other listener in this tab — the sync
+    // badge among them — so a tab holds one connection, not one per screen.
+    let openedBefore = false;
+    const leave = subscribeHubEvents(organizationId, {
+      onChange,
+      onOpen: () => {
         if (stopped) return;
         stopPolling();
         // Coming back after a gap: whatever happened during it was never
@@ -243,16 +240,16 @@ export const localPatientsRepository: PatientsRepository = {
         if (openedBefore) callback();
         openedBefore = true;
         lastVersion = null;
-      };
+      },
       // The browser reconnects on its own; until it does, this keeps asking.
-      source.onerror = () => { if (!stopped) startPolling(); };
-    }
+      onError: () => { if (!stopped) startPolling(); },
+    });
 
     return () => {
       stopped = true;
       onChange.cancel();
       stopPolling();
-      source?.close();
+      leave();
     };
   },
 };

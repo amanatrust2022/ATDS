@@ -209,3 +209,111 @@ describe('pushOutbox when the cloud does not know who is asking', () => {
     expect(countDeadLetters(db)).toBe(0);
   });
 });
+
+/**
+ * The push against a cloud stand-in that holds real rows, for the rules that
+ * depend on what the cloud already has.
+ */
+import { fakeCloud } from './fakeCloud';
+
+describe('an UPDATE against a cloud copy', () => {
+  const ORG = 'org-1';
+  const updateRow = (stamp: string, over: Partial<OutboxRow> = {}) => row({
+    id: 1, table_name: 'patients', action: 'UPDATE', record_id: '5',
+    payload: JSON.stringify({ id: 5, organization_id: ORG, first_name: 'Hub', updated_at: stamp }),
+    ...over,
+  });
+
+  it('applies where the hub\'s change is the newer one', async () => {
+    const cloud = fakeCloud({ patients: [{ id: 5, organization_id: ORG, first_name: 'Cloud', updated_at: '2026-09-12T10:00:00+00:00' }] });
+    const db = fakeDb([updateRow('2026-09-12T11:00:00+00:00')]);
+
+    const result = await pushOutbox(db, cloud as any);
+
+    expect(result.pushed).toBe(1);
+    expect(cloud.data.patients[0].first_name).toBe('Hub');
+  });
+
+  it('does not overwrite a cloud copy that is newer, and drops the row as done', async () => {
+    const cloud = fakeCloud({ patients: [{ id: 5, organization_id: ORG, first_name: 'Cloud', updated_at: '2026-09-12T12:00:00+00:00' }] });
+    const db = fakeDb([updateRow('2026-09-12T11:00:00+00:00')]);
+
+    const result = await pushOutbox(db, cloud as any);
+
+    expect(result.pushed).toBe(1);
+    expect(db.deleted).toEqual([1]);
+    expect(cloud.data.patients[0].first_name).toBe('Cloud');
+  });
+
+  it('puts back a row the cloud no longer has', async () => {
+    const cloud = fakeCloud({ patients: [] });
+    const db = fakeDb([updateRow('2026-09-12T11:00:00+00:00')]);
+
+    await pushOutbox(db, cloud as any);
+
+    expect(cloud.data.patients).toHaveLength(1);
+    expect(cloud.data.patients[0].first_name).toBe('Hub');
+  });
+
+  it('is unconditional for a table with no version column', async () => {
+    const cloud = fakeCloud({ billing_ledger_transactions: [{ id: 'tx1', organization_id: ORG, amount: 1 }] });
+    const db = fakeDb([row({ id: 1, table_name: 'billing_ledger_transactions', action: 'UPDATE', record_id: 'tx1', payload: JSON.stringify({ id: 'tx1', amount: 2 }) })]);
+
+    await pushOutbox(db, cloud as any);
+
+    expect(cloud.data.billing_ledger_transactions[0].amount).toBe(2);
+  });
+});
+
+describe('command rows', () => {
+  const command = (over: Partial<OutboxRow> = {}) => row({
+    id: 1, table_name: 'command:api/staff/update', action: 'INSERT', record_id: 'u1:role',
+    payload: JSON.stringify({ action: 'update_role', staffId: 'u1', role: 'lab' }),
+    ...over,
+  });
+  const cloud = () => fakeCloud({ patients: [] });
+
+  it('are POSTed to the cloud deployment under the session', async () => {
+    const calls: Array<{ url: string; init: any }> = [];
+    const fetch = (async (url: string, init: any) => { calls.push({ url, init }); return { ok: true, status: 200, json: async () => ({}) }; }) as any;
+    const db = fakeDb([command()]);
+
+    const result = await pushOutbox(db, cloud() as any, { cloudOrigin: 'https://cloud.example', accessToken: 'tok', fetch });
+
+    expect(result.pushed).toBe(1);
+    expect(calls[0].url).toBe('https://cloud.example/api/staff/update');
+    expect(calls[0].init.headers.Authorization).toBe('Bearer tok');
+    expect(JSON.parse(calls[0].init.body)).toEqual({ action: 'update_role', staffId: 'u1', role: 'lab' });
+  });
+
+  it('wait for an administrator without holding up the rows behind them', async () => {
+    const fetch = (async () => ({ ok: false, status: 403, json: async () => ({ error: 'Administrator only' }) })) as any;
+    const db = fakeDb([command({ id: 1 }), row({ id: 2 })]);
+
+    const result = await pushOutbox(db, cloud() as any, { cloudOrigin: 'https://cloud.example', accessToken: 'tok', fetch });
+
+    expect(result.commandsWaiting).toBe(1);
+    expect(result.stalledOutboxId).toBeUndefined();
+    expect(db.state.find(r => r.id === 1)?.attempts).toBe(0);
+    expect(db.deleted).toEqual([2]);
+  });
+
+  it('wait, not fail, when there is no session at all', async () => {
+    const db = fakeDb([command()]);
+    const result = await pushOutbox(db, cloud() as any, { cloudOrigin: 'https://cloud.example', accessToken: null });
+    expect(result.commandsWaiting).toBe(1);
+    expect(db.state[0].attempts).toBe(0);
+  });
+
+  it('count a real refusal against the command, and let the queue continue', async () => {
+    const fetch = (async () => ({ ok: false, status: 400, json: async () => ({ error: 'Unknown role: boss' }) })) as any;
+    const db = fakeDb([command({ id: 1 }), row({ id: 2 })]);
+
+    const result = await pushOutbox(db, cloud() as any, { cloudOrigin: 'https://cloud.example', accessToken: 'tok', fetch });
+
+    expect(db.state.find(r => r.id === 1)?.attempts).toBe(1);
+    expect(db.state.find(r => r.id === 1)?.last_error).toBe('Unknown role: boss');
+    expect(result.stalledOutboxId).toBeUndefined();
+    expect(db.deleted).toEqual([2]);
+  });
+});

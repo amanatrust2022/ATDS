@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import os from 'os';
+import { isHubServer } from '../../lib/runtimeMode';
 
 export default function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'GET') {
@@ -47,7 +48,8 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
   const port = process.env.PORT || '3000';
 
   res.status(200).json({
-    localMode: process.env.NEXT_PUBLIC_LOCAL_SERVER_MODE === 'true',
+    // The one answer every browser on the LAN remembers (lib/runtimeMode).
+    localMode: isHubServer(),
     serverIp: `${localIp}:${port}`,
   });
 }

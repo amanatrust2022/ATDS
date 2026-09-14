@@ -12,6 +12,7 @@ import { useShellSlot } from '@/components/shell';
 import { printHtml } from '@/lib/templates';
 import { apiBase, reachableOrigin } from '@/lib/cloudOrigin';
 import { accessToken, jsonAuthHeaders } from '@/lib/authHeaders';
+import { useRuntimeMode } from '@/lib/useRuntimeMode';
 import { orgName } from '@/lib/branding';
 import { buildStaffAuditHtml } from '@/lib/staffAudit';
 import {
@@ -81,7 +82,7 @@ function StaffManagement() {
     if (!organization) return;
     setLoadingPerf(true);
     try {
-      const res = await fetch(`/api/admin/performance?organizationId=${organization.id}&localMode=${isLocalMode}`);
+      const res = await fetch(`/api/admin/performance?organizationId=${organization.id}`);
       if (res.ok) {
         const data = await res.json();
         // Four arrays, guaranteed here rather than assumed four hundred lines
@@ -105,15 +106,7 @@ function StaffManagement() {
     }
   };
 
-  const isLocalMode = typeof window !== 'undefined'
-    ? (localStorage.getItem('amana_local_mode') === null
-        ? (window.location.hostname === 'localhost' || 
-           window.location.hostname === '127.0.0.1' || 
-           window.location.hostname.startsWith('192.168.') || 
-           window.location.hostname.startsWith('10.') || 
-           window.location.hostname.startsWith('172.'))
-        : localStorage.getItem('amana_local_mode') === 'true')
-    : (process.env.NEXT_PUBLIC_LOCAL_SERVER_MODE === 'true');
+  const isLocalMode = useRuntimeMode() === 'local';
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     setToast({ message, type });
@@ -127,7 +120,7 @@ function StaffManagement() {
     } else {
       setLoadingRefresh(true);
     }
-    
+
     let staffData: any[] = [];
     let inviteData: any[] = [];
 
@@ -150,7 +143,10 @@ function StaffManagement() {
           return data || [];
         })
         .catch((err: any) => {
-          console.warn('Failed to fetch invitations from Supabase (offline fallback):', err);
+          // Invitations live only in the cloud (the invitee accepts on the
+          // web), so a hub reads them from there when it can and shows none
+          // when it cannot. This is the one read here that needs the internet.
+          console.warn('Could not fetch invitations from the cloud:', err);
           return [];
         });
 
@@ -172,7 +168,7 @@ function StaffManagement() {
 
     setStaff(staffData || []);
     setInvites(inviteData || []);
-    
+
     // Save to cache
     try {
       localStorage.setItem(`amana_cached_staff_${organization.id}`, JSON.stringify(staffData || []));
@@ -188,10 +184,10 @@ function StaffManagement() {
   // Load from cache first for SWR instant response
   useEffect(() => {
     if (!organization) return;
-    
+
     const cachedStaff = localStorage.getItem(`amana_cached_staff_${organization.id}`);
     const cachedInvites = localStorage.getItem(`amana_cached_invites_${organization.id}`);
-    
+
     if (cachedStaff) {
       setStaff(JSON.parse(cachedStaff));
       setLoading(false);
@@ -247,7 +243,7 @@ function StaffManagement() {
       expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
     }]);
 
-    if (dbError) { 
+    if (dbError) {
       showToast(dbError.message, 'error');
       setSubmitting(false);
       setSendingEmail(false);
@@ -297,22 +293,36 @@ function StaffManagement() {
   };
 
   /**
-   * Both staff actions go to `/api/staff/update`, which holds the service-role
-   * key and therefore demands an administrator's bearer token. Neither used to
-   * send one, so every role change and every removal returned
-   * "Authentication required" — the request was refused before it was read.
+   * Both staff actions end at `/api/staff/update`, which holds the service-role
+   * key and therefore demands an administrator's bearer token.
    *
-   * On a hub with no cloud session there is no token to send and never will be;
-   * the local write below is the whole operation, so the cloud call is skipped
-   * rather than made and then reported as a failure.
+   * On the web the screen calls it directly. On a hub the screen calls the
+   * hub (`/api/staff/hub`), which writes its own copy and queues the cloud
+   * call in the sync outbox for the engine to send — now if the hub is
+   * online, later if it is not. This used to be decided by whether the
+   * browser happened to hold a token, and "local mode" was taken to mean
+   * "no cloud": a hub with a perfectly good internet connection reported
+   * the change as skipped and it never left the building.
    */
   const callStaffEndpoint = async (
     body: Record<string, unknown>,
     failure: string,
-  ): Promise<'ok' | 'skipped'> => {
+  ): Promise<'ok' | 'queued'> => {
+    if (isLocalMode) {
+      const res = await fetch('/api/staff/hub', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || failure);
+      }
+      return 'queued';
+    }
+
     const token = await accessToken();
     if (!token) {
-      if (isLocalMode) return 'skipped';
       throw new Error('Your session has expired. Sign in again to manage staff.');
     }
 
@@ -335,25 +345,12 @@ function StaffManagement() {
         { action: 'update_role', staffId: id, role },
         'Failed to update role',
       );
-      if (outcome === 'ok') showToast('Staff role updated successfully!');
+      showToast(outcome === 'queued'
+        ? 'Staff role updated. It reaches the cloud with the next sync.'
+        : 'Staff role updated successfully!');
     } catch (err: any) {
       console.warn('Failed to update role:', err);
-      showToast(err.message || 'Failed to update role in cloud.', 'error');
-    }
-
-    if (isLocalMode) {
-      try {
-        const staffMember = staff.find(s => s.id === id);
-        if (staffMember) {
-          await fetch('/api/profiles', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ...staffMember, role })
-          });
-        }
-      } catch (err) {
-        console.error('Failed to update role locally:', err);
-      }
+      showToast(err.message || 'Failed to update role.', 'error');
     }
 
     fetchData(true);
@@ -380,22 +377,12 @@ function StaffManagement() {
         { action: 'remove_staff', staffId: s.id },
         'Failed to remove staff',
       );
-      if (outcome === 'ok') showToast('Staff removed from workspace.');
+      showToast(outcome === 'queued'
+        ? 'Staff removed here. The cloud follows with the next sync.'
+        : 'Staff removed from workspace.');
     } catch (err: any) {
       console.warn('Failed to remove staff:', err);
-      showToast(err.message || 'Failed to remove staff in cloud.', 'error');
-    }
-
-    if (isLocalMode) {
-      try {
-        await fetch('/api/profiles', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...s, organization_id: null, role: 'reception' })
-        });
-      } catch (err) {
-        console.error('Failed to remove staff locally:', err);
-      }
+      showToast(err.message || 'Failed to remove staff.', 'error');
     }
 
     fetchData(true);

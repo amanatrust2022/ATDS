@@ -10,6 +10,7 @@ import {
 
 import { useAuth } from '@/components/AuthProvider';
 import styles from './landing.module.css';
+import { getRuntimeMode, serverDefaultMode, LOCAL_MODE_STORAGE_KEY } from '@/lib/runtimeMode';
 
 /**
  * The public landing page.
@@ -32,24 +33,20 @@ import styles from './landing.module.css';
  * an account.
  */
 
-/** Whether this browser is the clinic's own hub rather than the public site. */
+/**
+ * Whether this browser is the clinic's own hub rather than the public site.
+ *
+ * One exception to the shared rule: `next dev` on a developer's machine is
+ * on localhost and would count as a hub, but the developer wants to see the
+ * marketing page. Everything else is lib/runtimeMode's decision.
+ */
 function detectLocalMode(): boolean {
-  if (typeof window === 'undefined') {
-    return process.env.NEXT_PUBLIC_LOCAL_SERVER_MODE === 'true';
+  if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+    try {
+      if (localStorage.getItem(LOCAL_MODE_STORAGE_KEY) === null) return false;
+    } catch { /* fall through */ }
   }
-
-  const saved = localStorage.getItem('amana_local_mode');
-  if (saved !== null) return saved === 'true';
-
-  const w = window as unknown as Record<string, unknown>;
-  if (w['__TAURI_INTERNALS__'] !== undefined || w['__TAURI__'] !== undefined) return true;
-
-  const host = window.location.hostname;
-  const onLan =
-    host === 'localhost' || host === '127.0.0.1' ||
-    host.startsWith('192.168.') || host.startsWith('10.') || host.startsWith('172.');
-
-  return process.env.NODE_ENV !== 'development' && onLan;
+  return getRuntimeMode() === 'local';
 }
 
 const FEATURES = [
@@ -109,9 +106,7 @@ export default function LandingPage() {
    * Starts from the value the server used, so the first client render matches
    * the markup that arrived. Only then does it look at localStorage.
    */
-  const [localMode, setLocalMode] = useState(
-    () => process.env.NEXT_PUBLIC_LOCAL_SERVER_MODE === 'true',
-  );
+  const [localMode, setLocalMode] = useState(() => serverDefaultMode() === 'local');
   useEffect(() => setLocalMode(detectLocalMode()), []);
 
   // Declared before the effect that calls it, and before any early return.

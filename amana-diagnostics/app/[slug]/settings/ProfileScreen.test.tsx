@@ -107,3 +107,32 @@ describe('Profile settings', () => {
     await waitFor(() => expect(updateUser).toHaveBeenCalled());
   });
 });
+
+/**
+ * Every role signs out from here. The button ends the session and then
+ * navigates, so the app boots clean rather than trusting each subscribed
+ * component to notice the state change.
+ */
+describe('Sign out', () => {
+  it('is on the screen for every role, ends the session, and goes to sign-in', async () => {
+    const signOut = vi.fn(async () => {});
+    const assign = vi.fn();
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { ...window.location, assign },
+    });
+
+    for (const role of ['admin', 'reception', 'lab', 'lab_tech', 'radiology']) {
+      signOut.mockClear();
+      assign.mockClear();
+      authState = { ...authState, profile: profile({ role }), signOut };
+      const { unmount } = render(<ProfileScreen />);
+
+      fireEvent.click(screen.getByRole('button', { name: /sign out/i }));
+
+      await waitFor(() => expect(signOut).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(assign).toHaveBeenCalledWith('/login'));
+      unmount();
+    }
+  });
+});

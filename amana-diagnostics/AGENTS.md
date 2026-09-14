@@ -57,6 +57,26 @@ increase is reviewable rather than automatic.
 - 390px wide
 - with the mouse unplugged
 
+## Mode is not connectivity
+
+Read [`docs/SYNC.md`](docs/SYNC.md) before touching anything that syncs, anything
+that asks "are we on a hub?", or anything that asks "are we online?".
+
+1. **Which back end** a screen talks to (`local` hub or `cloud`) comes from
+   `lib/runtimeMode.ts` (`getRuntimeMode`, `isHubServer`) or the hook in
+   `lib/useRuntimeMode.ts`. Never from the hostname, `localStorage`, or an
+   environment variable read in a component. `lib/runtimeMode.guard.test.ts`
+   fails the suite on a copy.
+2. **Whether the hub can reach the cloud** comes from the sync engine, read
+   through `useSyncState()`. Never inferred from the mode, and never from
+   `navigator.onLine`.
+3. **A screen on a hub writes to the hub**, through its API and `queueSync`.
+   It does not call Supabase, and it does not "try the cloud and ignore the
+   error". The engine sends what the hub queued, now or when it can.
+4. **A new synced table** goes in four places — `lib/localDb.ts`,
+   `supabase_sync_integrity.sql`, `lib/sync/tables.ts`, and `queueSync` at the
+   write — and `lib/sync/tables.test.ts` fails if they disagree.
+
 ## What not to touch
 
 `lib/` is the good part of this codebase — typed repositories, real tests,

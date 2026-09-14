@@ -1,8 +1,9 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { createClient } from '@/lib/supabase';
+import { claimRecoveryLink, sendPasswordReset } from '@/lib/passwordReset';
 import { useRouter } from 'next/navigation';
-import { RiMicroscopeLine, RiLockPasswordLine, RiCheckLine, RiEyeLine, RiEyeOffLine } from '@remixicon/react';
+import { RiMicroscopeLine, RiLockPasswordLine, RiCheckLine, RiEyeLine, RiEyeOffLine, RiMailLine } from '@remixicon/react';
 
 import styles from '../login/login.module.css';
 
@@ -17,6 +18,12 @@ import styles from '../login/login.module.css';
  * red that nothing announced, and password fields that did not tell the browser
  * they were new credentials. And its success redirect was a bare setTimeout
  * with nothing to cancel it if the screen left first.
+ *
+ * The screen also owed everyone one more thing: to read the emailed link
+ * itself. It used to assume a session had arrived and only found out it had
+ * not when the submit failed. Now the link is claimed first
+ * (lib/passwordReset.ts); an expired or used link is said so, with a way to
+ * ask for a fresh one right here.
  */
 
 const cx = (...names: Array<string | undefined | false>) => names.filter(Boolean).join(' ');
@@ -39,9 +46,23 @@ export default function UpdatePasswordPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [done, setDone] = useState(false);
+  const [link, setLink] = useState<{ state: 'checking' } | { state: 'ready' } | { state: 'blocked'; message: string }>({ state: 'checking' });
+  const [resendEmail, setResendEmail] = useState('');
+  const [resending, setResending] = useState(false);
+  const [resent, setResent] = useState(false);
   const supabase = createClient();
   const router = useRouter();
   const redirectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Claim the link before showing a form that could not work without it.
+  useEffect(() => {
+    let cancelled = false;
+    claimRecoveryLink(window.location.href).then((outcome) => {
+      if (cancelled) return;
+      setLink(outcome.ok ? { state: 'ready' } : { state: 'blocked', message: outcome.message });
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   // If the screen leaves before the redirect fires, cancel it.
   useEffect(() => () => {
@@ -60,12 +81,30 @@ export default function UpdatePasswordPage() {
         10000,
         () => setError('Slow network connection detected. Still updating password… please wait.')
       );
-      if (error) { setError(error.message); setLoading(false); return; }
+      if (error) {
+        setError(/session/i.test(error.message) ? 'The reset link is no longer valid. Ask for a new one below.' : error.message);
+        if (/session/i.test(error.message)) setLink({ state: 'blocked', message: 'This link has expired or was already used.' });
+        setLoading(false);
+        return;
+      }
       setDone(true);
       redirectTimer.current = setTimeout(() => router.push('/login'), 2500);
     } catch (err) {
       setError((err as { message?: string })?.message || 'An unexpected error occurred. Please try again.');
       setLoading(false);
+    }
+  };
+
+  const handleResend = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resendEmail.trim()) { setError('Enter the email address of your account.'); return; }
+    setResending(true); setError('');
+    try {
+      const { error } = await sendPasswordReset(resendEmail);
+      if (error) setError(error.message);
+      else setResent(true);
+    } finally {
+      setResending(false);
     }
   };
 
@@ -87,8 +126,48 @@ export default function UpdatePasswordPage() {
                 <RiCheckLine size={22} />
               </span>
               <p className={styles.heading}>Password updated</p>
-              <p className={styles.sub}>Redirecting you to sign in…</p>
+              <p className={styles.sub}>Taking you to your workspace…</p>
             </div>
+          ) : link.state === 'checking' ? (
+            <p className={styles.sub} role="status">Checking your link…</p>
+          ) : link.state === 'blocked' ? (
+            resent ? (
+              <div className={styles.sent} role="status">
+                <span className={styles.sentMark} aria-hidden="true">
+                  <RiCheckLine size={22} />
+                </span>
+                <p className={styles.heading}>New link sent</p>
+                <p className={styles.sub}>Check {resendEmail.trim()} and open the link on any device.</p>
+              </div>
+            ) : (
+              <form onSubmit={handleResend} className={styles.form} noValidate>
+                <p className={styles.error} role="alert">
+                  <span className={styles.errorMark} aria-hidden="true">!</span>
+                  <span>{error || link.message}</span>
+                </p>
+                <div>
+                  <label className={styles.label} htmlFor="np-email">Email address</label>
+                  <div className={styles.inputWrap}>
+                    <span className={styles.inputIcon} aria-hidden="true">
+                      <RiMailLine size={16} />
+                    </span>
+                    <input
+                      id="np-email"
+                      className={styles.input}
+                      type="email"
+                      value={resendEmail}
+                      onChange={(e) => setResendEmail(e.target.value)}
+                      placeholder="you@clinic.com"
+                      autoComplete="email"
+                      required
+                    />
+                  </div>
+                </div>
+                <button type="submit" className={styles.submit} disabled={resending} aria-busy={resending}>
+                  {resending ? 'Sending…' : 'Send me a new link'}
+                </button>
+              </form>
+            )
           ) : (
             <form onSubmit={handleUpdate} className={styles.form} noValidate>
               {error && (

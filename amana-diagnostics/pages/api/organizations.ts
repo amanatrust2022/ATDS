@@ -1,11 +1,10 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { getDb } from '../../lib/localDb';
+import { getDb, queueSync } from '../../lib/localDb';
+import { isHubServer } from '../../lib/runtimeMode';
 
 export default function handler(req: NextApiRequest, res: NextApiResponse) {
   // This route only works in local/hub mode (SQLite). On cloud deployments, return 404.
-  const isLocalMode = process.env.NEXT_PUBLIC_LOCAL_SERVER_MODE === 'true' ||
-                      process.env.IS_LOCAL_HUB === 'true';
-  if (!isLocalMode) {
+  if (!isHubServer()) {
     res.status(404).json({ error: 'Not available in cloud mode' });
     return;
   }
@@ -39,7 +38,7 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
     }
 
     if (req.method === 'POST') {
-      const org = req.body;
+      const { source, ...org } = req.body ?? {};
       if (!org || !org.id || !org.name || !org.slug) {
         res.status(400).json({ error: 'Missing required organization fields' });
         return;
@@ -68,6 +67,22 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
         org.letterhead_line2 || null,
         org.letterhead_html || null
       );
+
+      // An edit made here has to reach the cloud. A copy *of* the cloud
+      // (source: 'cloud', written by AuthProvider after sign-in) must not go
+      // back up, or every sign-in would overwrite the clinic's settings with
+      // whatever this browser last saw.
+      if (source !== 'cloud') {
+        queueSync(db, 'organizations', 'UPDATE', org.id, {
+          id: org.id,
+          name: org.name,
+          address: org.address || null,
+          phone: org.phone || null,
+          email: org.email || null,
+          letterhead_line2: org.letterhead_line2 || null,
+          letterhead_html: org.letterhead_html || null,
+        });
+      }
 
       res.status(200).json({ success: true });
       return;

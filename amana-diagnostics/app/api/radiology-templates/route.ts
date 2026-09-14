@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb, queueSync } from '@/lib/localDb';
+import { hubNowIso } from '@/lib/sync/clock';
 
 export async function GET(request: Request) {
   try {
@@ -30,7 +31,7 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { action } = body;
     const db = getDb();
-    const nowStr = new Date().toISOString();
+    const nowStr = hubNowIso();
 
     if (action === 'add') {
       const { template, userId } = body;

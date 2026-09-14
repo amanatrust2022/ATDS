@@ -1,4 +1,5 @@
 import { cleanLetterhead } from './sanitizeHtml';
+import { scriptsToHtml, markScriptsInHtml } from './scriptNotation';
 /**
  * Amana Diagnostics - Centralized Print Templates
  *
@@ -80,6 +81,9 @@ export const esc = (value: unknown): string =>
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+
+/** Escapes like `esc`, and renders "x10^9/L", "mm3", "CO2", "Ca2+" with real sub- and superscripts. */
+const sci = (v: unknown): string => scriptsToHtml(v == null ? '' : String(v));
 export const getResultTemplate = (patient: Patient, completedTests: PatientTest[], org?: OrgForTemplate) => {
   const regDate = new Date(patient.registeredAt).toLocaleDateString('en-NG');
   const reportingDate = completedTests[0]?.completedAt ? new Date(completedTests[0].completedAt).toLocaleDateString('en-NG') : '—';
@@ -167,7 +171,7 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
                 </tr>
                 <tr>
                   <td style="padding: 5px 8px; font-weight: bold; border: 1px solid #eee; font-size: 10pt;">Quantitative Count:</td>
-                  <td style="padding: 5px 8px; border: 1px solid #eee; font-size: 10pt; font-family: monospace;">${esc(densityCount)}</td>
+                  <td style="padding: 5px 8px; border: 1px solid #eee; font-size: 10pt; font-family: monospace;">${sci(densityCount)}</td>
                 </tr>
                 ${parasiteSeen === 'Seen' ? `
                 <tr>
@@ -181,7 +185,7 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
                 ` : ''}
                 <tr>
                   <td style="padding: 5px 8px; font-weight: bold; border: 1px solid #eee; font-size: 10pt;">Blood Film / Comments:</td>
-                  <td style="padding: 5px 8px; border: 1px solid #eee; font-size: 10pt;">${esc(comment)}</td>
+                  <td style="padding: 5px 8px; border: 1px solid #eee; font-size: 10pt;">${sci(comment)}</td>
                 </tr>
               </tbody>
             </table>
@@ -258,12 +262,12 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
       if (extraResults.length > 0) {
         const rows = extraResults.map(r => `
           <tr style="border-bottom: 1px solid #eee;">
-            <td style="padding: 6px 8px; font-size: 10pt;">${esc(r.parameter)}</td>
+            <td style="padding: 6px 8px; font-size: 10pt;">${sci(r.parameter)}</td>
             <td style="padding: 6px 8px; font-weight: bold; font-size: 10pt; color:${flagColour(r.flag)}">
-              ${esc(r.result)}${r.flag ? ` (${esc(r.flag)})` : ''}
+              ${sci(r.result)}${r.flag ? ` (${sci(r.flag)})` : ''}
             </td>
-            <td style="padding: 6px 8px; font-size: 10pt; color: #555;">${esc(r.unit) || '—'}</td>
-            <td style="padding: 6px 8px; font-size: 10pt; color: #555;">${esc(r.range) || '—'}</td>
+            <td style="padding: 6px 8px; font-size: 10pt; color: #555;">${sci(r.unit) || '—'}</td>
+            <td style="padding: 6px 8px; font-size: 10pt; color: #555;">${sci(r.range) || '—'}</td>
           </tr>`).join('');
         extraHtml = `
           <div style="padding: 10px; border-top: 1px dashed #0563c1; page-break-inside: avoid;">
@@ -293,7 +297,7 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
           ${mpsHtml}
           ${widalHtml}
           ${extraHtml}
-          ${t.notes ? `<div class="notes" style="padding: 5px 8px; font-size: 9pt; background: #fffbe6; border-top: 1px solid #ddd; font-style: italic;"><b>Comment:</b> ${esc(t.notes)}</div>` : ''}
+          ${t.notes ? `<div class="notes" style="padding: 5px 8px; font-size: 9pt; background: #fffbe6; border-top: 1px solid #ddd; font-style: italic;"><b>Comment:</b> ${sci(t.notes)}</div>` : ''}
         </div>
       `;
     }
@@ -318,18 +322,18 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
             ${esc(t.testName)}
           </div>
           <div style="font-size: 11pt; line-height: 1.6; color: #000; text-align: justify; margin-bottom: 18px; font-family: 'Times New Roman', Times, serif;">
-            ${convertTextToFormattedHtml(radData.findings)}
+            ${markScriptsInHtml(convertTextToFormattedHtml(radData.findings))}
           </div>
           ${radData.impression ? `
             <div style="background: #f8fafc; border-left: 4px solid #0563c1; padding: 12px; margin-top: 15px; page-break-inside: avoid; font-family: 'Times New Roman', Times, serif;">
               <div style="font-weight: bold; color: #0563c1; font-size: 11pt; text-transform: uppercase; margin-bottom: 4px;">Impression / Conclusion:</div>
               <div style="font-size: 11pt; line-height: 1.5; font-weight: bold; color: #111827;">
-                ${convertTextToFormattedHtml(stripImpressionHeading(radData.impression))}
+                ${markScriptsInHtml(convertTextToFormattedHtml(stripImpressionHeading(radData.impression)))}
               </div>
             </div>
           ` : ''}
           ${imageSection}
-          ${t.notes ? `<div class="notes" style="margin-top:15px; padding: 8px 12px; font-size: 10pt; background: #fffbe6; border: 1px solid #ffe58f; font-style: italic;"><b>Remarks:</b> ${esc(t.notes)}</div>` : ''}
+          ${t.notes ? `<div class="notes" style="margin-top:15px; padding: 8px 12px; font-size: 10pt; background: #fffbe6; border: 1px solid #ffe58f; font-style: italic;"><b>Remarks:</b> ${sci(t.notes)}</div>` : ''}
         </div>
       `;
     }
@@ -360,7 +364,7 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
           if (field === 'Appearance') appearance = val || '—';
         } else if (param.startsWith('Microscopy: ')) {
           const pName = param.replace('Microscopy: ', '');
-          microscopyRows.push(`<tr><td style="padding: 2px 4px; border: none; font-size: 10pt; font-weight: 600; width: 50%;">${esc(pName)}:</td><td style="padding: 2px 4px; border: none; font-size: 10pt;">${esc(val) || 'Nil'}</td></tr>`);
+          microscopyRows.push(`<tr><td style="padding: 2px 4px; border: none; font-size: 10pt; font-weight: 600; width: 50%;">${sci(pName)}:</td><td style="padding: 2px 4px; border: none; font-size: 10pt;">${sci(val) || 'Nil'}</td></tr>`);
         } else if (param.startsWith('Culture: ')) {
           const field = param.replace('Culture: ', '');
           if (field === 'Growth') growth = val || '—';
@@ -461,18 +465,18 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
             </div>
           ` : ''}
 
-          ${t.notes ? `<div class="notes" style="padding: 5px 8px; font-size: 9pt; background: #fffbe6; border-top: 1px solid #ddd; font-style: italic;"><b>Comment:</b> ${esc(t.notes)}</div>` : ''}
+          ${t.notes ? `<div class="notes" style="padding: 5px 8px; font-size: 9pt; background: #fffbe6; border-top: 1px solid #ddd; font-style: italic;"><b>Comment:</b> ${sci(t.notes)}</div>` : ''}
         </div>`;
     }
 
     const rows = (t.results || []).map(r => `
       <tr>
-        <td>${esc(r.parameter)}</td>
+        <td>${sci(r.parameter)}</td>
         <td style="font-weight:bold; color:${flagColour(r.flag)}">
-          ${esc(r.result)}${r.flag ? ` (${esc(r.flag)})` : ''}
+          ${sci(r.result)}${r.flag ? ` (${sci(r.flag)})` : ''}
         </td>
-        <td>${esc(r.unit) || '—'}</td>
-        <td>${esc(r.range) || '—'}</td>
+        <td>${sci(r.unit) || '—'}</td>
+        <td>${sci(r.range) || '—'}</td>
       </tr>`).join('');
 
     return `
@@ -483,7 +487,7 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
           <thead><tr><th>Parameter</th><th>Result</th><th>Unit</th><th>Reference Range</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>` : ''}
-        ${t.notes ? `<div class="notes"><b>Comment:</b> ${esc(t.notes)}</div>` : ''}
+        ${t.notes ? `<div class="notes"><b>Comment:</b> ${sci(t.notes)}</div>` : ''}
       </div>`;
   }).join('');
 

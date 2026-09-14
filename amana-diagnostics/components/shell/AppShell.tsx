@@ -106,6 +106,18 @@ export function AppShell({
 
   const [collapsed, setCollapsed] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+
+  // Ending the session and leaving are one action: a bench must not be
+  // left showing a workspace nobody is signed in to.
+  const handleSignOut = useCallback(async () => {
+    setSigningOut(true);
+    try {
+      await signOut?.();
+    } finally {
+      window.location.assign('/login');
+    }
+  }, [signOut]);
 
   useEffect(() => {
     try {
@@ -182,12 +194,12 @@ export function AppShell({
         label: 'Sign out',
         group: 'Account',
         icon: <RiLogoutCircleLine size={16} />,
-        run: () => void signOut?.(),
+        run: () => void handleSignOut(),
       },
     ];
 
     return [...nav, ...appearance];
-  }, [entries, slug, setTheme, signOut]);
+  }, [entries, slug, setTheme, handleSignOut]);
 
   const grouped = useMemo(() => {
     const map = new Map<NavEntry['group'], NavEntry[]>();
@@ -356,6 +368,16 @@ export function AppShell({
               icon={<RiUserLine size={16} />}
               onClick={() => router.push(`/${slug}/settings`)}
               aria-label={`Account: ${profile?.full_name ?? 'my profile'}`}
+            />
+
+            <Button
+              intent="ghost"
+              size="sm"
+              icon={<RiLogoutCircleLine size={16} />}
+              loading={signingOut}
+              onClick={() => void handleSignOut()}
+              aria-label="Sign out"
+              title="Sign out"
             />
           </div>
         </header>

@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/components/AuthProvider';
 import { createClient } from '@/lib/supabase';
 import { AppearanceSettings } from '@/components/features/settings/AppearanceSettings';
-import { RiUploadCloud2Line, RiSave3Line } from '@remixicon/react';
+import { PasswordSettings } from '@/components/features/settings/PasswordSettings';
+import { RiUploadCloud2Line, RiSave3Line, RiLogoutCircleLine } from '@remixicon/react';
 import { Alert, Badge, Button, Field, Input, Select } from '@/components/ui';
 
 import styles from './profile.module.css';
@@ -12,7 +13,23 @@ import styles from './profile.module.css';
 const cx = (...names: Array<string | false | undefined>) => names.filter(Boolean).join(' ');
 
 function UserSettings() {
-  const { profile, user, organization } = useAuth();
+  const { profile, user, organization, signOut } = useAuth();
+  const [signingOut, setSigningOut] = useState(false);
+
+  /**
+   * Sign out, then a full navigation to the sign-in page. The provider
+   * clears the cached session and asks Supabase to end its own; the
+   * navigation gives the app a clean boot rather than trusting every
+   * subscribed component to notice the state change.
+   */
+  const handleSignOut = async () => {
+    setSigningOut(true);
+    try {
+      await signOut();
+    } finally {
+      window.location.assign('/login');
+    }
+  };
   const supabase = createClient();
 
   const [formData, setFormData] = useState({
@@ -146,6 +163,17 @@ function UserSettings() {
                 </span>
               )}
             </div>
+            <div className={styles.headerActions}>
+              <Button
+                type="button"
+                intent="secondary"
+                icon={<RiLogoutCircleLine size={16} />}
+                loading={signingOut}
+                onClick={handleSignOut}
+              >
+                Sign out
+              </Button>
+            </div>
           </div>
 
           <div className={styles.body}>
@@ -231,6 +259,8 @@ function UserSettings() {
             </form>
           </div>
         </div>
+
+        <PasswordSettings />
 
         <AppearanceSettings />
       </div>

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb, queueSync } from '@/lib/localDb';
+import { hubNowIso } from '@/lib/sync/clock';
 import { sendEmail } from '@/lib/brevo';
 import { FALLBACK_ORG_NAME } from '@/lib/branding';
 
@@ -45,7 +46,7 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { action, id, test, updates, organizationId } = body;
     const db = getDb();
-    const nowStr = new Date().toISOString();
+    const nowStr = hubNowIso();
 
     if (!organizationId) {
       return NextResponse.json({ error: 'Missing organizationId' }, { status: 400 });

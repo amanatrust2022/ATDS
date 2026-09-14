@@ -1,11 +1,15 @@
 import { onChange } from '@/lib/changeBus';
+import { getSyncState, onSyncState } from '@/lib/sync/engine';
 
 /**
  * The hub's change stream.
  *
  * One long-lived connection per open screen. The hub writes a `change` event
  * whenever anything in it changes (see lib/changeBus.ts), and the screen
- * re-reads its queue. Nothing about the change travels — no row, no table —
+ * re-reads its queue. It also writes a `sync` event whenever the sync
+ * engine's state changes — online, offline, how many changes are waiting —
+ * so the badge in every tab shows the hub's one answer the moment it
+ * changes, rather than each tab's own guess. Nothing about the change travels — no row, no table —
  * because the screens do not want it: every one of them answers a ring the
  * same way, by asking the hub for its queue again. A doorbell, not a letter,
  * which is also what the cloud channel is.
@@ -51,12 +55,14 @@ export async function GET(request: Request) {
       };
 
       const unsubscribe = onChange((at) => send('change', at));
+      const unsubscribeSync = onSyncState((state) => send('sync', JSON.stringify(state)));
       const heartbeat = setInterval(() => send('ping', Date.now()), HEARTBEAT_MS);
 
       stop = () => {
         if (closed) return;
         closed = true;
         unsubscribe();
+        unsubscribeSync();
         clearInterval(heartbeat);
         try { controller.close(); } catch { /* already closed by the other end */ }
       };
@@ -68,6 +74,7 @@ export async function GET(request: Request) {
       // Tells the browser the stream is up before anything has changed, so a
       // screen that was polling can stop.
       send('hello', Date.now());
+      send('sync', JSON.stringify(getSyncState()));
     },
     cancel() {
       stop();

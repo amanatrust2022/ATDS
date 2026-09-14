@@ -67,10 +67,10 @@ Open http://localhost:3000 and select your workstation.
 
 The application operates in a hybrid environment with a robust database and synchronization layer, protected by Row-Level Security (RLS) and secure authentication management.
 
-### 1. Hybrid Storage & Offline Sync
+### 1. Hybrid Storage & Two-Way Sync
 - **Cloud Mode**: Connected to Supabase (PostgreSQL) for all remote storage, multi-tenancy, and real-time operations.
-- **Local Mode / Hub Mode**: Utilizes a local SQLite database (`redian_clinic.db` via `node:sqlite`, falling back to a pre-rename `amana_clinic.db` where one exists) on-premise to ensure zero-downtime offline operations.
-- **Synchronization**: Local changes are recorded in a `sync_outbox` table and periodically synced via `/api/sync` to the Supabase database.
+- **Local Mode / Hub Mode**: Utilizes a local SQLite database (`redian_clinic.db` via `node:sqlite`, falling back to a pre-rename `amana_clinic.db` where one exists) on-premise so the clinic keeps working with or without internet. *Mode* (which back end a screen talks to) and *connectivity* (whether the hub can reach the cloud) are two different facts — see [docs/SYNC.md](docs/SYNC.md).
+- **Synchronization**: A sync engine in the hub process (`lib/sync/engine.ts`) pushes the `sync_outbox` and pulls every registered table (`lib/sync/tables.ts`) both on a timer and the moment anything changes on either side, with newer-wins conflict resolution in both directions and cloud deletes propagated by tombstone. `supabase_sync_integrity.sql` installs what the cloud has to guarantee for that.
 
 ### 2. Authentication & Authorization
 - **Supabase Auth**: Implements role-based access control (RBAC) with specific roles: `admin`, `receptionist`, `lab_tech`, `radiologist`.

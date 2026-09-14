@@ -1,5 +1,6 @@
 import path from 'path';
-import { notifyChange } from './changeBus';
+import { notifyChange, notifyOutbox } from './changeBus';
+import { isHubServer } from './runtimeMode';
 
 let dbInstance: any = null;
 
@@ -41,7 +42,7 @@ function addColumn(db: any, table: string, column: string, definition: string): 
 }
 
 /** Bumped when the expected schema changes, so a machine can say where it is. */
-export const EXPECTED_SCHEMA_VERSION = 1;
+export const EXPECTED_SCHEMA_VERSION = 2;
 
 /** Records which schema this database has been brought up to. */
 function recordSchemaVersion(db: any): void {
@@ -88,13 +89,9 @@ export function getDb(): any {
   }
 
   if (!dbInstance) {
-    // If not local mode or local hub mode, not in development, and we are on Vercel,
-    // throw a warning/error to prevent execution.
-    if (
-      process.env.NEXT_PUBLIC_LOCAL_SERVER_MODE !== 'true' &&
-      process.env.IS_LOCAL_HUB !== 'true' &&
-      process.env.NODE_ENV !== 'development'
-    ) {
+    // Only a hub has a database. The cloud deployment must never open one —
+    // see isHubServer for what counts as a hub.
+    if (!isHubServer()) {
       throw new Error('DatabaseSync is disabled in cloud production mode.');
     }
 
@@ -132,9 +129,17 @@ export function getDb(): any {
   return dbInstance;
 }
 
-function initDb(db: any) {
+export function initDb(db: any) {
   // Enable foreign keys
   db.exec('PRAGMA foreign_keys = ON;');
+  // Wait for a lock rather than fail on it. The engine's pull and a route
+  // handler never overlap inside one process — the database calls are
+  // synchronous — but a second process on the same file (a dev server
+  // started twice, the desktop app beside `next dev`) used to make every
+  // write in the other say "database is locked".
+  db.exec('PRAGMA busy_timeout = 5000;');
+  // Readers do not block the writer, and the writer does not block readers.
+  try { db.exec('PRAGMA journal_mode = WAL;'); } catch { /* read-only media; fine without */ }
 
   // 1. Sync outbox table
   db.exec(`
@@ -157,6 +162,21 @@ function initDb(db: any) {
     CREATE TABLE IF NOT EXISTS sync_metadata (
       key TEXT PRIMARY KEY,
       value TEXT
+    );
+  `);
+
+  // 2b. Rows pulled from the cloud that the hub could not write. Recorded by
+  // identity so they can be fetched again and retried, and set aside after
+  // MAX_PULL_ATTEMPTS — the pull's counterpart of the outbox's dead letters.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS sync_pull_failures (
+      table_name TEXT NOT NULL,
+      record_key TEXT NOT NULL,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      last_error TEXT,
+      last_attempt_at INTEGER,
+      dead INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (table_name, record_key)
     );
   `);
 
@@ -499,13 +519,18 @@ function initDb(db: any) {
  * delivered after the current turn of the event loop, so it lands after the
  * caller's transaction has committed.
  */
-export function queueSync(db: any, tableName: string, action: 'INSERT' | 'UPDATE' | 'DELETE', recordId: string, payload: any) {
+export function queueSync(db: any, tableName: string, action: 'INSERT' | 'UPDATE' | 'DELETE', recordId: string | number, payload: any) {
   const insertStmt = db.prepare(`
     INSERT INTO sync_outbox (table_name, action, record_id, payload, timestamp)
     VALUES (?, ?, ?, ?, ?)
   `);
-  insertStmt.run(tableName, action, recordId, JSON.stringify(payload), Date.now());
+  // Always a string. A numeric id bound into the TEXT column arrives as a
+  // REAL and is stored as "10000039.0", which the cloud then refuses as
+  // "invalid input syntax for type bigint" — for ever, five attempts at a
+  // time. Four rows on a real hub were stuck exactly this way.
+  insertStmt.run(tableName, action, String(recordId), JSON.stringify(payload), Date.now());
   notifyChange();
+  notifyOutbox();
 }
 
 /**
