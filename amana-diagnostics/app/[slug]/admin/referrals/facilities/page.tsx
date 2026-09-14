@@ -1,13 +1,16 @@
-import type { Metadata } from 'next';
-
-import ReferringFacilitiesScreen from './ReferringFacilitiesScreen';
-
-export const metadata: Metadata = { title: 'Facilities' };
+import { redirect } from 'next/navigation';
 
 /**
- * A server component, so this route's HTML exists before its JavaScript does.
- * The screen itself is the client component beside this file.
+ * The facilities list has moved to the unified Referrers screen.
+ *
+ * Any bookmark or external link to /admin/referrals/facilities still works —
+ * Next.js will serve this redirect before the browser renders anything.
  */
-export default function Page() {
-  return <ReferringFacilitiesScreen />;
+export default async function Page({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}) {
+  const { slug } = await params;
+  redirect(`/${slug}/admin/referrals`);
 }

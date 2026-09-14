@@ -22,11 +22,13 @@ export function CommissionsByReferrer({
   expanded,
   onToggle,
   onPrint,
+  onPayOut,
 }: {
   groups: ReferrerGroup[];
   expanded: Record<string, boolean>;
   onToggle: (name: string) => void;
   onPrint: (name: string) => void;
+  onPayOut: (name: string) => void;
 }) {
   if (groups.length === 0) {
     return (
@@ -103,6 +105,17 @@ export function CommissionsByReferrer({
                 >
                   Statement
                 </Button>
+
+                {ref.outstanding > 0 && (
+                  <Button
+                    size="sm"
+                    intent="primary"
+                    onClick={() => onPayOut(ref.name)}
+                  >
+                    Pay out {ref.patients.filter((p) => p.commissionStatus === 'pending').length} visit
+                    {ref.patients.filter((p) => p.commissionStatus === 'pending').length === 1 ? '' : 's'}
+                  </Button>
+                )}
               </div>
 
               <div id={bodyId} hidden={!isOpen}>

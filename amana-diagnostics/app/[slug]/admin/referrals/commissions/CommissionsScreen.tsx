@@ -1,25 +1,49 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { RiDownloadLine, RiPrinterLine } from '@remixicon/react';
 
 import { useNotices } from '@/components/Notices';
 import RequireRole from '@/components/RequireRole';
 import { useAuth } from '@/components/AuthProvider';
 import { useShellSlot } from '@/components/shell';
-import { Alert, Button, Card, CardBody, Field, Input, SegmentedControl, TabPanel, Tabs } from '@/components/ui';
+import {
+  Alert,
+  Button,
+  Card,
+  CardBody,
+  Field,
+  Input,
+  SegmentedControl,
+  Stat,
+  TabPanel,
+  Tabs,
+} from '@/components/ui';
 import { orgName } from '@/lib/branding';
 import { printHtml } from '@/lib/templates';
-import { CommissionEntry, fetchCommissionReport, markCommissionPaid } from '@/lib/store';
 import {
+  CommissionEntry,
+  fetchCommissionReport,
+  markCommissionPaid,
+  markCommissionsUnpaid,
+  recordAudit,
+} from '@/lib/store';
+import {
+  AGE_BUCKET_LABEL,
+  AGE_BUCKETS,
+  ageingBuckets,
   buildCommissionCsv,
   buildCommissionStatementHtml,
   filterEntries,
   groupByReferrer,
+  settleMany,
   totalsFor,
   type StatusFilter,
   type TypeFilter,
 } from '@/lib/commissionsView';
+import { SettleReferrerDialog } from '@/components/features/commissions/SettleReferrerDialog';
+import type { SettleResult } from '@/lib/commissionsView';
 
 import { CommissionsByReferrer } from './CommissionsByReferrer';
 import { CommissionsDetails } from './CommissionsDetails';
@@ -27,10 +51,12 @@ import { SettleCommissionDialog } from './SettleCommissionDialog';
 import styles from './commissions.module.css';
 
 const money = (n: number) => `₦${n.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const moneyShort = (n: number) => `₦${n.toLocaleString('en-NG')}`;
 
 function CommissionsPage() {
-  const { notify, ask } = useNotices();
-  const { organization } = useAuth();
+  const { notify, ask, askFor } = useNotices();
+  const { organization, profile } = useAuth();
+  const searchParams = useSearchParams();
 
   const [entries, setEntries] = useState<CommissionEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -38,14 +64,24 @@ function CommissionsPage() {
   const [dateTo, setDateTo] = useState('');
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
-  const [search, setSearch] = useState('');
-  const [tab, setTab] = useState<'details' | 'summary'>('details');
 
+  // ?referrer=id pre-filters the screen when linked from the Referrers table
+  const [search, setSearch] = useState(() => {
+    // Will be set after first load once we know the referrer name
+    return '';
+  });
+  const [referrerIdFilter] = useState(() => searchParams?.get('referrer') ?? '');
+
+  const [tab, setTab] = useState<'details' | 'summary'>('details');
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [payingEntry, setPayingEntry] = useState<CommissionEntry | null>(null);
   const [payNotes, setPayNotes] = useState('');
   const [processing, setProcessing] = useState(false);
+  const [partialAlert, setPartialAlert] = useState<{ failed: SettleResult['failed']; paidCount: number } | null>(null);
+
+  // Batch-referrer dialog
+  const [settlingReferrer, setSettlingReferrer] = useState<string | null>(null);
 
   useShellSlot(
     { subtitle: 'What is owed to the doctors and facilities who send you patients.' },
@@ -57,10 +93,6 @@ function CommissionsPage() {
     setLoading(true);
     const data = await fetchCommissionReport(
       organization.id,
-      // Both ends read as local time. A bare "YYYY-MM-DD" is parsed as UTC
-      // midnight while "YYYY-MM-DDTHH:MM:SS" is parsed as local, so the old
-      // pair silently dropped the first hour of the opening day — in Nigeria,
-      // every visit registered between midnight and 1am.
       dateFrom ? new Date(dateFrom + 'T00:00:00').toISOString() : undefined,
       dateTo ? new Date(dateTo + 'T23:59:59.999').toISOString() : undefined,
     );
@@ -72,22 +104,25 @@ function CommissionsPage() {
     void load();
   }, [load]);
 
+  // If a referrer= param was passed, find their name from the loaded entries
+  // and pre-populate the search so the table is filtered to them.
+  useEffect(() => {
+    if (!referrerIdFilter || entries.length === 0) return;
+    const match = entries.find((e) => e.referrerId === referrerIdFilter);
+    if (match && !search) setSearch(match.referrerName);
+  }, [referrerIdFilter, entries]);
+
   const filtered = useMemo(
     () => filterEntries(entries, { type: typeFilter, status: statusFilter, search }),
     [entries, typeFilter, statusFilter, search],
   );
   const totals = useMemo(() => totalsFor(filtered), [filtered]);
   const groups = useMemo(() => groupByReferrer(filtered), [filtered]);
+  const ageing = useMemo(() => ageingBuckets(entries, new Date()), [entries]);
 
-  /**
-   * Anything selected is dropped the moment the visible set changes.
-   *
-   * It used to survive: select five rows, narrow the filter, press "Mark
-   * selected as paid", and commissions that were no longer on screen were
-   * settled. Settling is not reversible from this screen.
-   */
   useEffect(() => {
     setSelectedIds([]);
+    setPartialAlert(null);
   }, [typeFilter, statusFilter, search, dateFrom, dateTo]);
 
   const toggleSelect = (id: string) =>
@@ -98,16 +133,76 @@ function CommissionsPage() {
     setSelectedIds((prev) => (prev.length === pending.length ? [] : pending));
   };
 
+  const actor = {
+    organization_id: organization?.id ?? '',
+    actor_id: profile?.id ?? null,
+    actor_name: profile?.full_name ?? null,
+  };
+
+  /** Write one commission.settled row per paid ID. */
+  const writeSettledAudit = async (ids: (string | number)[], reference: string) => {
+    const total = entries
+      .filter((e) => ids.includes(e.patientId))
+      .reduce((s, e) => s + e.commissionAmount, 0);
+    await recordAudit({
+      ...actor,
+      action: 'commission.settled',
+      entity_type: 'patient',
+      entity_id: String(ids[0] ?? ''),
+      entity_label: ids.length === 1
+        ? entries.find((e) => e.patientId === ids[0])?.patientName ?? String(ids[0])
+        : `${ids.length} visits`,
+      after: { reference: reference || null, count: ids.length, amount: total },
+    }).catch((err) => console.warn('commission.settled audit failed:', err));
+  };
+
+  const writeReversedAudit = async (id: string | number, reason: string, reversesId?: string) => {
+    await recordAudit({
+      ...actor,
+      action: 'commission.reversed',
+      entity_type: 'patient',
+      entity_id: String(id),
+      entity_label: entries.find((e) => e.patientId === id)?.patientName ?? String(id),
+      reason,
+      reverses_id: reversesId ?? null,
+    }).catch((err) => console.warn('commission.reversed audit failed:', err));
+  };
+
+  /* ── Bulk settle (checkbox selection) ─── */
+
   const settleSelected = async () => {
     if (selectedIds.length === 0) return;
     const ok = await ask(
-      `Mark ${selectedIds.length} commission${selectedIds.length === 1 ? '' : 's'} as paid? This cannot be undone here.`,
+      `Mark ${selectedIds.length} commission${selectedIds.length === 1 ? '' : 's'} as paid?`,
     );
     if (!ok) return;
 
     setProcessing(true);
+    setPartialAlert(null);
     try {
-      await Promise.all(selectedIds.map((id) => markCommissionPaid(id, 'Bulk settlement')));
+      const result = await settleMany(selectedIds, '', markCommissionPaid);
+      if (result.paid.length > 0) {
+        await writeSettledAudit(result.paid, '');
+        notify(
+          `${result.paid.length} commission${result.paid.length === 1 ? '' : 's'} marked as paid.`,
+          {
+            tone: 'success',
+            action: {
+              label: 'Undo',
+              run: async () => {
+                await markCommissionsUnpaid(result.paid);
+                for (const id of result.paid) {
+                  await writeReversedAudit(id, 'Undone from bulk settle');
+                }
+                await load();
+              },
+            },
+          },
+        );
+      }
+      if (result.failed.length > 0) {
+        setPartialAlert({ failed: result.failed, paidCount: result.paid.length });
+      }
       setSelectedIds([]);
       await load();
     } catch (e: any) {
@@ -117,11 +212,31 @@ function CommissionsPage() {
     }
   };
 
+  /* ── Single-row settle ─── */
+
   const settleOne = async () => {
     if (!payingEntry) return;
     setProcessing(true);
     try {
       await markCommissionPaid(payingEntry.patientId, payNotes);
+      const auditRow = await writeSettledAuditRow(payingEntry, payNotes);
+      const paidId = payingEntry.patientId;
+      const paidName = payingEntry.patientName;
+
+      notify(`Commission for ${paidName} marked as paid.`, {
+        tone: 'success',
+        action: {
+          label: 'Undo',
+          run: async () => {
+            const reason = await askFor('Why is this commission being reversed?');
+            if (reason === null) return; // user cancelled
+            await markCommissionsUnpaid([paidId]);
+            await writeReversedAudit(paidId, reason || 'Reversed', auditRow?.id);
+            await load();
+          },
+        },
+      });
+
       setPayingEntry(null);
       setPayNotes('');
       await load();
@@ -130,6 +245,57 @@ function CommissionsPage() {
     } finally {
       setProcessing(false);
     }
+  };
+
+  /** Write and return one commission.settled audit row. */
+  const writeSettledAuditRow = async (entry: CommissionEntry, reference: string) => {
+    return recordAudit({
+      ...actor,
+      action: 'commission.settled',
+      entity_type: 'patient',
+      entity_id: String(entry.patientId),
+      entity_label: entry.patientName,
+      after: { reference: reference || null, count: 1, amount: entry.commissionAmount },
+    }).catch((err) => {
+      console.warn('commission.settled audit failed:', err);
+      return null;
+    });
+  };
+
+  /* ── Referrer batch payout ─── */
+
+  const handleReferrerSettle = async (reference: string, result: SettleResult) => {
+    if (result.paid.length > 0) {
+      await writeSettledAudit(result.paid, reference);
+      const total = entries
+        .filter((e) => result.paid.includes(e.patientId))
+        .reduce((s, e) => s + e.commissionAmount, 0);
+
+      notify(
+        `${result.paid.length} visit${result.paid.length === 1 ? '' : 's'} settled — ${money(total)}.`,
+        {
+          tone: 'success',
+          ...(result.failed.length === 0
+            ? {
+                action: {
+                  label: 'Undo',
+                  run: async () => {
+                    await markCommissionsUnpaid(result.paid);
+                    for (const id of result.paid) {
+                      await writeReversedAudit(id, 'Undone from referrer payout');
+                    }
+                    await load();
+                  },
+                },
+              }
+            : {}),
+        },
+      );
+    }
+    if (result.failed.length === 0) {
+      setSettlingReferrer(null);
+    }
+    await load();
   };
 
   const printStatement = (referrerName?: string) =>
@@ -148,18 +314,26 @@ function CommissionsPage() {
     a.href = url;
     a.download = `commissions-${dateFrom || 'all'}-to-${dateTo || 'now'}.csv`;
     a.click();
-    // The old version never revoked this, so every export leaked its blob for
-    // the lifetime of the tab.
     URL.revokeObjectURL(url);
   };
 
+  const settlingReferrerEntries = useMemo(() => {
+    if (!settlingReferrer) return [];
+    return filtered.filter((e) => e.referrerName === settlingReferrer && e.commissionStatus === 'pending');
+  }, [filtered, settlingReferrer]);
+
   return (
     <div className={styles['screen']}>
+      {/* Ageing buckets — how long commissions have been owed */}
       <div className={styles['summary']}>
-        <Figure label="Referrals" value={String(totals.entries)} />
-        <Figure label="Referrers" value={String(totals.referrers)} />
-        <Figure label="Billed" value={money(totals.billed)} />
-        <Figure label="Commission owed" value={money(totals.outstanding)} tone="owed" />
+        {AGE_BUCKETS.map((bucket) => (
+          <Stat
+            key={bucket}
+            label={AGE_BUCKET_LABEL[bucket]}
+            value={moneyShort(ageing[bucket].amount)}
+            note={`${ageing[bucket].count} visit${ageing[bucket].count === 1 ? '' : 's'}`}
+          />
+        ))}
       </div>
 
       <Card>
@@ -217,6 +391,14 @@ function CommissionsPage() {
         </CardBody>
       </Card>
 
+      {/* Summary totals (overall, not ageing) */}
+      <div className={styles['summary']}>
+        <Figure label="Referrals" value={String(totals.entries)} />
+        <Figure label="Referrers" value={String(totals.referrers)} />
+        <Figure label="Billed" value={money(totals.billed)} />
+        <Figure label="Commission owed" value={money(totals.outstanding)} tone="owed" />
+      </div>
+
       {selectedIds.length > 0 && (
         <Alert
           tone="info"
@@ -233,7 +415,28 @@ function CommissionsPage() {
             </>
           }
         >
-          Settling cannot be undone from this screen.
+          You can undo this after settling.
+        </Alert>
+      )}
+
+      {partialAlert && (
+        <Alert
+          tone="warning"
+          title={`${partialAlert.failed.length} commission${partialAlert.failed.length === 1 ? '' : 's'} could not be settled`}
+          actions={
+            <Button size="sm" onClick={() => setPartialAlert(null)}>
+              Dismiss
+            </Button>
+          }
+        >
+          {partialAlert.paidCount > 0 && (
+            <p>{partialAlert.paidCount} were settled successfully. The following failed:</p>
+          )}
+          <ul>
+            {partialAlert.failed.map((f) => (
+              <li key={String(f.id)}>{f.error}</li>
+            ))}
+          </ul>
         </Alert>
       )}
 
@@ -267,6 +470,7 @@ function CommissionsPage() {
             expanded={expanded}
             onToggle={(name) => setExpanded((p) => ({ ...p, [name]: !p[name] }))}
             onPrint={printStatement}
+            onPayOut={(name) => setSettlingReferrer(name)}
           />
         </TabPanel>
       </Tabs>
@@ -282,6 +486,16 @@ function CommissionsPage() {
           setPayNotes('');
         }}
       />
+
+      {settlingReferrer && (
+        <SettleReferrerDialog
+          referrerName={settlingReferrer}
+          pendingEntries={settlingReferrerEntries}
+          open={Boolean(settlingReferrer)}
+          onClose={() => setSettlingReferrer(null)}
+          onSettle={handleReferrerSettle}
+        />
+      )}
     </div>
   );
 }

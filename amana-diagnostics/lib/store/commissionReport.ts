@@ -40,13 +40,16 @@ export const buildCommissionReport = (
     // free-text name captured at registration.
     let referrerName = p.referredBy || '—';
     let referrerType: 'doctor' | 'facility' = 'doctor';
+    let referrerId: string | undefined;
 
     if (p.referringDoctorId && doctorMap.has(p.referringDoctorId)) {
       referrerName = doctorMap.get(p.referringDoctorId)!.name;
       referrerType = 'doctor';
+      referrerId = p.referringDoctorId;
     } else if (p.referringFacilityId && facilityMap.has(p.referringFacilityId)) {
       referrerName = facilityMap.get(p.referringFacilityId)!.name;
       referrerType = 'facility';
+      referrerId = p.referringFacilityId;
     } else if (p.referringFacility) {
       referrerName = p.referringFacility;
       referrerType = 'facility';
@@ -59,6 +62,7 @@ export const buildCommissionReport = (
       registeredAt: p.registeredAt,
       referrerName,
       referrerType,
+      referrerId,
       commissionType: 'varies' as const,
       commissionValue: 0,
       tests,

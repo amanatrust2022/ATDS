@@ -165,6 +165,30 @@ export function groupByReferrer(entries: CommissionEntry[]): ReferrerGroup[] {
   return [...groups.values()];
 }
 
+export interface SettleResult {
+  paid: (string | number)[];
+  failed: { id: string | number; error: string }[];
+}
+
+/**
+ * Settles a batch of commissions independently, so one slip with a stale
+ * record does not stop the other nine in the batch from being paid.
+ */
+export async function settleMany(
+  ids: (string | number)[],
+  reference: string,
+  markPaid: (id: string | number, notes?: string) => Promise<void>,
+): Promise<SettleResult> {
+  const results = await Promise.allSettled(ids.map((id) => markPaid(id, reference)));
+  const paid: (string | number)[] = [];
+  const failed: { id: string | number; error: string }[] = [];
+  results.forEach((r, i) => {
+    if (r.status === 'fulfilled') paid.push(ids[i]!);
+    else failed.push({ id: ids[i]!, error: r.reason?.message || 'Could not settle this commission.' });
+  });
+  return { paid, failed };
+}
+
 export function rateLabel(e: CommissionEntry): string {
   return e.commissionType === 'percentage' ? `${e.commissionValue}%` : `₦${e.commissionValue}`;
 }

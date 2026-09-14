@@ -1,13 +1,17 @@
 import type { Metadata } from 'next';
 
-import ReferralsOverviewScreen from './ReferralsOverviewScreen';
+import ReferrersScreen from './ReferrersScreen';
 
-export const metadata: Metadata = { title: 'Referrals' };
+export const metadata: Metadata = { title: 'Referrers' };
 
 /**
- * A server component, so this route's HTML exists before its JavaScript does.
- * The screen itself is the client component beside this file.
+ * Doctors and facilities that refer patients, as one screen.
+ *
+ * Was a four-tile overview grid that linked to four separate screens: doctors,
+ * facilities, pricing (now merged into Catalogue) and commissions. Pricing
+ * moved to /admin/tests. Doctors and facilities are now one table here.
+ * Commissions are their own screen at /admin/referrals/commissions.
  */
 export default function Page() {
-  return <ReferralsOverviewScreen />;
+  return <ReferrersScreen />;
 }

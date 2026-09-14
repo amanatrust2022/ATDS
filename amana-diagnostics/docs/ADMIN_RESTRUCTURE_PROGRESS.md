@@ -6,9 +6,10 @@ Plan: `C:/Users/SURFACE/.claude/plans/come-with-the-implemetntation-melodic-shel
 
 - Phase 0 was committed as `2bd81dd`: Stat/Sparkline, notice actions, audit schema and repositories, initial API fixes.
 - Phase 1 was committed as `c3f5fea`: Today route, aggregation, screen and tests.
-- Claude stopped during Phase 2 with navigation, Reports extraction and People undo edits in the working tree. Those edits have been preserved.
-- The continuation adds Reports tests and error retry, restores staff-row details, fixes the captured previous role in Undo, and implements Settings tabs, dirty-state warning, persistent designer panels, sticky Save and audit writes.
-- Phase 3 (Catalogue and Price list), Phase 4 (Referrers and Payouts), and Phase 5 (Audit screen and complete mutation coverage) remain to implement. The navigation already names their intended destinations; legacy referrer routes are still present.
+- Phase 2 was committed as `845ae16`: nine-entry Administration rail, Reports screen split out of Staff, role-change undo, Settings tabs with a dirty guard.
+- Phase 3 was committed as `071a3bb`: Investigations and Price list merged into one screen (`app/[slug]/admin/tests/TestCatalogueScreen.tsx`) sharing one `prices` array owned by the screen; `PriceList` (moved to `components/features/catalogue/`) is prop-driven and no longer fetches its own data; `TestManager` gained optional `prices`/`onPricesChanged`/`initialTab` props and now writes `catalogue.test_added/updated/retired` and `price.changed` audit rows; `/admin/referrals/pricing` redirects to `/admin/tests?tab=prices`.
+- Phase 4 (Referrers merge + Payouts) — committed in the next commit. `ReferralsOverviewScreen.tsx` is retired; `/admin/referrals` now renders the merged `ReferrersScreen`. `/admin/referrals/doctors` and `/admin/referrals/facilities` redirect to `/admin/referrals`. `CommissionsScreen` gained four ageing stat cards, `?referrer=` URL pre-filter, `settleMany` bulk settle with Undo, `SettleReferrerDialog` for batch referrer payouts, `commission.settled`/`commission.reversed` audit rows, and partial-failure alerts. The old irreversible "cannot be undone" copy is gone.
+- Phase 5 (Audit screen) — committed in the commit after Phase 4. `app/[slug]/admin/audit/AuditScreen.tsx` reads `fetchAuditLog`, filters by action and actor, expands a row to show the before/after diff, and auto-refreshes on `visibilitychange`.
 
 ## Deployment prerequisite observed locally
 

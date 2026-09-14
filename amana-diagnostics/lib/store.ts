@@ -625,6 +625,9 @@ export interface CommissionEntry {
   registeredAt: string;
   referrerName: string;
   referrerType: 'doctor' | 'facility';
+  /** The doctor's or facility's id, when the visit named a referrer still on
+   * file. Free text ("Dr Bello, City Hospital") has none. */
+  referrerId?: string;
   commissionType: 'percentage' | 'flat' | 'none' | 'varies';
   commissionValue: number;
   tests: { testId: string; testName: string; price: number; commissionType?: string; commissionValue?: number; commissionAmount?: number }[];

@@ -6,6 +6,7 @@ import {
   ageingBuckets,
   bucketOf,
   groupByReferrer,
+  settleMany,
   csvCell,
   buildCommissionCsv,
   buildCommissionStatementHtml,
@@ -194,5 +195,33 @@ describe('ageing', () => {
       '61-90': { count: 0, amount: 0 },
       '90+': { count: 1, amount: 1000 },
     });
+  });
+});
+
+describe('settling a batch', () => {
+  it('settles every id independently, so one failure does not stop the rest', async () => {
+    const markPaid = async (id: string | number) => {
+      if (id === 'p2') throw new Error('already settled');
+    };
+    const result = await settleMany(['p1', 'p2', 'p3'], 'Bank transfer 12 Sep', markPaid);
+
+    expect(result.paid).toEqual(['p1', 'p3']);
+    expect(result.failed).toEqual([{ id: 'p2', error: 'already settled' }]);
+  });
+
+  it('passes the reference through to every settlement', async () => {
+    const seen: (string | undefined)[] = [];
+    const markPaid = async (_id: string | number, notes?: string) => {
+      seen.push(notes);
+    };
+    await settleMany(['p1', 'p2'], 'Ref-001', markPaid);
+
+    expect(seen).toEqual(['Ref-001', 'Ref-001']);
+  });
+
+  it('reports every id settled when nothing fails', async () => {
+    const result = await settleMany(['p1', 'p2'], 'ref', async () => {});
+    expect(result.paid).toEqual(['p1', 'p2']);
+    expect(result.failed).toEqual([]);
   });
 });
