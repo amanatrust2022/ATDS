@@ -550,6 +550,9 @@ export default function TestManager({
     ? RAD_CATEGORIES
     : LAB_CATEGORIES.filter((category) => category !== 'Special Health Check Plans');
   const eligibleMembers = catalogue.filter((test) => !isInvestigationPackage(test));
+  const selectedMembers = formInvestigationIds
+    .map((id) => eligibleMembers.find((test) => test.id === id))
+    .filter((test): test is Test => Boolean(test));
   const visibleMembers = eligibleMembers.filter((test) => {
     const q = memberSearch.trim().toLowerCase();
     return !q || [test.name, test.department, test.category, test.specimen].join(' ').toLowerCase().includes(q);
@@ -861,6 +864,33 @@ export default function TestManager({
                     <Alert tone="info">
                       A plan contains existing investigations only. Each investigation keeps its own parameters, reporting format, specimen and department routing.
                     </Alert>
+                    <section className={styles['packagePreview']} aria-label="Selected investigations preview">
+                      <div className={styles['packagePreviewHead']}>
+                        <div>
+                          <strong>{formName.trim() || 'Plan preview'}</strong>
+                          <small>{selectedMembers.length} investigation{selectedMembers.length === 1 ? '' : 's'} · {Array.from(new Set(selectedMembers.map((test) => test.specimen).filter(Boolean))).join(' / ') || 'No specimens yet'}</small>
+                        </div>
+                        <Badge tone="accent">Package</Badge>
+                      </div>
+                      {selectedMembers.length ? (
+                        <ul className={styles['packagePreviewTests']}>
+                          {selectedMembers.map((test) => (
+                            <li key={test.id}>
+                              <span><strong>{test.name}</strong><small>{test.department === 'lab' ? 'Laboratory' : 'Radiology'} · {test.specimen}</small></span>
+                              <Button
+                                size="sm"
+                                intent="ghost"
+                                icon={<RiCloseLine size={14} />}
+                                aria-label={`Remove ${test.name} from package`}
+                                onClick={() => setFormInvestigationIds((ids) => ids.filter((id) => id !== test.id))}
+                              />
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className={styles['packagePreviewEmpty']}>Selected investigations will appear here exactly as the package will be presented.</p>
+                      )}
+                    </section>
                     <Field label="Find investigations to include" hint={`${formInvestigationIds.length} investigation${formInvestigationIds.length === 1 ? '' : 's'} included`}>
                       <Input
                         type="search"

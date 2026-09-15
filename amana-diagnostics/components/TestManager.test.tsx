@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 /**
@@ -137,6 +137,7 @@ describe('The investigation catalogue editor', () => {
     fireEvent.click(await screen.findByRole('button', { name: /add special health check plan/i }));
     fireEvent.change(field(/investigation name/i), { target: { value: 'Executive Plan' } });
     fireEvent.click(screen.getByRole('button', { name: /add full blood count to package/i }));
+    expect(within(screen.getByRole('region', { name: /selected investigations preview/i })).getByText('Full Blood Count')).toBeInTheDocument();
     fireEvent.click(save());
 
     await waitFor(() => expect(storeFns.addCustomTest).toHaveBeenCalled());

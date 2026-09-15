@@ -94,10 +94,15 @@ export default function PortalReportScreen() {
   function print() {
     const win = frameRef.current?.contentWindow;
     if (win) {
+      win.document.title = '';
+      try { win.history.replaceState(null, '', `${window.location.origin}/`); } catch {}
       win.focus();
       win.print();
     } else {
+      const previousTitle = document.title;
+      document.title = '';
       window.print();
+      document.title = previousTitle;
     }
   }
 

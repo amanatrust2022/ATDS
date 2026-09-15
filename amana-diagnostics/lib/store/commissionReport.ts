@@ -1,6 +1,7 @@
 import type {
   CommissionEntry, Patient, ReferringDoctor, ReferringFacility, TestPrice,
 } from '@/lib/store';
+import { patientDisplayName } from './patientName';
 
 /**
  * Builds the referral commission report from data the repositories return.
@@ -57,7 +58,7 @@ export const buildCommissionReport = (
 
     return {
       patientId: p.id,
-      patientName: `${p.firstName} ${p.surname}`,
+      patientName: patientDisplayName(p) || 'Patient',
       slipNumber: p.slipNumber,
       registeredAt: p.registeredAt,
       referrerName,

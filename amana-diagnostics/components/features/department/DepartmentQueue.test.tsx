@@ -72,6 +72,11 @@ describe('The bench queue', () => {
     expect(screen.getByText('Full Blood Count')).toBeInTheDocument();
   });
 
+  it('shows the originating package on its investigation card', () => {
+    renderQueue({ pending: [patient({ tests: [aTest({ packageName: 'Executive Plan' })] })] });
+    expect(screen.getByText('From Executive Plan')).toBeInTheDocument();
+  });
+
   it('says the queue is empty rather than showing nothing', () => {
     renderQueue({ pending: [], pendingCount: 0 });
     expect(screen.getByText(/no pending requests/i)).toBeInTheDocument();

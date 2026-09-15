@@ -81,6 +81,12 @@ describe('Invite acceptance', () => {
     expect(screen.getByLabelText(/confirm password/i)).toBeInTheDocument();
   });
 
+  it('allows an invited staff member to enter a custom title', async () => {
+    await loaded();
+    fireEvent.change(screen.getByRole('combobox', { name: /title/i }), { target: { value: '__custom__' } });
+    expect(screen.getByRole('textbox', { name: /custom title/i })).toBeInTheDocument();
+  });
+
   it('names the two password-reveal buttons', async () => {
     await loaded();
     expect(screen.getAllByRole('button', { name: /show password/i })).toHaveLength(2);

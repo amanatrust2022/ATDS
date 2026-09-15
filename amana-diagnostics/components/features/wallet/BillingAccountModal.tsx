@@ -21,6 +21,7 @@ import {
   type Patient,
 } from '@/lib/store';
 import { useWalletStore } from '@/lib/store/useWalletStore';
+import { patientDisplayName } from '@/lib/store/patientName';
 
 import { OwnerPicker } from './OwnerPicker';
 import { PersonFields } from './PersonFields';
@@ -234,7 +235,7 @@ export default function BillingAccountModal({
             onSelect={(p) => {
               updateAccountForm({
                 ownerId: String(p.id),
-                name: `${p.firstName} ${p.surname} Wallet`,
+                name: `${patientDisplayName(p) || 'Patient'} Wallet`,
               });
               setShowOwnerSearchDrop(false);
               setOwnerSearchQuery('');

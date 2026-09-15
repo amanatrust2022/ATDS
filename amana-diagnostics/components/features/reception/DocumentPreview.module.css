@@ -229,6 +229,17 @@
   line-height: 1;
 }
 
+.chip > span:last-child {
+  display: inline-flex;
+  flex-direction: column;
+}
+
+.packageOrigin {
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-regular);
+  opacity: 0.85;
+}
+
 .chip:has(input:checked) .chipMark {
   background: var(--accent-solid-text);
   color: var(--accent-solid);

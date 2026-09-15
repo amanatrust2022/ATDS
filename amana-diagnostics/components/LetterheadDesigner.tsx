@@ -743,7 +743,7 @@ export default function LetterheadDesigner({ value, onChange, defaultHeight = DE
       const h = Math.round(CANVAS_W * nar);
       checkpoint('import');
       const el: El = { ...baseEl('image', 1), src, x: 0, y: 0, w: CANVAS_W, h, iw: CANVAS_W, ih: h, ox: 0, oy: 0, nar };
-      apply([el], Math.max(80, Math.min(1400, h)));
+      apply([el], Math.max(defaultHeight <= 100 ? 24 : 80, Math.min(1400, h)));
       setSelId(el.id);
     } catch (err) {
       console.error('Letterhead import failed:', err);
@@ -753,7 +753,12 @@ export default function LetterheadDesigner({ value, onChange, defaultHeight = DE
     }
   };
 
-  const setHeightSafe = (h: number) => { checkpoint('height'); const v = Math.max(80, Math.min(1400, h)); apply(elsRef.current, v); };
+  const setHeightSafe = (h: number) => {
+    checkpoint('height');
+    const minimum = defaultHeight <= 100 ? 24 : 80;
+    const v = Math.max(minimum, Math.min(1400, h));
+    apply(elsRef.current, v);
+  };
 
   // Align the selected element to the page (canvas) edges or centre.
   const alignEl = (how: 'left' | 'hcenter' | 'right' | 'top' | 'vcenter' | 'bottom') => {

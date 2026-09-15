@@ -105,7 +105,8 @@ describe('where the signature sits', () => {
   it('closes the report at the lower right', () => {
     const html = getResultTemplate(patient(), [test()]);
 
-    expect(html).toContain('.sig-section { margin-top: 28px; display: flex; justify-content: flex-end;');
+    expect(html).toContain('.sig-section { margin-top: 0; display: flex; justify-content: flex-end;');
+    expect(html).toContain('.end-report { text-align: center; margin: 20px 0 0;');
     expect(html).toContain('.sig-box { text-align: right;');
     // ...and after the end-of-report marker, not before it.
     expect(html.indexOf('END OF REPORT')).toBeLessThan(html.indexOf('<div class="sig-section">'));
@@ -140,6 +141,13 @@ describe('the heading of each investigation', () => {
     );
 
     expect(html).toMatch(/font-size: 12pt;[^"]*text-align: center/);
+    expect(html.indexOf('class="patient-info"')).toBeLessThan(html.indexOf('RADIOLOGY RESULT REPORT'));
+  });
+
+  it('shows the package each investigation originated from', () => {
+    const html = getResultTemplate(patient(), [test({ packageName: 'Executive Plan' })]);
+    expect(html).toContain('Originating package: Executive Plan');
+    expect(html).toContain('Full Blood Count (from Executive Plan)');
   });
 });
 
@@ -152,15 +160,15 @@ describe('the running footer', () => {
   it('has room reserved for it in the flow, not in the page margin', () => {
     const html = getResultTemplate(patient(), [test()], org(canvas(90)) as any);
 
-    // 90px of footer + the 12px gap, kept clear on every page by the repeating
+    // 90px of footer + the 4px gap, kept clear on every page by the repeating
     // spacer row — not by a page margin the fixed footer sits above.
-    expect(html).toContain('<tfoot><tr><td><div style="height:102px"></div></td></tr></tfoot>');
+    expect(html).toContain('<tfoot><tr><td><div style="height:94px"></div></td></tr></tfoot>');
     expect(html).toContain('margin-bottom: 5mm;');
   });
 
   it('measures the footer it was actually given', () => {
     const html = getResultTemplate(patient(), [test()], org(canvas(150)) as any);
-    expect(html).toContain('height:162px');
+    expect(html).toContain('height:154px');
   });
 
   it('reserves nothing when there is no footer', () => {
@@ -205,7 +213,7 @@ describe('a full-page background', () => {
       { name: 'X', letterhead_html: combineLetterhead(canvas(200), canvas(140), canvas(1040), 170, 90) } as any,
     );
 
-    // 140 + 12 beats the background's 90.
-    expect(html).toContain('<tfoot><tr><td><div style="height:152px"></div></td></tr></tfoot>');
+    // 140 + 4 beats the background's 90.
+    expect(html).toContain('<tfoot><tr><td><div style="height:144px"></div></td></tr></tfoot>');
   });
 });

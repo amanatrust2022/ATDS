@@ -101,7 +101,9 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
   const regDate = new Date(patient.registeredAt).toLocaleDateString('en-NG');
   const reportingDate = completedTests[0]?.completedAt ? new Date(completedTests[0].completedAt).toLocaleDateString('en-NG') : '—';
   const specimens = Array.from(new Set(completedTests.map(specimenOf))).filter(Boolean).join(', ') || '—';
-  const investigationList = completedTests.map(t => t.testName).join(', ');
+  const investigationList = completedTests
+    .map(t => t.packageName ? `${t.testName} (from ${t.packageName})` : t.testName)
+    .join(', ');
 
   // Letterhead values. A field the clinic has not filled in prints as
   // nothing — see lib/letterhead.ts for why that matters.
@@ -138,11 +140,14 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
    * already used for its clear area. The footer then lands in a strip no text
    * can reach.
    */
-  const FOOTER_GAP = 12;
+  const FOOTER_GAP = 4;
   const footerH = cleanFooterHtml ? letterheadHeight(rawFooter, 120) : 0;
   const footerReserve = cleanFooterHtml ? Math.round(footerH + FOOTER_GAP) : 0;
 
   const testSections = completedTests.map(t => {
+    const packageOrigin = t.packageName
+      ? `<div class="package-origin">Originating package: ${esc(t.packageName)}</div>`
+      : '';
     const reportResults = normaliseLabRows(t.testId, t.testName, t.results || []);
     const simpleResults = usesSimpleResultTable(t.testId, t.testName, reportResults);
     const isMcs = t.testId.toLowerCase().endsWith('_mcs') || t.testId.toLowerCase().includes('mcs') || t.testId.toLowerCase() === 'sfmcs' || t.testName.toLowerCase().includes('mcs') || t.testName.toLowerCase().includes('culture & sensitivity') || t.testName.toLowerCase().includes('culture and sensitivity');
@@ -308,6 +313,7 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
           <div class="test-header" style="background: #486b8f; color: white; padding: 6px 10px; font-weight: bold; font-size: 11pt; text-align: center;">
             ${esc(t.testName)}
           </div>
+          ${packageOrigin}
           ${mpsHtml}
           ${widalHtml}
           ${extraHtml}
@@ -335,6 +341,7 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
           <div style="font-weight: bold; border-bottom: 2px solid #486b8f; margin-bottom: 12px; font-size: 12pt; color: #486b8f; text-transform: uppercase; padding-bottom: 4px; text-align: center;">
             ${esc(t.testName)}
           </div>
+          ${packageOrigin}
           <div style="font-size: 11pt; line-height: 1.6; color: #000; text-align: justify; margin-bottom: 18px; font-family: 'Times New Roman', Times, serif;">
             ${markScriptsInHtml(convertTextToFormattedHtml(radData.findings))}
           </div>
@@ -418,6 +425,7 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
           <div class="test-header" style="background: #486b8f; color: white; padding: 6px 10px; font-weight: bold; font-size: 11pt; text-align: center;">
             ${esc(t.testName)}
           </div>
+          ${packageOrigin}
           
           <div class="mcs-flex" style="display: flex; border-bottom: 1px solid #ddd;">
             <div class="mcs-border-right" style="flex: 1; padding: 8px; border-right: 1px solid #ddd;">
@@ -495,6 +503,7 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
     return `
       <div class="test-block${isFbcTest(t.testId, t.testName) ? ' fbc-block' : ''}" style="page-break-inside: avoid;">
         <div class="test-header">${esc(t.testName)}</div>
+        ${packageOrigin}
         ${reportResults.length > 0 ? `
         <table>
           <thead><tr><th>${simpleResults ? 'Investigation' : 'Parameter'}</th><th>Result</th>${simpleResults ? '' : '<th>Unit</th><th>Reference Range</th>'}</tr></thead>
@@ -507,6 +516,7 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
   const reportTitle = completedTests.every(t => t.department === 'lab') ? 'LABORATORY RESULT REPORT' :
     completedTests.every(t => t.department === 'radiology') ? 'RADIOLOGY RESULT REPORT' :
       'LABORATORY / RADIOLOGY RESULT REPORT';
+  const radiologyOnly = reportTitle === 'RADIOLOGY RESULT REPORT';
 
   // The report content, placed either straight into the body, or (when a
   // full-page background is used) inside a table whose repeating header/footer
@@ -524,7 +534,7 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
         ${orgEmail ? `<div class="org-email"><b>Email;</b> <span style="color:#486b8f">${esc(orgEmail)}</span></div>` : ''}
       `}
     </div>
-    <div class="report-title">${reportTitle}</div>
+    ${radiologyOnly ? '' : `<div class="report-title">${reportTitle}</div>`}
     <div class="patient-info">
       <div><span class="pi-label">Patient Name;</span> ${esc(patientDisplayName(patient))}</div>
       <div><span class="pi-label">Patient ID;</span> ${esc(patient.slipNumber)}</div>
@@ -539,8 +549,9 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
       <div><span class="pi-label">Investigation(s);</span> ${esc(investigationList)}</div>
       <div><span class="pi-label">Specimen(s);</span> ${esc(specimens)}</div>
     </div>
+    ${radiologyOnly ? `<div class="report-title">${reportTitle}</div>` : ''}
     ${testSections}
-    <div style="text-align:center; margin-top:20px; margin-bottom:16px; font-weight:bold; text-transform:uppercase; font-size:10pt; color:#000;">
+    <div class="end-report">
       *** END OF REPORT ***
     </div>
     <div class="sig-section">
@@ -549,7 +560,7 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
           ? `<div style="margin-bottom:6px;">
                <img src="${esc(completedTests[0].completedBySignatureUrl)}" style="max-height:55px; max-width:160px; object-fit:contain; display:block; margin:0 0 0 auto;" alt="Signature" />
              </div>`
-          : '<div style="height:55px;"></div>'
+          : ''
         }
         <div class="sig-line">${esc(completedTests[0]?.completedBy) || 'Authorised Professional'}</div>
         ${completedTests[0]?.completedByTitle ? `<div class="sig-title">${esc(completedTests[0].completedByTitle)}</div>` : ''}
@@ -664,6 +675,7 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
          corner of the blue bar. Every investigation block uses this, including
          the culture and Widal/MPs blocks that carry their own inline copy. */
       .test-header { background: #486b8f; color: white; padding: 7px 12px; font-size: 11pt; font-weight: bold; text-align: center; }
+      .package-origin { padding: 3px 8px; background: rgba(72, 107, 143, 0.07); color: #333; font-size: 9pt; font-weight: bold; text-align: center; }
       table { width: 100%; border-collapse: collapse; margin-top: 16px; }
       th { background: #486b8f; color: white; padding: 6px 8px; text-align: left; font-size: 11pt; }
       td { padding: 5px 8px; border-bottom: 1px solid #eee; font-size: 11pt; }
@@ -676,7 +688,8 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
          with no rule over the name — the signature image is the mark, and the
          name sits directly beneath it. page-break-inside keeps the name with
          the signature above it. */
-      .sig-section { margin-top: 28px; display: flex; justify-content: flex-end; page-break-inside: avoid; }
+      .end-report { text-align: center; margin: 20px 0 0; font-weight: bold; text-transform: uppercase; font-size: 10pt; color: #000; }
+      .sig-section { margin-top: 0; display: flex; justify-content: flex-end; page-break-inside: avoid; }
       .sig-box { text-align: right; width: 220px; }
       .sig-line { padding-top: 4px; font-size: 10pt; color: #333; }
       .sig-title { font-size: 9pt; color: #555; padding-top: 2px; }
@@ -1035,6 +1048,15 @@ export const printHtml = (htmlContent: string) => {
 
   doc.write(htmlContent);
   doc.close();
+
+  // Native print headers use the title and native footers use the URL. Keep
+  // the browser's useful date/time while removing patient/slip identifiers.
+  doc.title = '';
+  try {
+    iframe.contentWindow?.history.replaceState(null, '', `${window.location.origin}/`);
+  } catch {
+    // Some embedded WebViews lock iframe history; printing still works.
+  }
 
   // Wait for fonts and styling to apply, then print
   setTimeout(() => {

@@ -9,6 +9,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { FALLBACK_ORG_NAME } from '@/lib/branding';
+import { patientDisplayName } from '@/lib/store/patientName';
 
 const execPromise = util.promisify(exec);
 
@@ -50,6 +51,8 @@ function mapDbTestToStoreTest(t: any) {
     completedAt: t.completed_at,
     notes: t.notes,
     price: t.price,
+    packageId: t.package_id,
+    packageName: t.package_name,
   };
 }
 
@@ -131,12 +134,13 @@ export async function POST(request: Request) {
     const htmlContent = getResultTemplate(storePatient as any, storeTests as any, org as any);
     const pdfBase64 = await htmlToPdfBase64(htmlContent);
 
-    const fileName = `DiagnosticReport-${patient.slip_number}-${storePatient.name.replace(/\s+/g, '_')}.pdf`;
+    const patientName = patientDisplayName(storePatient) || 'Patient';
+    const fileName = `DiagnosticReport-${patient.slip_number}-${patientName.replace(/\s+/g, '_')}.pdf`;
     const orgName = org?.name || FALLBACK_ORG_NAME;
 
     await sendEmailWithAttachment({
       to: session.email,
-      subject: `Your Diagnostic Report — ${storePatient.name} (${patient.slip_number})`,
+      subject: `Your Diagnostic Report — ${patientName} (${patient.slip_number})`,
       htmlContent: `
         <div style="font-family: 'Times New Roman', Times, serif; max-width: 600px; margin: 0 auto; color: #000000; line-height: 1.6;">
           <div style="background: #0563c1; padding: 28px 24px; text-align: center; border: 1px solid #0563c1;">
@@ -144,7 +148,7 @@ export async function POST(request: Request) {
             <p style="font-family: 'Times New Roman', Times, serif; color: #ffffff; margin: 6px 0 0; font-size: 14px; font-weight: bold; text-transform: uppercase;">${orgName}</p>
           </div>
           <div style="padding: 32px 24px; border: 1px solid #0563c1; border-top: none; background: #ffffff;">
-            <p style="margin: 0 0 16px; font-size: 16px; color: #000000;">Dear <strong>${storePatient.name}</strong>,</p>
+            <p style="margin: 0 0 16px; font-size: 16px; color: #000000;">Dear <strong>${patientName}</strong>,</p>
             <p style="margin: 0 0 20px; font-size: 15px; color: #000000; line-height: 1.6;">As requested via the Patient Portal, please find your diagnostic report attached as a PDF.</p>
             <div style="background: #f0f5ff; border: 1px solid #0563c1; padding: 20px; margin-bottom: 24px;">
               <table style="width: 100%; border-collapse: collapse; font-size: 15px; font-family: 'Times New Roman', Times, serif;">

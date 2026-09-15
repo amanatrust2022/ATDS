@@ -28,4 +28,9 @@ describe('patientDisplayName', () => {
   it('returns an empty string rather than "undefined" when nothing is known', () => {
     expect(patientDisplayName({} as any)).toBe('');
   });
+
+  it('drops legacy literal undefined values and accepts database-shaped parts', () => {
+    expect(patientDisplayName({ name: 'undefined', first_name: 'Aisha', middle_name: null, surname: 'Musa' }))
+      .toBe('Aisha Musa');
+  });
 });

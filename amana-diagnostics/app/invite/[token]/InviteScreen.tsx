@@ -4,6 +4,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
 import { RiMicroscopeLine, RiShieldCheckLine, RiUploadCloud2Line, RiEyeLine, RiEyeOffLine } from '@remixicon/react';
 import { apiBase } from '@/lib/cloudOrigin';
+import { STANDARD_STAFF_TITLES } from '@/lib/staffTitles';
 
 import styles from '../../login/login.module.css';
 
@@ -71,6 +72,7 @@ export default function InviteAcceptPage() {
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [usingCustomTitle, setUsingCustomTitle] = useState(false);
 
   useEffect(() => {
     const fetchInvite = async () => {
@@ -272,17 +274,20 @@ export default function InviteAcceptPage() {
                 <select
                   id="inv-title"
                   className={cx(styles.input, styles.inputPlain, styles.select)}
-                  value={form.title}
-                  onChange={(e) => setForm({ ...form, title: e.target.value })}
+                  value={usingCustomTitle ? '__custom__' : form.title}
+                  onChange={(e) => {
+                    if (e.target.value === '__custom__') {
+                      setUsingCustomTitle(true);
+                      setForm({ ...form, title: '' });
+                    } else {
+                      setUsingCustomTitle(false);
+                      setForm({ ...form, title: e.target.value });
+                    }
+                  }}
                   required
                 >
-                  <option value="Mr.">Mr.</option>
-                  <option value="Ms.">Ms.</option>
-                  <option value="Mrs.">Mrs.</option>
-                  <option value="Dr.">Dr.</option>
-                  <option value="Prof.">Prof.</option>
-                  <option value="MLS.">MLS.</option>
-                  <option value="Pharm.">Pharm.</option>
+                  {STANDARD_STAFF_TITLES.map((title) => <option key={title} value={title}>{title}</option>)}
+                  <option value="__custom__">Custom title…</option>
                 </select>
               </div>
               <div>
@@ -300,6 +305,23 @@ export default function InviteAcceptPage() {
                 />
               </div>
             </div>
+
+            {usingCustomTitle && (
+              <div>
+                <label className={styles.label} htmlFor="inv-custom-title">
+                  Custom title <span className={styles.req} aria-hidden="true">*</span>
+                </label>
+                <input
+                  id="inv-custom-title"
+                  className={cx(styles.input, styles.inputPlain)}
+                  value={form.title}
+                  onChange={(e) => setForm({ ...form, title: e.target.value })}
+                  placeholder="e.g. Chief Medical Scientist"
+                  autoFocus
+                  required
+                />
+              </div>
+            )}
 
             <div className={styles.pair}>
               <div>

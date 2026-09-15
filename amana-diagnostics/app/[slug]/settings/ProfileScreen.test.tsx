@@ -135,4 +135,11 @@ describe('Sign out', () => {
       unmount();
     }
   });
+
+  it('keeps a custom professional title editable', () => {
+    authState = { ...authState, profile: profile({ title: 'Chief Scientist' }) };
+    render(<ProfileScreen />);
+    expect(screen.getByRole('combobox', { name: /^title/i })).toHaveValue('__custom__');
+    expect(screen.getByRole('textbox', { name: /custom title/i })).toHaveValue('Chief Scientist');
+  });
 });

@@ -8,6 +8,7 @@ import { jsonAuthHeaders } from '@/lib/authHeaders';
 import { useNotices } from '@/components/Notices';
 import { Button, Dialog } from '@/components/ui';
 import styles from './DocumentPreview.module.css';
+import { patientDisplayName } from '@/lib/store/patientName';
 
 /**
  * The completed report: choose which tests go on it, preview, print or email.
@@ -100,7 +101,7 @@ export default function ResultModal({
         if (!next) onClose();
       }}
       title="Result report"
-      description={`${patient.name} · ${patient.slipNumber}`}
+      description={`${patientDisplayName(patient) || 'Patient'} · ${patient.slipNumber}`}
       size="lg"
       flush
       footerNote={
@@ -154,7 +155,10 @@ export default function ResultModal({
                 <span className={styles.chipMark} aria-hidden="true">
                   {checked ? '✓' : ''}
                 </span>
-                {t.testName}
+                <span>
+                  {t.testName}
+                  {t.packageName && <small className={styles.packageOrigin}>From {t.packageName}</small>}
+                </span>
               </label>
             );
           })}

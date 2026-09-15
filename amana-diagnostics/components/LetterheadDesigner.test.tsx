@@ -25,6 +25,11 @@ function Harness({ initial = '' }: { initial?: string }) {
   );
 }
 
+function FooterHarness() {
+  const [html, setHtml] = useState('');
+  return <LetterheadDesigner value={html} onChange={setHtml} defaultHeight={90} />;
+}
+
 describe('The letterhead designer', () => {
   it('groups the tools in a named toolbar', () => {
     render(<Harness />);
@@ -82,6 +87,14 @@ describe('The letterhead designer', () => {
   it('names the canvas height field', () => {
     render(<Harness />);
     expect(screen.getByRole('spinbutton', { name: /height/i })).toBeInTheDocument();
+  });
+
+  it('allows a footer strip to be reduced to 24px', () => {
+    render(<FooterHarness />);
+    const height = screen.getByRole('spinbutton', { name: /height/i });
+    fireEvent.change(height, { target: { value: '24' } });
+    fireEvent.blur(height);
+    expect(height).toHaveValue(24);
   });
 
   /**

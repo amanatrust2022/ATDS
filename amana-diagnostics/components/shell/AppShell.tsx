@@ -20,6 +20,7 @@ import { useShellSlotValue } from './ShellSlot';
 import { SyncStatus } from './SyncStatus';
 import type { Command } from './CommandPalette';
 import styles from './Shell.module.css';
+import { patientDisplayName } from '@/lib/store/patientName';
 
 /**
  * The application shell: a rail that is always there, a header, and an
@@ -369,15 +370,17 @@ export function AppShell({
               aria-label={`Account: ${profile?.full_name ?? 'my profile'}`}
             />
 
-            <Button
-              intent="ghost"
-              size="sm"
-              icon={<RiLogoutCircleLine size={16} />}
-              loading={signingOut}
+            <button
+              type="button"
+              className={styles['headerLogout']}
+              disabled={signingOut}
               onClick={() => void handleSignOut()}
               aria-label="Sign out"
               title="Sign out"
-            />
+            >
+              <RiLogoutCircleLine size={16} aria-hidden="true" />
+              <span>{signingOut ? 'Signing out…' : 'Logout'}</span>
+            </button>
           </div>
         </header>
 
@@ -411,7 +414,7 @@ function PatientBar({ patient }: { patient: PatientContext }) {
   return (
     <div className={styles['patientBar']} aria-label="Patient in context">
       <div className={styles['patientIdentity']}>
-        <span className={styles['patientName']}>{patient.name}</span>
+        <span className={styles['patientName']}>{patientDisplayName({ name: patient.name }) || 'Patient'}</span>
         <span className={styles['patientId']}>{patient.patientId}</span>
       </div>
 

@@ -10,6 +10,7 @@ import util from 'util';
 import fs from 'fs';
 import os from 'os';
 import { FALLBACK_ORG_NAME } from '@/lib/branding';
+import { patientDisplayName } from '@/lib/store/patientName';
 
 const execPromise = util.promisify(exec);
 
@@ -126,9 +127,7 @@ export async function POST(request: Request) {
     let pdfBase64 = clientPdfBase64;
     // Derived rather than assumed: `patients` has no `name` column, so a caller
     // passing a row straight from the database has only the parts.
-    const patientName = patient.name
-      || [patient.firstName, patient.middleName, patient.surname].filter(Boolean).join(' ')
-      || 'Patient';
+    const patientName = patientDisplayName(patient) || 'Patient';
     const fileName = `DiagnosticReport-${patient.slipNumber}-${patientName.replace(/\s+/g, '_')}.pdf`;
 
     if (!pdfBase64) {
@@ -198,7 +197,7 @@ export async function POST(request: Request) {
 
     await sendEmailWithAttachment({
       to: patient.email,
-      subject: `Diagnostic Report — ${patient.name} (${patient.slipNumber})`,
+      subject: `Diagnostic Report — ${patientName} (${patient.slipNumber})`,
       htmlContent: `
         <div style="font-family: 'Times New Roman', Times, serif; max-width: 600px; margin: 0 auto; color: #000000; line-height: 1.6;">
           <div style="background: #0563c1; padding: 28px 24px; border-radius: 0px !important; text-align: center; border: 1px solid #0563c1;">
@@ -206,7 +205,7 @@ export async function POST(request: Request) {
             <p style="font-family: 'Times New Roman', Times, serif; color: #ffffff; margin: 8px 0 0; font-size: 15px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">${org?.name || FALLBACK_ORG_NAME}</p>
           </div>
           <div style="padding: 32px 24px; border: 1px solid #0563c1; border-top: none; border-radius: 0px !important; background: #ffffff;">
-            <p style="font-family: 'Times New Roman', Times, serif; margin: 0 0 16px; font-size: 16px; color: #000000;">Dear <strong>${patient.name}</strong>,</p>
+            <p style="font-family: 'Times New Roman', Times, serif; margin: 0 0 16px; font-size: 16px; color: #000000;">Dear <strong>${patientName}</strong>,</p>
             <p style="font-family: 'Times New Roman', Times, serif; margin: 0 0 20px; font-size: 15px; color: #000000; line-height: 1.6;">Your diagnostic report for the tests conducted at our facility is now ready. Please find the official document attached to this email as a PDF.</p>
             
             <div style="background: #f8fafc; border: 1px solid #0563c1; border-radius: 0px !important; padding: 20px; margin-bottom: 24px;">

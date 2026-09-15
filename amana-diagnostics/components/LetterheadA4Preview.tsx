@@ -22,7 +22,7 @@ const PAGE_H = 297 * MM;           // A4 height ≈ 1122.5px
 const MARGIN_X = 20;               // @page margin-left / margin-right (px)
 const MARGIN_BOTTOM = 5 * MM;      // @page margin-bottom
 const PAD_TOP = 10;                // body padding-top on print
-const FOOTER_GAP = 12;             // clearance kept above the running footer
+const FOOTER_GAP = 4;              // clearance kept above the running footer
 const SCALE = 0.72;                // shrink the sheet to fit the settings column
 
 // Where a guide sits is geometry, so it stays here; what it looks like is

@@ -19,6 +19,7 @@ import {
   buildSelectedTestDetails, calculateSubtotal, calculateDiscountAmount,
   calculateTotalCommission, buildPatientTests, paymentStatusFor, isReferralVisit,
 } from '@/lib/store/registrationBilling';
+import { patientDisplayName } from '@/lib/store/patientName';
 
 interface RegistrationTabProps {
   patients: Patient[];
@@ -164,7 +165,7 @@ export default function RegistrationTab({
     setSelectedFacilityId('');
     setDoctorSearch('');
     setFacilitySearch('');
-    setLoadedPatientName(`${p.firstName} ${p.surname}`);
+    setLoadedPatientName(patientDisplayName(p) || 'Patient');
 
     // Losing this silently would charge a family's visit to cash instead of
     // their wallet, so it must come from the same unbounded history.

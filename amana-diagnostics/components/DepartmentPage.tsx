@@ -6,6 +6,7 @@ import { useNotices } from '@/components/Notices';
 import styles from './DepartmentPage.module.css';
 import { Department, Patient, PatientTest, getTestById, fetchPatients, updateTestResult, subscribeToPatients, fetchCustomTemplates, RadiologyTemplate, fetchCustomTests, setCustomCatalogueCache } from '@/lib/store';
 import { flattenTestParameters } from '@/lib/catalogue';
+import { patientDisplayName } from '@/lib/store/patientName';
 import { RiCheckLine, RiErrorWarningLine, RiSettings3Line } from '@remixicon/react';
 import { useAuth } from '@/components/AuthProvider';
 import { RADIOLOGY_TEMPLATES, serializeRadiologyResults, deserializeRadiologyResults, RadiologyFormState, convertTextToFormattedHtml, stripImpressionHeading } from '@/lib/radiology-templates';
@@ -474,11 +475,7 @@ export default function DepartmentPage({ department }: Props) {
 
   if (!organization) return null;
 
-  const patientName =
-    selected?.patient.name ||
-    [selected?.patient.firstName, selected?.patient.middleName, selected?.patient.surname]
-      .filter(Boolean)
-      .join(' ');
+  const patientName = selected ? patientDisplayName(selected.patient) || 'Patient' : '';
 
   return (
     <>
@@ -550,6 +547,9 @@ export default function DepartmentPage({ department }: Props) {
           <>
             {patientName} &nbsp;•&nbsp; {selected.patient.slipNumber} &nbsp;•&nbsp; Specimen:{' '}
             <b>{selected.test.specimen || 'Not Specified'}</b>
+            {selected.test.packageName && (
+              <> &nbsp;•&nbsp; Originating package: <b>{selected.test.packageName}</b></>
+            )}
           </>
         ) : undefined}
         size="xl"

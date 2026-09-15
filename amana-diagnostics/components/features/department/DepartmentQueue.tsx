@@ -88,7 +88,7 @@ export default function DepartmentQueue({
     .filter(({ patient, test }) => {
       const completedAt = new Date(test.completedAt || '').getTime();
       const matchesDate = Number.isFinite(completedAt) && completedAt >= completedSince;
-      const matchesSearch = !query || `${fullName(patient)} ${patient.slipNumber} ${test.testName}`.toLowerCase().includes(query);
+      const matchesSearch = !query || `${fullName(patient)} ${patient.slipNumber} ${test.testName} ${test.packageName || ''}`.toLowerCase().includes(query);
       return matchesDate && matchesSearch;
     })
     .sort((a, b) => new Date(b.test.completedAt || 0).getTime() - new Date(a.test.completedAt || 0).getTime());
@@ -157,7 +157,10 @@ export default function DepartmentQueue({
                             .join(' ')}
                         >
                           <span className={styles['testName']}>
-                            {test.testName}
+                            <span>
+                              {test.testName}
+                              {test.packageName && <small className={styles['packageOrigin']}>From {test.packageName}</small>}
+                            </span>
                             {started && <Badge tone="warning">In progress</Badge>}
                             {test.id && draftTestIds?.has(test.id) && <Badge tone="info">Draft saved</Badge>}
                           </span>
@@ -222,7 +225,10 @@ export default function DepartmentQueue({
                 <RiCheckLine size={14} aria-hidden="true" className={styles['doneTick']} />
                 <span className={styles['name']}>{fullName(patient)}</span>
                 <span className={styles['slip']}>{patient.slipNumber}</span>
-                <span className={styles['doneTests']}>{test.testName}</span>
+                <span className={styles['doneTests']}>
+                  {test.testName}
+                  {test.packageName && <small className={styles['packageOrigin']}>From {test.packageName}</small>}
+                </span>
                 <span className={styles['doneActions']}>
                   <Button
                     size="sm"

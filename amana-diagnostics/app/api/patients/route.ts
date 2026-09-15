@@ -5,6 +5,7 @@ import { sendEmail } from '@/lib/brevo';
 import { getNextNumericID } from '@/lib/idGenerator';
 import { partialTestUpdate } from '@/lib/repositories/testUpdate';
 import { FALLBACK_ORG_NAME } from '@/lib/branding';
+import { patientDisplayName } from '@/lib/store/patientName';
 
 /**
  * Decodes a stored result blob, returning an empty result rather than throwing.
@@ -530,7 +531,7 @@ export async function POST(request: Request) {
         try {
           const org = db.prepare('SELECT * FROM organizations WHERE id = ?').get(organizationId) as any;
           const orgName = org?.name || FALLBACK_ORG_NAME;
-          const patientName = `${patient.firstName} ${patient.surname}`;
+          const patientName = patientDisplayName(patient) || 'Patient';
           const host = request.headers.get('host') || 'localhost:3000';
           const protocol = host.startsWith('localhost') || host.startsWith('127.0.0.1') ? 'http' : 'https';
           const portalLink = `${protocol}://${host}/portal/login`;

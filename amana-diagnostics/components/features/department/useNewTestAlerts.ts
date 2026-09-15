@@ -2,6 +2,7 @@
 import { useEffect, useRef } from 'react';
 import type { Department, Patient } from '@/lib/store';
 import { playChime, desktopNotify, requestNotificationPermission } from '@/lib/notifications';
+import { patientDisplayName } from '@/lib/store/patientName';
 
 /**
  * Announces tests that appear in this department's queue while someone is
@@ -26,7 +27,7 @@ export function useNewTestAlerts(
     const currentPendingTests = patients.flatMap(p =>
       (p.tests || [])
         .filter(t => t.department === department && t.status === 'pending')
-        .map(t => ({ patientName: p.name, testName: t.testName, id: t.id }))
+        .map(t => ({ patientName: patientDisplayName(p) || 'Patient', testName: t.testName, id: t.id }))
     );
 
     const currentPendingIds = new Set(currentPendingTests.map(t => t.id).filter(Boolean) as string[]);

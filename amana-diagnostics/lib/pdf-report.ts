@@ -10,6 +10,7 @@ import { SUPPORT_EMAIL, FALLBACK_ORG_NAME } from '@/lib/branding';
 import { letterheadFor } from './letterhead';
 import { scriptsToPdfRuns, markScriptsInHtml } from './scriptNotation';
 import { isFbcTest, normaliseLabRows, usesSimpleResultTable } from './store/labResults';
+import { patientDisplayName } from './store/patientName';
 
 /** A pdfmake text value with "x10^9/L", "mm3", "CO2", "Ca2+" as real sub- and superscripts. */
 const sci = (v: unknown) => scriptsToPdfRuns(v == null ? '' : String(v));
@@ -96,7 +97,9 @@ export function buildReportPdfDefinition(
     ? new Date(completedTests[0].completedAt).toLocaleDateString('en-NG')
     : '—';
   const specimens = Array.from(new Set(completedTests.map(t => t.specimen))).filter(Boolean).join(', ') || '—';
-  const investigationList = completedTests.map(t => t.testName).join(', ');
+  const investigationList = completedTests
+    .map(t => t.packageName ? `${t.testName} (from ${t.packageName})` : t.testName)
+    .join(', ');
 
   // See lib/letterhead.ts: an unfilled field prints as nothing, never as
   // another clinic's address.
@@ -115,6 +118,7 @@ export function buildReportPdfDefinition(
     : completedTests.every(t => t.department === 'radiology')
     ? 'RADIOLOGY RESULT REPORT'
     : 'LABORATORY / RADIOLOGY RESULT REPORT';
+  const radiologyOnly = reportTitle === 'RADIOLOGY RESULT REPORT';
 
   // Build test section content
   const testContent: any[] = [];
@@ -126,7 +130,13 @@ export function buildReportPdfDefinition(
       table: {
         widths: ['*'],
         body: [
-          [{ text: t.testName, style: compactFbc ? 'compactTestHeader' : 'testHeader', fillColor: blue, color: 'white', bold: true }],
+          [{
+            stack: [
+              { text: t.testName, style: compactFbc ? 'compactTestHeader' : 'testHeader' },
+              ...(t.packageName ? [{ text: `Originating package: ${t.packageName}`, fontSize: 8, margin: [0, 2, 0, 0] }] : []),
+            ],
+            fillColor: blue, color: 'white', bold: true,
+          }],
         ]
       },
       layout: 'noBorders',
@@ -686,7 +696,7 @@ export function buildReportPdfDefinition(
       { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 2, lineColor: blue }], margin: [0, 0, 0, 0] },
 
       // ── Report Title ──
-      { text: reportTitle, style: 'reportTitle', alignment: 'center' },
+      ...(radiologyOnly ? [] : [{ text: reportTitle, style: 'reportTitle', alignment: 'center' }]),
 
       // ── Patient info grid ──
       {
@@ -694,7 +704,7 @@ export function buildReportPdfDefinition(
           widths: ['*', '*'],
           body: [
             [
-              [{ text: [{ text: 'Patient Name; ', bold: true }, patient.name] }],
+              [{ text: [{ text: 'Patient Name; ', bold: true }, patientDisplayName(patient) || 'Patient'] }],
               [{ text: [{ text: 'Patient ID; ', bold: true }, patient.slipNumber] }],
             ],
             [
@@ -733,6 +743,8 @@ export function buildReportPdfDefinition(
         margin: [0, 0, 0, 12],
       },
 
+      ...(radiologyOnly ? [{ text: reportTitle, style: 'reportTitle', alignment: 'center' }] : []),
+
       // ── Test Results ──
       ...testContent,
 
@@ -740,7 +752,7 @@ export function buildReportPdfDefinition(
       {
         text: '*** END OF REPORT ***',
         alignment: 'center', bold: true, fontSize: 10,
-        margin: [0, 12, 0, 20],
+        margin: [0, 12, 0, 0],
       },
 
       // ── Signature (right-aligned) ──
@@ -755,7 +767,7 @@ export function buildReportPdfDefinition(
                 width: 120,
                 alignment: 'center',
                 margin: [0, 0, 0, 4]
-              } : { text: '', margin: [0, 40, 0, 0] },
+              } : { text: '', margin: [0, 0, 0, 0] },
               {
                 text: completedTests[0]?.completedBy || 'Authorised Professional',
                 fontSize: 10,

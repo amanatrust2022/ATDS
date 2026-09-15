@@ -7,6 +7,7 @@ import { AppearanceSettings } from '@/components/features/settings/AppearanceSet
 import { PasswordSettings } from '@/components/features/settings/PasswordSettings';
 import { RiUploadCloud2Line, RiSave3Line, RiLogoutCircleLine } from '@remixicon/react';
 import { Alert, Badge, Button, Field, Input, Select } from '@/components/ui';
+import { isStandardStaffTitle, STANDARD_STAFF_TITLES } from '@/lib/staffTitles';
 
 import styles from './profile.module.css';
 
@@ -41,6 +42,7 @@ function UserSettings() {
 
   const [signatureFile, setSignatureFile] = useState<File | null>(null);
   const [signaturePreview, setSignaturePreview] = useState<string | null>(null);
+  const [usingCustomTitle, setUsingCustomTitle] = useState(false);
 
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' | '' }>({ text: '', type: '' });
@@ -53,6 +55,7 @@ function UserSettings() {
         lastName: profile.last_name || '',
         surname: profile.surname || '',
       });
+      setUsingCustomTitle(Boolean(profile.title && !isStandardStaffTitle(profile.title)));
       if (profile.signature_url) {
         setSignaturePreview(profile.signature_url);
       }
@@ -187,17 +190,20 @@ function UserSettings() {
               <div className={styles.titleRow}>
                 <Field label="Title" required>
                   <Select
-                    value={formData.title}
-                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                    value={usingCustomTitle ? '__custom__' : formData.title}
+                    onChange={(e) => {
+                      if (e.target.value === '__custom__') {
+                        setUsingCustomTitle(true);
+                        setFormData({ ...formData, title: '' });
+                      } else {
+                        setUsingCustomTitle(false);
+                        setFormData({ ...formData, title: e.target.value });
+                      }
+                    }}
                     required
                   >
-                    <option value="Mr.">Mr.</option>
-                    <option value="Ms.">Ms.</option>
-                    <option value="Mrs.">Mrs.</option>
-                    <option value="Dr.">Dr.</option>
-                    <option value="Prof.">Prof.</option>
-                    <option value="MLS.">MLS.</option>
-                    <option value="Pharm.">Pharm.</option>
+                    {STANDARD_STAFF_TITLES.map((title) => <option key={title} value={title}>{title}</option>)}
+                    <option value="__custom__">Custom title…</option>
                   </Select>
                 </Field>
                 <Field label="Surname" required>
@@ -209,6 +215,18 @@ function UserSettings() {
                   />
                 </Field>
               </div>
+
+              {usingCustomTitle && (
+                <Field label="Custom title" required>
+                  <Input
+                    value={formData.title}
+                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                    placeholder="e.g. Chief Medical Scientist"
+                    autoFocus
+                    required
+                  />
+                </Field>
+              )}
 
               <div className={styles.pairRow}>
                 <Field label="First name" required>
