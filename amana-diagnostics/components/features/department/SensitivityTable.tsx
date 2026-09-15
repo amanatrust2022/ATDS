@@ -27,12 +27,18 @@ const MEANING: Record<Exclude<Result, ''>, string> = {
   S: 'Sensitive',
   I: 'Intermediate',
   R: 'Resistant',
+  '+': 'Low sensitivity',
+  '++': 'Moderate sensitivity',
+  '+++': 'High sensitivity',
 };
 
 const WORD_CLASS: Record<Exclude<Result, ''>, string> = {
   S: styles['wordS']!,
   I: styles['wordI']!,
   R: styles['wordR']!,
+  '+': styles['wordS']!,
+  '++': styles['wordS']!,
+  '+++': styles['wordS']!,
 };
 
 function AntibioticColumn({
@@ -101,11 +107,11 @@ function AntibioticColumn({
               value={s.result}
               onChange={(e) => {
                 const val = e.target.value.toUpperCase();
-                if (['S', 'I', 'R', ''].includes(val)) onResult(globalIdx, val as Result);
+                if (['S', 'I', 'R', '+', '++', '+++', ''].includes(val)) onResult(globalIdx, val as Result);
               }}
               onKeyDown={(e) => handleKeyDown(globalIdx, e)}
               placeholder="—"
-              maxLength={1}
+              maxLength={3}
             />
 
             {scored && (
@@ -138,6 +144,20 @@ function AntibioticColumn({
                 </Button>
               )}
             </span>
+            <span className={styles['scoreButtons']}>
+              {(['+', '++', '+++'] as const).map((degree) => (
+                <Button
+                  key={degree}
+                  size="sm"
+                  intent={s.result === degree ? 'primary' : 'secondary'}
+                  aria-pressed={s.result === degree}
+                  aria-label={`${s.antibiotic}: ${MEANING[degree]} (${degree})`}
+                  onClick={() => onResult(globalIdx, degree)}
+                >
+                  {degree}
+                </Button>
+              ))}
+            </span>
           </div>
         );
       },
@@ -146,7 +166,7 @@ function AntibioticColumn({
 
   return (
     <Table
-      caption="Antibiotic sensitivity. Type S, I or R in a result box to score it and move to the next."
+      caption="Antibiotic sensitivity. Record S, I or R, or grade sensitivity as +, ++ or +++."
       className={styles['astTable']}
       columns={columns}
       rows={rows}
@@ -163,7 +183,7 @@ export default function SensitivityTable({ sensitivity, gramReaction, onResult }
     <Card>
       <CardHeader
         title="Antibiotic sensitivity"
-        subtitle="Type S, I or R to score a row and move to the next."
+        subtitle="Record S, I or R, or grade sensitivity as +, ++ or +++."
       />
       <CardBody>
         {!gramReaction ? (

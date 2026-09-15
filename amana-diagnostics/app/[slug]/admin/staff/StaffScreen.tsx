@@ -10,6 +10,7 @@ import { apiBase, reachableOrigin } from '@/lib/cloudOrigin';
 import { accessToken, jsonAuthHeaders } from '@/lib/authHeaders';
 import { useRuntimeMode } from '@/lib/useRuntimeMode';
 import { roleInfo } from '@/lib/staffRoles';
+import { sendPasswordReset } from '@/lib/passwordReset';
 
 import { StaffDirectory } from './StaffDirectory';
 import { StaffProfileModal } from './StaffProfileModal';
@@ -284,6 +285,7 @@ function StaffManagement() {
     id: string,
     role: string,
     undo?: { reversesId: string; previousRole: string },
+    roleLabel?: string,
   ) => {
     const member = staff.find((s) => s.id === id);
     const previousRole: string | undefined = undo?.previousRole ?? member?.role;
@@ -292,6 +294,7 @@ function StaffManagement() {
       const outcome = await callStaffEndpoint(
         {
           action: 'update_role', staffId: id, role,
+          roleLabel: roleLabel ?? null,
           auditId, previousRole, reversesId: undo?.reversesId ?? null,
           actorId: profile?.id ?? null, actorName: profile?.full_name ?? null,
           entityLabel: member?.full_name ?? null,
@@ -321,6 +324,13 @@ function StaffManagement() {
     }
 
     fetchData(true);
+  };
+
+  const updateCustomRole = async (id: string, role: string, roleLabel: string) => {
+    await updateRole(id, role, undefined, roleLabel);
+    setSelectedStaff((previous: any) => previous
+      ? { ...previous, role_label: roleLabel.trim() || null }
+      : previous);
   };
 
   const revokeInvite = async (id: string) => {
@@ -361,6 +371,19 @@ function StaffManagement() {
     fetchData(true);
   };
 
+  const resetStaffPassword = async (member: any) => {
+    if (!member.email) {
+      showToast('This staff member has no email address on file.', 'error');
+      return;
+    }
+    try {
+      await sendPasswordReset(member.email);
+      showToast(`A secure password-reset link was sent to ${member.email}.`);
+    } catch (err: any) {
+      showToast(err?.message || 'The password-reset email could not be sent.', 'error');
+    }
+  };
+
   return (
     <div className={styles['screen']}>
       <StaffDirectory
@@ -392,6 +415,8 @@ function StaffManagement() {
           removeStaff(member);
           setSelectedStaff(null);
         }}
+        onPasswordReset={resetStaffPassword}
+        onCustomRoleChange={updateCustomRole}
       />
     </div>
   );

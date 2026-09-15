@@ -79,6 +79,12 @@ describe('Antibiotic sensitivity', () => {
     expect(onResult).toHaveBeenCalledWith(0, 'S');
   });
 
+  it('offers one, two and three-plus sensitivity degrees', () => {
+    const onResult = show();
+    fireEvent.click(screen.getByRole('button', { name: /ampicillin: high sensitivity \(\+\+\+\)/i }));
+    expect(onResult).toHaveBeenCalledWith(0, '+++');
+  });
+
   it('asks for a gram reaction before loading a panel', () => {
     render(<SensitivityTable sensitivity={[] as unknown as Sensitivity} gramReaction="" onResult={vi.fn()} />);
 

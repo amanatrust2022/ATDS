@@ -256,6 +256,7 @@ export function StaffDirectory({
                           </option>
                         ))}
                       </Select>
+                      {s.role_label && <span className={styles['you']}>{s.role_label}</span>}
                       {s.id === myId && <span className={styles['you']}>You</span>}
                     </span>
                   ),

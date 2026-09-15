@@ -143,9 +143,23 @@ export function StaffPerformance({
         <Stat
           label="Clinical revenue"
           value={naira(totals.totalClinicalRevenue)}
-          note={`Commissions: ${naira(totals.totalCommissions)}`}
+          note={`Discounts: ${naira(totals.totalDiscounts)}`}
           icon={<RiCoinsLine size={18} />}
           tone="neutral"
+        />
+        <Stat
+          label="Gross profit"
+          value={naira(totals.grossProfit)}
+          note={`Test cost: ${naira(totals.totalAverageCost)}`}
+          icon={<RiCoinsLine size={18} />}
+          tone={totals.grossProfit < 0 ? 'critical' : 'success'}
+        />
+        <Stat
+          label="Net profit / loss"
+          value={naira(totals.netProfit)}
+          note={`Referral commission ${naira(totals.totalCommissions)} Â· staff bonus ${naira(totals.totalStaffBonuses)}`}
+          icon={<RiCoinsLine size={18} />}
+          tone={totals.netProfit < 0 ? 'critical' : 'success'}
         />
         <Stat
           label="Turnaround"
@@ -200,7 +214,7 @@ export function StaffPerformance({
                     <option value="revenue">Most revenue</option>
                     <option value="volume">Most work</option>
                     <option value="tat">Fastest turnaround</option>
-                    <option value="commission">Most commission</option>
+                    <option value="commission">Most staff bonus</option>
                   </Select>
                 </Field>
               </div>
@@ -267,10 +281,10 @@ export function StaffPerformance({
                     naira(r.member.role === 'reception' ? r.collectionSum : r.testRev),
                 },
                 {
-                  key: 'commission',
-                  header: 'Commission',
+                  key: 'bonus',
+                  header: 'Staff bonus',
                   numeric: true,
-                  render: (r: StaffRow) => naira(r.commissionSum),
+                  render: (r: StaffRow) => naira(r.bonusSum),
                 },
                 {
                   key: 'tat',

@@ -177,8 +177,8 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
         });
 
         mpsHtml = `
-          <div style="padding: 10px; ${isWidal ? 'border-bottom: 1px dashed #486b8f;' : ''}">
-            <div style="font-weight: bold; border-bottom: 1px solid #ddd; margin-bottom: 8px; font-size: 10pt; color: #486b8f; text-transform: uppercase;">MALARIA PARASITE MICROSCOPY REPORT</div>
+          <div style="padding: 10px; ${isWidal ? 'border-bottom: 1px dashed #52779b;' : ''}">
+            <div style="font-weight: bold; border-bottom: 1px solid #ddd; margin-bottom: 8px; font-size: 10pt; color: #52779b; text-transform: uppercase;">MALARIA PARASITE MICROSCOPY REPORT</div>
             <table style="width: 100%; border-collapse: collapse; margin-top: 5px;">
               <tbody>
                 <tr>
@@ -239,13 +239,13 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
 
         widalHtml = `
           <div style="padding: 10px;">
-            <div style="font-weight: bold; border-bottom: 1px solid #ddd; margin-bottom: 8px; font-size: 10pt; color: #486b8f; text-transform: uppercase;">WIDAL AGGLUTINATION REACTION TITRES</div>
+            <div style="font-weight: bold; border-bottom: 1px solid #ddd; margin-bottom: 8px; font-size: 10pt; color: #52779b; text-transform: uppercase;">WIDAL AGGLUTINATION REACTION TITRES</div>
             <table style="width: 100%; border-collapse: collapse; margin-top: 5px;">
               <thead>
                 <tr style="background: #f2f2f2;">
-                  <th style="padding: 6px 8px; border: 1px dotted #486b8f; color: #486b8f; font-weight: bold; text-align: left; font-size: 10pt; background: #f2f2f2;">Antigen</th>
-                  <th style="padding: 6px 8px; border: 1px dotted #486b8f; color: #486b8f; font-weight: bold; text-align: center; font-size: 10pt; background: #f2f2f2; width: 40%;">O Titre</th>
-                  <th style="padding: 6px 8px; border: 1px dotted #486b8f; color: #486b8f; font-weight: bold; text-align: center; font-size: 10pt; background: #f2f2f2; width: 40%;">H Titre</th>
+                  <th style="padding: 6px 8px; border: 1px dotted #52779b; color: #52779b; font-weight: bold; text-align: left; font-size: 10pt; background: #f2f2f2;">Antigen</th>
+                  <th style="padding: 6px 8px; border: 1px dotted #52779b; color: #52779b; font-weight: bold; text-align: center; font-size: 10pt; background: #f2f2f2; width: 40%;">O Titre</th>
+                  <th style="padding: 6px 8px; border: 1px dotted #52779b; color: #52779b; font-weight: bold; text-align: center; font-size: 10pt; background: #f2f2f2; width: 40%;">H Titre</th>
                 </tr>
               </thead>
               <tbody>
@@ -290,14 +290,14 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
             ${extraSimple ? '' : `<td style="padding: 6px 8px; font-size: 10pt; color: #555;">${sci(r.unit) || '—'}</td><td style="padding: 6px 8px; font-size: 10pt; color: #555;">${sci(r.range) || '—'}</td>`}
           </tr>`).join('');
         extraHtml = `
-          <div style="padding: 10px; border-top: 1px dashed #486b8f; page-break-inside: avoid;">
-            <div style="font-weight: bold; border-bottom: 1px solid #ddd; margin-bottom: 8px; font-size: 10pt; color: #486b8f; text-transform: uppercase;">Additional Parameters</div>
+          <div style="padding: 10px; border-top: 1px dashed #52779b; page-break-inside: avoid;">
+            <div style="font-weight: bold; border-bottom: 1px solid #ddd; margin-bottom: 8px; font-size: 10pt; color: #52779b; text-transform: uppercase;">Additional Parameters</div>
             <table style="width: 100%; border-collapse: collapse; margin-top: 5px;">
               <thead>
-                <tr style="background: #f2f2f2; border-bottom: 2px solid #486b8f;">
-                  <th style="padding: 6px 8px; color: #486b8f; font-weight: bold; text-align: left; font-size: 10pt;">${extraSimple ? 'Investigation' : 'Parameter'}</th>
-                  <th style="padding: 6px 8px; color: #486b8f; font-weight: bold; text-align: left; font-size: 10pt;">Result</th>
-                  ${extraSimple ? '' : '<th style="padding: 6px 8px; color: #486b8f; font-weight: bold; text-align: left; font-size: 10pt;">Unit</th><th style="padding: 6px 8px; color: #486b8f; font-weight: bold; text-align: left; font-size: 10pt;">Reference Range</th>'}
+                <tr style="background: #f2f2f2; border-bottom: 2px solid #52779b;">
+                  <th style="padding: 6px 8px; color: #52779b; font-weight: bold; text-align: left; font-size: 10pt;">${extraSimple ? 'Investigation' : 'Parameter'}</th>
+                  <th style="padding: 6px 8px; color: #52779b; font-weight: bold; text-align: left; font-size: 10pt;">Result</th>
+                  ${extraSimple ? '' : '<th style="padding: 6px 8px; color: #52779b; font-weight: bold; text-align: left; font-size: 10pt;">Unit</th><th style="padding: 6px 8px; color: #52779b; font-weight: bold; text-align: left; font-size: 10pt;">Reference Range</th>'}
                 </tr>
               </thead>
               <tbody>
@@ -309,8 +309,8 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
       }
 
       return `
-        <div class="test-block mps-widal-block" style="page-break-inside: avoid; border: 1px solid #486b8f; margin-bottom: 12px;">
-          <div class="test-header" style="background: #486b8f; color: white; padding: 6px 10px; font-weight: bold; font-size: 11pt; text-align: center;">
+        <div class="test-block mps-widal-block" style="page-break-inside: avoid; border: 1px solid #52779b; margin-bottom: 12px;">
+          <div class="test-header" style="background: #52779b; color: white; padding: 6px 10px; font-weight: bold; font-size: 11pt; text-align: center;">
             ${esc(t.testName)}
           </div>
           ${packageOrigin}
@@ -325,7 +325,7 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
     if (isFreeText) {
       const radData = deserializeRadiologyResults(t.results || []);
       const imageSection = radData.images && radData.images.length > 0 
-        ? `<div style="margin-top:20px; font-weight:bold; font-size:10pt; color:#486b8f; text-transform:uppercase; border-bottom:1px solid #486b8f; padding-bottom:4px; margin-bottom:10px;">Attached Imagery</div>
+        ? `<div style="margin-top:20px; font-weight:bold; font-size:10pt; color:#52779b; text-transform:uppercase; border-bottom:1px solid #52779b; padding-bottom:4px; margin-bottom:10px;">Attached Imagery</div>
            <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:15px; page-break-inside:avoid;">
              ${radData.images.map(img => `
                <div style="border:1px solid #ddd; padding:8px; background:white; text-align:center; page-break-inside:avoid;">
@@ -338,7 +338,7 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
 
       return `
         <div class="test-block radiology-block" style="border: none; margin-bottom: 24px;">
-          <div style="font-weight: bold; border-bottom: 2px solid #486b8f; margin-bottom: 12px; font-size: 12pt; color: #486b8f; text-transform: uppercase; padding-bottom: 4px; text-align: center;">
+          <div style="font-weight: bold; border-bottom: 2px solid #52779b; margin-bottom: 12px; font-size: 12pt; color: #52779b; text-transform: uppercase; padding-bottom: 4px; text-align: center;">
             ${esc(t.testName)}
           </div>
           ${packageOrigin}
@@ -346,8 +346,8 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
             ${markScriptsInHtml(convertTextToFormattedHtml(radData.findings))}
           </div>
           ${radData.impression ? `
-            <div style="background: rgba(72, 107, 143, 0.07); border-left: 4px solid #486b8f; padding: 12px; margin-top: 15px; page-break-inside: avoid; font-family: 'Times New Roman', Times, serif;">
-              <div style="font-weight: bold; color: #486b8f; font-size: 11pt; text-transform: uppercase; margin-bottom: 4px;">Impression / Conclusion:</div>
+            <div style="background: rgba(82, 119, 155, 0.07); border-left: 4px solid #52779b; padding: 12px; margin-top: 15px; page-break-inside: avoid; font-family: 'Times New Roman', Times, serif;">
+              <div style="font-weight: bold; color: #52779b; font-size: 11pt; text-transform: uppercase; margin-bottom: 4px;">Impression / Conclusion:</div>
               <div style="font-size: 11pt; line-height: 1.5; font-weight: bold; color: #111827;">
                 ${markScriptsInHtml(convertTextToFormattedHtml(stripImpressionHeading(radData.impression)))}
               </div>
@@ -400,6 +400,7 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
           if (match) {
             const antibioticText = `${match[1]} (${match[2]})`;
             if (val === 'S') sensitiveList.push(antibioticText);
+            else if (/^\+{1,3}$/.test(val)) sensitiveList.push(`${antibioticText} â€” ${val}`);
             else if (val === 'I') intermediateList.push(antibioticText);
             else if (val === 'R') resistantList.push(antibioticText);
           }
@@ -421,22 +422,22 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
       }
 
       return `
-        <div class="test-block mcs-block" style="page-break-inside: avoid; border: 1px solid #486b8f; margin-bottom: 12px;">
-          <div class="test-header" style="background: #486b8f; color: white; padding: 6px 10px; font-weight: bold; font-size: 11pt; text-align: center;">
+        <div class="test-block mcs-block" style="page-break-inside: avoid; border: 1px solid #52779b; margin-bottom: 12px;">
+          <div class="test-header" style="background: #52779b; color: white; padding: 6px 10px; font-weight: bold; font-size: 11pt; text-align: center;">
             ${esc(t.testName)}
           </div>
           ${packageOrigin}
           
           <div class="mcs-flex" style="display: flex; border-bottom: 1px solid #ddd;">
             <div class="mcs-border-right" style="flex: 1; padding: 8px; border-right: 1px solid #ddd;">
-              <div style="font-weight: bold; border-bottom: 1px solid #ddd; margin-bottom: 5px; font-size: 10pt; color: #486b8f; text-transform: uppercase;">Macroscopy</div>
+              <div style="font-weight: bold; border-bottom: 1px solid #ddd; margin-bottom: 5px; font-size: 10pt; color: #52779b; text-transform: uppercase;">Macroscopy</div>
               <table style="width: 100%; margin-top: 0; border: none; border-collapse: collapse;">
                 <tr style="border: none;"><td style="padding: 2px 4px; font-weight: 600; border: none; font-size: 10pt; width: 50%;">Colour:</td><td style="padding: 2px 4px; border: none; font-size: 10pt;">${esc(colour)}</td></tr>
                 <tr style="border: none;"><td style="padding: 2px 4px; font-weight: 600; border: none; font-size: 10pt;">Appearance:</td><td style="padding: 2px 4px; border: none; font-size: 10pt;">${esc(appearance)}</td></tr>
               </table>
             </div>
             <div style="flex: 1; padding: 8px;">
-              <div style="font-weight: bold; border-bottom: 1px solid #ddd; margin-bottom: 5px; font-size: 10pt; color: #486b8f; text-transform: uppercase;">Microscopy</div>
+              <div style="font-weight: bold; border-bottom: 1px solid #ddd; margin-bottom: 5px; font-size: 10pt; color: #52779b; text-transform: uppercase;">Microscopy</div>
               <table style="width: 100%; margin-top: 0; border: none; border-collapse: collapse;">
                 <tbody>
                   ${microscopyRows.length > 0 ? microscopyRows.join('') : '<tr><td style="padding: 2px 4px; border: none; font-size: 10pt; font-style: italic; color: #666;">No microscopy parameter recorded</td></tr>'}
@@ -446,7 +447,7 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
           </div>
 
           <div style="padding: 8px; border-bottom: ${!isNoGrowth ? '1px solid #ddd' : 'none'};">
-            <div style="font-weight: bold; border-bottom: 1px solid #ddd; margin-bottom: 5px; font-size: 10pt; color: #486b8f; text-transform: uppercase;">Culture Findings</div>
+            <div style="font-weight: bold; border-bottom: 1px solid #ddd; margin-bottom: 5px; font-size: 10pt; color: #52779b; text-transform: uppercase;">Culture Findings</div>
             <table style="width: 100%; margin-top: 0; border: none; border-collapse: collapse;">
               <tr style="border: none;">
                 <td style="padding: 2px 4px; font-weight: 600; border: none; font-size: 10pt; width: 15%;">Growth:</td>
@@ -471,7 +472,7 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
 
           ${!isNoGrowth ? `
             <div style="padding: 8px;">
-              <div style="font-weight: bold; border-bottom: 1px solid #ddd; margin-bottom: 5px; font-size: 10pt; color: #486b8f; text-transform: uppercase;">Antibiotic Sensitivity Profile</div>
+              <div style="font-weight: bold; border-bottom: 1px solid #ddd; margin-bottom: 5px; font-size: 10pt; color: #52779b; text-transform: uppercase;">Antibiotic Sensitivity Profile</div>
               <table style="width: 100%; border-collapse: collapse; margin-top: 4px;">
                 <thead>
                   <tr style="background: #f2f2f2;">
@@ -531,7 +532,7 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
         ${orgLine2 ? `<div class="org-name-2">${esc(orgLine2)}</div>` : ''}
         ${orgAddress ? `<div class="org-addr">${esc(orgAddress)}</div>` : ''}
         ${orgPhone ? `<div class="org-contact"><b>Phone;</b> ${esc(orgPhone)}</div>` : ''}
-        ${orgEmail ? `<div class="org-email"><b>Email;</b> <span style="color:#486b8f">${esc(orgEmail)}</span></div>` : ''}
+        ${orgEmail ? `<div class="org-email"><b>Email;</b> <span style="color:#52779b">${esc(orgEmail)}</span></div>` : ''}
       `}
     </div>
     ${radiologyOnly ? '' : `<div class="report-title">${reportTitle}</div>`}
@@ -652,7 +653,7 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
           print-color-adjust: exact !important;
         }
       }
-      .header { text-align: center; border-bottom: 2px solid #486b8f; padding-bottom: 0; margin-bottom: 0; margin-left: 0; margin-right: 0; padding-left: 0; padding-right: 0; }
+      .header { text-align: center; border-bottom: 2px solid #52779b; padding-bottom: 0; margin-bottom: 0; margin-left: 0; margin-right: 0; padding-left: 0; padding-right: 0; }
       /* Fallback styling so letterheads saved before style-inlining still render
          their lists/tables/headings correctly. New letterheads carry inline styles
          that override these. */
@@ -661,25 +662,25 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
       .custom-letterhead p { margin: 0 0 4px 0; }
       .custom-letterhead div { margin: 0; }
       .custom-letterhead *:last-child { margin-bottom: 0px !important; padding-bottom: 0px !important; }
-      .org-name-1 { font-size: 40pt; white-space: nowrap; color: #486b8f; margin: 0; padding: 0; line-height: 1; }
-      .org-name-2 { font-size: 26pt; white-space: nowrap; color: #486b8f; margin: 0; padding: 0; line-height: 1; }
+      .org-name-1 { font-size: 40pt; white-space: nowrap; color: #52779b; margin: 0; padding: 0; line-height: 1; }
+      .org-name-2 { font-size: 26pt; white-space: nowrap; color: #52779b; margin: 0; padding: 0; line-height: 1; }
       .org-addr { font-size: 14pt; color: #222a35; margin: 0; padding: 0; line-height: 1; }
       .org-contact { font-size: 14pt; color: #c00000; margin: 0; padding: 0; line-height: 1; }
       .org-email { font-size: 14pt; margin: 0; padding: 0; line-height: 1; padding-bottom: 5px; }
-      .report-title { text-align: center; font-size: 14pt; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; margin: 2.5px 0 10px; color: #486b8f; text-decoration: underline; }
-      .patient-info { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; font-size: 12pt; border: 1px solid #486b8f; padding: 12px; }
+      .report-title { text-align: center; font-size: 14pt; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; margin: 2.5px 0 10px; color: #52779b; text-decoration: underline; }
+      .patient-info { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; font-size: 12pt; border: 1px solid #52779b; padding: 12px; }
       .pi-label { font-weight: bold; margin-right: 8px; }
       .test-block { margin-bottom: 18px; border: 1px solid #ddd; }
       /* The name of the investigation is the heading of its section, so it is
          centred over the section it heads rather than tucked into the left
          corner of the blue bar. Every investigation block uses this, including
          the culture and Widal/MPs blocks that carry their own inline copy. */
-      .test-header { background: #486b8f; color: white; padding: 7px 12px; font-size: 11pt; font-weight: bold; text-align: center; }
-      .package-origin { padding: 3px 8px; background: rgba(72, 107, 143, 0.07); color: #333; font-size: 9pt; font-weight: bold; text-align: center; }
+      .test-header { background: #52779b; color: white; padding: 7px 12px; font-size: 11pt; font-weight: bold; text-align: center; }
+      .package-origin { padding: 3px 8px; background: rgba(82, 119, 155, 0.07); color: #333; font-size: 9pt; font-weight: bold; text-align: center; }
       table { width: 100%; border-collapse: collapse; margin-top: 16px; }
-      th { background: #486b8f; color: white; padding: 6px 8px; text-align: left; font-size: 11pt; }
+      th { background: #52779b; color: white; padding: 6px 8px; text-align: left; font-size: 11pt; }
       td { padding: 5px 8px; border-bottom: 1px solid #eee; font-size: 11pt; }
-      .notes { padding: 6px 12px; font-size: 10pt; background: rgba(72, 107, 143, 0.05); border-top: 1px solid rgba(72, 107, 143, 0.2); font-style: italic; }
+      .notes { padding: 6px 12px; font-size: 10pt; background: rgba(82, 119, 155, 0.05); border-top: 1px solid rgba(82, 119, 155, 0.2); font-style: italic; }
       .fbc-block { margin-bottom: 10px; }
       .fbc-block table { margin-top: 4px; }
       .fbc-block .test-header { padding: 5px 10px; font-size: 10pt; }
@@ -958,18 +959,18 @@ export const getLedgerStatementTemplate = (
     <!DOCTYPE html><html><head><title>Account Statement - ${account.name}</title>
     <style>
       body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; margin: 20px; font-size: 10pt; color: #333; line-height: 1.4; }
-      .header-container { display: flex; align-items: center; border-bottom: 3px double #486b8f; padding-bottom: 10px; margin-bottom: 20px; }
-      .logo-section { width: 70px; height: 70px; display: flex; align-items: center; justify-content: center; background: #486b8f; color: white; font-size: 28px; font-weight: bold; border-radius: 8px; margin-right: 15px; }
+      .header-container { display: flex; align-items: center; border-bottom: 3px double #52779b; padding-bottom: 10px; margin-bottom: 20px; }
+      .logo-section { width: 70px; height: 70px; display: flex; align-items: center; justify-content: center; background: #52779b; color: white; font-size: 28px; font-weight: bold; border-radius: 8px; margin-right: 15px; }
       .title-section { flex-grow: 1; }
-      .org-name-1 { font-size: 18pt; font-weight: bold; color: #486b8f; margin: 0; line-height: 1.2; }
+      .org-name-1 { font-size: 18pt; font-weight: bold; color: #52779b; margin: 0; line-height: 1.2; }
       .org-name-2 { font-size: 11pt; font-weight: bold; color: #555; margin: 0; margin-top: 2px; text-transform: uppercase; }
       .org-details { font-size: 8pt; color: #666; margin-top: 5px; line-height: 1.3; }
-      .statement-title { font-size: 14pt; font-weight: bold; text-align: center; text-transform: uppercase; color: #486b8f; margin: 15px 0; border-bottom: 1px solid #ddd; padding-bottom: 5px; }
+      .statement-title { font-size: 14pt; font-weight: bold; text-align: center; text-transform: uppercase; color: #52779b; margin: 15px 0; border-bottom: 1px solid #ddd; padding-bottom: 5px; }
       .account-summary { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; background: #f8fafc; border: 1px solid #e2e8f0; padding: 15px; border-radius: 6px; margin-bottom: 20px; }
       .summary-item { font-size: 9.5pt; margin-bottom: 4px; }
       .summary-label { font-weight: bold; color: #475569; }
       table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 9pt; }
-      th { background: #486b8f; color: white; font-weight: bold; text-align: left; padding: 10px 8px; text-transform: uppercase; font-size: 8.5pt; }
+      th { background: #52779b; color: white; font-weight: bold; text-align: left; padding: 10px 8px; text-transform: uppercase; font-size: 8.5pt; }
       .footer { margin-top: 40px; border-top: 1px dashed #ccc; padding-top: 15px; font-size: 8pt; text-align: center; color: #777; line-height: 1.4; }
     </style></head><body>
     <div class="header-container">

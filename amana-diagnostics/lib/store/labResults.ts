@@ -192,7 +192,7 @@ export interface McsFormState {
     incubationPeriod: string;
     incubationTemperature: string;
   };
-  sensitivity: { antibiotic: string; code: string; result: 'S' | 'I' | 'R' | '' }[];
+  sensitivity: { antibiotic: string; code: string; result: 'S' | 'I' | 'R' | '+' | '++' | '+++' | '' }[];
 }
 
 /** A blank MCS workup, as a technologist sees it on first opening the test. */
@@ -296,7 +296,12 @@ export const deserializeMcsResults = (results: any[]): McsFormState => {
       if (match) {
         const antibiotic = match[1];
         const code = match[2];
-        mcsState.sensitivity.push({ antibiotic, code, result: val });
+        const allowed = ['S', 'I', 'R', '+', '++', '+++'];
+        mcsState.sensitivity.push({
+          antibiotic,
+          code,
+          result: allowed.includes(val) ? val as McsFormState['sensitivity'][number]['result'] : '',
+        });
       }
     }
   });

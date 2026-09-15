@@ -31,7 +31,7 @@ export async function POST(request: Request) {
       // The screen's audit row for this change. The hub writes it now and the
       // command carries the same id, so the cloud's route finds it already
       // there and does not write a second.
-      auditId, previousRole, reversesId, actorId, actorName, entityLabel,
+      auditId, previousRole, reversesId, actorId, actorName, entityLabel, roleLabel,
     } = await request.json();
     if (!staffId || !action) {
       return NextResponse.json({ error: 'Missing staffId or action' }, { status: 400 });
@@ -81,10 +81,11 @@ export async function POST(request: Request) {
       if (!role || !ASSIGNABLE_ROLES.includes(role)) {
         return NextResponse.json({ error: `Unknown role: ${role}` }, { status: 400 });
       }
-      db.prepare('UPDATE profiles SET role = ? WHERE id = ?').run(role, staffId);
+      const cleanRoleLabel = typeof roleLabel === 'string' ? roleLabel.trim().slice(0, 80) || null : null;
+      db.prepare('UPDATE profiles SET role = ?, role_label = ? WHERE id = ?').run(role, cleanRoleLabel, staffId);
       const id = audit('staff.role_changed', { role: previousRole ?? existing.role ?? null }, { role });
       queueSync(db, `${COMMAND_PREFIX}api/staff/update`, 'INSERT', `${staffId}:role`, {
-        action, staffId, role, auditId: id, previousRole: previousRole ?? existing.role ?? null,
+        action, staffId, role, roleLabel: cleanRoleLabel, auditId: id, previousRole: previousRole ?? existing.role ?? null,
         reversesId: reversesId ?? null, actorName: actorName ?? null,
       });
       return NextResponse.json({ success: true, queued: true, auditId: id });

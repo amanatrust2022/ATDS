@@ -35,18 +35,24 @@ export async function POST(request: Request) {
     }
 
     const stmt = db.prepare(`
-      INSERT INTO test_prices (organization_id, test_id, test_name, price, commission_type, commission_value)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO test_prices (organization_id, test_id, test_name, price, commission_type, commission_value, average_cost, staff_bonus_type, staff_bonus_value)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(organization_id, test_id) DO UPDATE SET
         price = excluded.price,
         commission_type = excluded.commission_type,
-        commission_value = excluded.commission_value
+        commission_value = excluded.commission_value,
+        average_cost = excluded.average_cost,
+        staff_bonus_type = excluded.staff_bonus_type,
+        staff_bonus_value = excluded.staff_bonus_value
     `);
 
     for (const p of prices) {
       const commType = p.commission_type || p.commissionType || 'percentage';
       const commVal = p.commission_value ?? p.commissionValue ?? 0;
-      stmt.run(organizationId, p.test_id || p.testId, p.test_name || p.testName, p.price, commType, commVal);
+      const averageCost = p.average_cost ?? p.averageCost ?? 0;
+      const bonusType = p.staff_bonus_type ?? p.staffBonusType ?? 'none';
+      const bonusValue = p.staff_bonus_value ?? p.staffBonusValue ?? 0;
+      stmt.run(organizationId, p.test_id || p.testId, p.test_name || p.testName, p.price, commType, commVal, averageCost, bonusType, bonusValue);
 
       // Log upsert in outbox (can sync using organization_id + test_id as composite key)
       queueSync(db, 'test_prices', 'UPDATE', `${organizationId}:${p.test_id || p.testId}`, {
@@ -55,7 +61,10 @@ export async function POST(request: Request) {
         test_name: p.test_name || p.testName,
         price: p.price,
         commission_type: commType,
-        commission_value: commVal
+        commission_value: commVal,
+        average_cost: averageCost,
+        staff_bonus_type: bonusType,
+        staff_bonus_value: bonusValue
       });
     }
 

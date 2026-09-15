@@ -18,7 +18,8 @@ const prices: TestPrice[] = [
 
 const detail = (over: Partial<SelectedTestDetail> = {}): SelectedTestDetail => ({
   testId: 'fbc', testName: 'Full Blood Count', department: 'lab', specimen: 'Blood',
-  price: 5000, commissionType: 'percentage', commissionValue: 10, ...over,
+  price: 5000, commissionType: 'percentage', commissionValue: 10,
+  averageCost: 0, staffBonusType: 'none', staffBonusValue: 0, ...over,
 });
 
 describe('buildSelectedTestDetails', () => {
@@ -28,6 +29,18 @@ describe('buildSelectedTestDetails', () => {
     expect(details[0].testName).toBe('Full Blood Count');
     expect(details[0].price).toBe(5000);
     expect(details[1].commissionType).toBe('flat');
+  });
+
+  it('does not classify an ordinary custom investigation with an empty member array as a package', () => {
+    const custom = { ...catalogue[0]!, id: 'custom-ferritin', investigationIds: [], kind: 'investigation' as const };
+    const details = buildSelectedTestDetails(['custom-ferritin'], [custom], []);
+    expect(buildPatientTests(details, [custom], false).map((test) => test.testId)).toEqual(['custom-ferritin']);
+  });
+
+  it('refuses a partial package instead of silently dropping missing investigations', () => {
+    const pkg = { ...catalogue[0]!, id: 'pkg', name: 'Panel', kind: 'package' as const, investigationIds: ['fbc', 'missing'] };
+    const details = buildSelectedTestDetails(['pkg'], [...catalogue, pkg], []);
+    expect(() => buildPatientTests(details, [...catalogue, pkg], false)).toThrow(/incomplete.*missing/i);
   });
 
   it('falls back to a zero price when the test has no price entry', () => {

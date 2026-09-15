@@ -39,6 +39,10 @@ export const toPatientTest = (t: any): PatientTest => ({
   commissionType: t.commission_type,
   commissionValue: t.commission_value,
   commissionAmount: t.commission_amount,
+  averageCost: t.average_cost,
+  staffBonusType: t.staff_bonus_type,
+  staffBonusValue: t.staff_bonus_value,
+  staffBonusAmount: t.staff_bonus_amount,
   packageId: t.package_id,
   packageName: t.package_name,
 });
@@ -183,6 +187,10 @@ export const toTestRowsWithBilling = (
   commission_type: t.commissionType || 'none',
   commission_value: t.commissionValue ?? 0,
   commission_amount: t.commissionAmount ?? 0,
+  average_cost: t.averageCost ?? 0,
+  staff_bonus_type: t.staffBonusType || 'none',
+  staff_bonus_value: t.staffBonusValue ?? 0,
+  staff_bonus_amount: t.staffBonusAmount ?? 0,
   package_id: t.packageId || null,
   package_name: t.packageName || null,
 }));

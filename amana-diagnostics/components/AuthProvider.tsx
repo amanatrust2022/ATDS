@@ -14,6 +14,7 @@ export type Profile = {
   last_name?: string;
   signature_url?: string;
   role: 'reception' | 'lab' | 'lab_tech' | 'radiology' | 'admin';
+  role_label?: string | null;
   organization_id: string | null;
 };
 
@@ -117,7 +118,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         try {
           const { data, error } = await supabase
             .from('profiles')
-            .select('id, full_name, role, organization_id, email')
+            .select('id, full_name, role, role_label, organization_id, email')
             .eq('id', userId)
             .maybeSingle();
 

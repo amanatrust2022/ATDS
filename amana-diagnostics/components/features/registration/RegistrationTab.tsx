@@ -291,7 +291,7 @@ export default function RegistrationTab({
     try {
       const slipNumber = await generateSlipNumber(organization?.id || '');
 
-      const tests = buildPatientTests(selectedTestDetails, catalogue, isReferral);
+      const tests = buildPatientTests(selectedTestDetails, catalogue, isReferral, testPrices);
 
       const commissionTotal = tests.reduce((sum, t) => sum + (t.commissionAmount || 0), 0);
 

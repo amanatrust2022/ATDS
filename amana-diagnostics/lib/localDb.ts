@@ -259,6 +259,10 @@ export function initDb(db: any) {
       commission_type TEXT DEFAULT 'none',
       commission_value REAL DEFAULT 0.0,
       commission_amount REAL DEFAULT 0.0,
+      average_cost REAL DEFAULT 0.0,
+      staff_bonus_type TEXT DEFAULT 'none',
+      staff_bonus_value REAL DEFAULT 0.0,
+      staff_bonus_amount REAL DEFAULT 0.0,
       package_id TEXT,
       package_name TEXT,
       updated_at TEXT,
@@ -290,6 +294,9 @@ export function initDb(db: any) {
       price REAL DEFAULT 0.0,
       commission_type TEXT DEFAULT 'percentage',
       commission_value REAL DEFAULT 0.0,
+      average_cost REAL DEFAULT 0.0,
+      staff_bonus_type TEXT DEFAULT 'none',
+      staff_bonus_value REAL DEFAULT 0.0,
       PRIMARY KEY (organization_id, test_id)
     );
   `);
@@ -340,6 +347,7 @@ export function initDb(db: any) {
       last_name TEXT,
       signature_url TEXT,
       role TEXT NOT NULL,
+      role_label TEXT,
       organization_id TEXT,
       email TEXT
     );
@@ -391,11 +399,19 @@ export function initDb(db: any) {
   // 12. Safe Migrations for existing databases
     addColumn(db, 'test_prices', 'commission_type', `commission_type TEXT DEFAULT 'percentage'`);
     addColumn(db, 'test_prices', 'commission_value', `commission_value REAL DEFAULT 0.0`);
+    addColumn(db, 'test_prices', 'average_cost', `average_cost REAL DEFAULT 0.0`);
+    addColumn(db, 'test_prices', 'staff_bonus_type', `staff_bonus_type TEXT DEFAULT 'none'`);
+    addColumn(db, 'test_prices', 'staff_bonus_value', `staff_bonus_value REAL DEFAULT 0.0`);
 
     addColumn(db, 'patient_tests', 'price', `price REAL DEFAULT 0.0`);
     addColumn(db, 'patient_tests', 'commission_type', `commission_type TEXT DEFAULT 'none'`);
     addColumn(db, 'patient_tests', 'commission_value', `commission_value REAL DEFAULT 0.0`);
     addColumn(db, 'patient_tests', 'commission_amount', `commission_amount REAL DEFAULT 0.0`);
+    addColumn(db, 'patient_tests', 'average_cost', `average_cost REAL DEFAULT 0.0`);
+    addColumn(db, 'patient_tests', 'staff_bonus_type', `staff_bonus_type TEXT DEFAULT 'none'`);
+    addColumn(db, 'patient_tests', 'staff_bonus_value', `staff_bonus_value REAL DEFAULT 0.0`);
+    addColumn(db, 'patient_tests', 'staff_bonus_amount', `staff_bonus_amount REAL DEFAULT 0.0`);
+    addColumn(db, 'profiles', 'role_label', `role_label TEXT`);
     addColumn(db, 'patient_tests', 'package_id', `package_id TEXT`);
     addColumn(db, 'patient_tests', 'package_name', `package_name TEXT`);
     addColumn(db, 'custom_tests', 'kind', `kind TEXT NOT NULL DEFAULT 'investigation'`);

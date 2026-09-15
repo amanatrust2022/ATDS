@@ -112,7 +112,7 @@ export function buildReportPdfDefinition(
 
   const signatureUrl = completedTests[0]?.completedBySignatureUrl || null;
 
-  const blue = '#486b8f';
+  const blue = '#52779b';
   const reportTitle = completedTests.every(t => t.department === 'lab')
     ? 'LABORATORY RESULT REPORT'
     : completedTests.every(t => t.department === 'radiology')
@@ -467,6 +467,7 @@ export function buildReportPdfDefinition(
           if (match) {
             const antibioticText = `${match[1]} (${match[2]})`;
             if (val === 'S') sensitiveList.push(antibioticText);
+            else if (/^\+{1,3}$/.test(val)) sensitiveList.push(`${antibioticText} â€” ${val}`);
             else if (val === 'I') intermediateList.push(antibioticText);
             else if (val === 'R') resistantList.push(antibioticText);
           }

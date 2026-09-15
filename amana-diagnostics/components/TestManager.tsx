@@ -120,6 +120,9 @@ export default function TestManager({
   const [formPrice, setFormPrice] = useState(0);
   const [formCommType, setFormCommType] = useState<'percentage' | 'flat' | 'none'>('percentage');
   const [formCommValue, setFormCommValue] = useState(0);
+  const [formAverageCost, setFormAverageCost] = useState(0);
+  const [formBonusType, setFormBonusType] = useState<'percentage' | 'flat' | 'none'>('none');
+  const [formBonusValue, setFormBonusValue] = useState(0);
 
   const clearMessages = () => {
     setError('');
@@ -214,6 +217,9 @@ export default function TestManager({
       setFormPrice(priced?.price ?? 0);
       setFormCommType((priced?.commission_type as any) || 'percentage');
       setFormCommValue(priced?.commission_value ?? 0);
+      setFormAverageCost(priced?.average_cost ?? 0);
+      setFormBonusType(priced?.staff_bonus_type ?? 'none');
+      setFormBonusValue(priced?.staff_bonus_value ?? 0);
     },
     [testPrices],
   );
@@ -237,6 +243,9 @@ export default function TestManager({
     setFormPrice(0);
     setFormCommType('percentage');
     setFormCommValue(0);
+    setFormAverageCost(0);
+    setFormBonusType('none');
+    setFormBonusValue(0);
   };
 
   const handleStartPackage = () => {
@@ -358,6 +367,9 @@ export default function TestManager({
               price: isAdmin ? formPrice : 0,
               commission_type: isAdmin ? formCommType : 'none',
               commission_value: isAdmin ? formCommValue : 0,
+              average_cost: isAdmin ? formAverageCost : 0,
+              staff_bonus_type: isAdmin ? formBonusType : 'none',
+              staff_bonus_value: isAdmin ? formBonusValue : 0,
             },
           ],
           organizationId,
@@ -461,6 +473,9 @@ export default function TestManager({
                 price: formPrice,
                 commission_type: formCommType,
                 commission_value: formCommValue,
+                average_cost: formAverageCost,
+                staff_bonus_type: formBonusType,
+                staff_bonus_value: formBonusValue,
               },
             ],
             organizationId,
@@ -840,6 +855,43 @@ export default function TestManager({
                         onChange={(e) =>
                           setFormCommValue(Math.max(0, parseFloat(e.target.value) || 0))
                         }
+                      />
+                    </Field>
+                    <Field label="Average test cost" hint="Consumables, reagents and outsourced cost per completed test.">
+                      <Input
+                        type="number"
+                        min={0}
+                        numeric
+                        prefix="â‚¦"
+                        placeholder="0"
+                        value={formAverageCost || ''}
+                        onChange={(e) => setFormAverageCost(Math.max(0, parseFloat(e.target.value) || 0))}
+                      />
+                    </Field>
+                    <Field label="Staff bonus type" hint="Paid to the staff member who completes the investigation.">
+                      <Select
+                        value={formBonusType}
+                        onChange={(e) => {
+                          const value = e.target.value as typeof formBonusType;
+                          setFormBonusType(value);
+                          if (value === 'none') setFormBonusValue(0);
+                        }}
+                      >
+                        <option value="none">No staff bonus</option>
+                        <option value="percentage">Percentage of test price</option>
+                        <option value="flat">Flat amount</option>
+                      </Select>
+                    </Field>
+                    <Field label="Staff bonus value" hint="Amount Paid to the staff member who completes the investigation.">
+                      <Input
+                        type="number"
+                        min={0}
+                        numeric
+                        prefix={formBonusType === 'flat' ? 'â‚¦' : '%'}
+                        placeholder="0"
+                        disabled={formBonusType === 'none'}
+                        value={formBonusType === 'none' ? '' : formBonusValue || ''}
+                        onChange={(e) => setFormBonusValue(Math.max(0, parseFloat(e.target.value) || 0))}
                       />
                     </Field>
                   </div>

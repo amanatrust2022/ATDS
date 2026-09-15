@@ -15,6 +15,7 @@ import {
   departmentStats,
   trendSeries,
   chartGeometry,
+  discountOf,
   type PerformanceData,
 } from './staffPerformance';
 
@@ -100,6 +101,21 @@ describe('commission', () => {
   it('is nothing when no commission was agreed', () => {
     expect(commissionOf({ price: 10000, commission_type: 'none' })).toBe(0);
     expect(commissionOf({})).toBe(0);
+  });
+});
+
+describe('profit and loss', () => {
+  it('allocates a visit discount to each test in proportion to its price', () => {
+    expect(discountOf({ price: 4000, patient_total_amount: 10000, patient_discount_amount: 1000 })).toBe(400);
+  });
+
+  it('deducts discounts, average costs, referral commission and staff bonuses', () => {
+    const totals = totalsFor({
+      tests: [{ price: 10000, average_cost: 3000, commission_amount: 500, staff_bonus_amount: 250, patient_total_amount: 10000, patient_discount_amount: 1000 }],
+      ledger: [], charges: [], billing: [{ net_amount: 9000 }],
+    });
+    expect(totals.grossProfit).toBe(6000);
+    expect(totals.netProfit).toBe(5250);
   });
 });
 

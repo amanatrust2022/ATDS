@@ -1,14 +1,17 @@
 'use client';
 
+import { useEffect, useState } from 'react';
+
 import {
   RiAlertLine,
   RiCalendarEventLine,
   RiFingerprintLine,
   RiMailLine,
   RiShieldUserLine,
+  RiLockPasswordLine,
 } from '@remixicon/react';
 
-import { Alert, Badge, Button, Dialog, Field, Select } from '@/components/ui';
+import { Alert, Badge, Button, Dialog, Field, Input, Select } from '@/components/ui';
 import { ROLE_ORDER, avatarHue, initialsOf, parseNameDetails, roleInfo } from '@/lib/staffRoles';
 
 import styles from './profile.module.css';
@@ -27,14 +30,20 @@ export function StaffProfileModal({
   onClose,
   onRoleChange,
   onRemove,
+  onPasswordReset,
+  onCustomRoleChange,
   isMe,
 }: {
   member: any | null;
   onClose: () => void;
   onRoleChange: (id: string, role: string) => void;
   onRemove: (member: any) => void;
+  onPasswordReset?: (member: any) => void;
+  onCustomRoleChange?: (id: string, role: string, roleLabel: string) => void;
   isMe: boolean;
 }) {
+  const [customRole, setCustomRole] = useState('');
+  useEffect(() => setCustomRole(member?.role_label || ''), [member?.id, member?.role_label]);
   if (!member) return null;
 
   const name = parseNameDetails(member);
@@ -59,7 +68,7 @@ export function StaffProfileModal({
           {initialsOf(member.full_name)}
         </span>
         <span className={styles['identityText']}>
-          <Badge tone={role.tone}>{role.label}</Badge>
+          <Badge tone={role.tone}>{member.role_label || role.label}</Badge>
           {isMe && <span className={styles['you']}>This is you</span>}
         </span>
       </div>
@@ -148,8 +157,20 @@ export function StaffProfileModal({
           </div>
 
           <div className={styles['manage']}>
+            <Alert tone="info">
+              Passwords are encrypted and cannot be viewed or retrieved. You can send this
+              person a secure link to choose a new one.
+            </Alert>
+            <Button
+              intent="secondary"
+              icon={<RiLockPasswordLine size={16} />}
+              disabled={!member.email}
+              onClick={() => onPasswordReset?.(member)}
+            >
+              Send password reset
+            </Button>
             <Field
-              label="Change what they can do"
+              label="Access preset"
               hint={isMe ? 'You cannot change your own role.' : undefined}
             >
               <Select
@@ -168,6 +189,26 @@ export function StaffProfileModal({
                 ))}
               </Select>
             </Field>
+
+            <Field
+              label="Custom role name"
+              hint="Optional job title. Access remains controlled by the audited preset above."
+            >
+              <Input
+                value={customRole}
+                maxLength={80}
+                disabled={isMe}
+                placeholder="e.g. Senior Sonographer"
+                onChange={(event) => setCustomRole(event.target.value)}
+              />
+            </Field>
+            <Button
+              intent="secondary"
+              disabled={isMe || customRole.trim() === (member.role_label || '')}
+              onClick={() => onCustomRoleChange?.(member.id, member.role, customRole)}
+            >
+              Save custom role
+            </Button>
 
             {!isMe && (
               <>

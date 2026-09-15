@@ -15,6 +15,83 @@ Two conventions:
 
 ---
 
+## 2026-09-15 — package completeness, sensitivity grading and profitability
+
+Released: **no**. The cloud database change in
+`amana-diagnostics/supabase_profitability.sql` must be applied before the new
+cost and staff-bonus fields are used on the web deployment.
+
+### Custom investigations disappeared from registrations and packages
+`E-16`. Released: no.
+
+Every custom investigation is normalised with `investigationIds: []`. The
+package predicate treated any array — including an empty one — as proof that a
+test was a package. A custom investigation was therefore expanded as a package
+with no members and produced no clinical work order. It was also excluded from
+the package editor, which is why only the built-in investigations could be
+selected.
+
+`isInvestigationPackage` now requires an explicit package kind/category, or a
+non-empty legacy member list. Package expansion also validates every member and
+refuses the registration if one is missing; it can no longer silently register
+only the members it happened to resolve.
+
+**Guard:** `lib/store/registrationBilling.test.ts` covers an ordinary custom
+investigation and a package with a missing member.
+
+### Antibiotic sensitivity had no + / ++ / +++ grading
+`E-17`. Released: no.
+
+The antibiogram now accepts the existing S/I/R classification and the requested
+one-, two- and three-plus sensitivity grading. The selected degree is stored in
+the clinical result and printed beside the antibiotic in both HTML and PDF
+reports.
+
+**Guard:** `components/features/department/SensitivityTable.test.tsx`.
+
+### Management could see revenue, but not profit or staff incentives
+`E-18`. Released: no.
+
+Each catalogue price can now record average test cost and a flat or percentage
+staff bonus. Those values are frozen onto the work order at registration, so a
+later price-list edit cannot rewrite history. The management report shows gross
+profit and net profit/loss after pro-rata discounts, average cost, referral
+commission and the bonus assigned to completed work. The staff table shows the
+bonus earned by each reporting staff member.
+
+### Admin credential handling was unclear
+`E-19`. Released: no.
+
+The People profile shows the staff email/login identifier and can send a secure
+password-reset link. It explicitly states that passwords cannot be retrieved.
+Passwords remain one-way hashes; adding plaintext recovery would turn every
+administrator account into a credential-disclosure path.
+
+The same profile now separates the security-sensitive **access preset** from an
+optional custom role name. An administrator can keep the audited Radiology
+permissions, for example, while naming the role "Senior Sonographer". Arbitrary
+text never becomes an unrecognised permission key and cannot bypass the page,
+API or database authorization model.
+
+### Report blue was darker than requested
+`E-20`. Released: no.
+
+The report accent moved from `#486b8f` to the lighter `#52779b`. White text on
+the new fill retains a 4.70:1 contrast ratio, so the change remains WCAG AA for
+the small table headers used on reports.
+
+### Radiology templates already support full document editing
+
+The existing template manager was verified rather than duplicated: its rich
+editor already supports font family and size, paragraph styles, line spacing,
+alignment, lists, tables, images, undo/redo, and saving the edited findings and
+impression for reuse. Reception-to-radiology routing uses the shared patient
+work order; fixing the custom-test/package classification restores the missing
+radiology orders and the existing result alert returns completed reports to
+Reception.
+
+---
+
 ## 2026-09-12
 
 Two faults reported from the clinic, and everything found reading the code

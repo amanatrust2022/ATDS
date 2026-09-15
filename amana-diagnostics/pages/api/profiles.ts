@@ -59,8 +59,8 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
       }
 
       db.prepare(`
-        INSERT INTO profiles (id, full_name, title, first_name, surname, last_name, signature_url, role, organization_id, email)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO profiles (id, full_name, title, first_name, surname, last_name, signature_url, role, role_label, organization_id, email)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
           full_name = excluded.full_name,
           title = excluded.title,
@@ -69,6 +69,7 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
           last_name = excluded.last_name,
           signature_url = excluded.signature_url,
           role = excluded.role,
+          role_label = excluded.role_label,
           organization_id = excluded.organization_id,
           email = COALESCE(excluded.email, profiles.email)
       `).run(
@@ -80,6 +81,7 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
         profile.last_name || null,
         profile.signature_url || null,
         profile.role,
+        profile.role_label || null,
         profile.organization_id || null,
         profile.email || null
       );

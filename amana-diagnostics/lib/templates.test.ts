@@ -96,8 +96,8 @@ describe('compact clinical report tables', () => {
 
   it('uses muted blue and translucent clinical sections', () => {
     const html = getResultTemplate(patient(), [test({ notes: 'Reviewed.' })]);
-    expect(html).toContain('#486b8f');
-    expect(html).toContain('rgba(72, 107, 143, 0.05)');
+    expect(html).toContain('#52779b');
+    expect(html).toContain('rgba(82, 119, 155, 0.05)');
   });
 });
 

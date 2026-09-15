@@ -41,6 +41,9 @@ export const cloudTestPricesRepository: TestPricesRepository = {
       price: p.price,
       commission_type: p.commission_type || 'percentage',
       commission_value: p.commission_value || 0,
+      average_cost: p.average_cost || 0,
+      staff_bonus_type: p.staff_bonus_type || 'none',
+      staff_bonus_value: p.staff_bonus_value || 0,
     }));
     const { error } = await supabase
       .from('test_prices')

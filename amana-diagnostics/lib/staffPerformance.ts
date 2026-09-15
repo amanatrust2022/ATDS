@@ -27,6 +27,10 @@ export interface CompletedTest {
   commission_amount?: number | null;
   commission_type?: string | null;
   commission_value?: number | null;
+  average_cost?: number | null;
+  staff_bonus_amount?: number | null;
+  patient_total_amount?: number | null;
+  patient_discount_amount?: number | null;
 }
 
 export interface LedgerTransaction {
@@ -46,6 +50,7 @@ export interface PatientBilling {
   created_at?: string | null;
   net_amount?: number | null;
   total_amount?: number | null;
+  discount_amount?: number | null;
 }
 
 export interface PerformanceData {
@@ -122,6 +127,13 @@ export function commissionOf(t: CompletedTest): number {
   // The price list writes 'flat'; older rows say 'fixed'. Both are a sum.
   if (t.commission_type === 'flat' || t.commission_type === 'fixed') return t.commission_value || 0;
   return 0;
+}
+
+/** Visit discounts are allocated pro-rata to priced test lines. */
+export function discountOf(t: CompletedTest): number {
+  const total = t.patient_total_amount || 0;
+  if (total <= 0) return 0;
+  return (t.price || 0) * (t.patient_discount_amount || 0) / total;
 }
 
 /**
@@ -202,6 +214,11 @@ export interface Totals {
   totalReceptionCollections: number;
   collectionRate: number;
   outstandingReceivables: number;
+  totalDiscounts: number;
+  totalAverageCost: number;
+  totalStaffBonuses: number;
+  grossProfit: number;
+  netProfit: number;
 }
 
 export function totalsFor(f: FilteredData): Totals {
@@ -211,11 +228,17 @@ export function totalsFor(f: FilteredData): Totals {
     .reduce((sum, t) => sum + (t.amount || 0), 0);
   const externalCollections = f.charges.reduce((sum, c) => sum + (c.amount || 0), 0);
   const totalReceptionCollections = ledgerCollections + externalCollections;
+  const totalDiscounts = f.tests.reduce((sum, t) => sum + discountOf(t), 0);
+  const totalAverageCost = f.tests.reduce((sum, t) => sum + (t.average_cost || 0), 0);
+  const totalStaffBonuses = f.tests.reduce((sum, t) => sum + (t.staff_bonus_amount || 0), 0);
+  const totalCommissions = f.tests.reduce((sum, t) => sum + commissionOf(t), 0);
+  const totalClinicalRevenue = f.tests.reduce((sum, t) => sum + (t.price || 0), 0);
+  const grossProfit = totalClinicalRevenue - totalDiscounts - totalAverageCost;
 
   return {
     totalTestsCount: f.tests.length,
-    totalClinicalRevenue: f.tests.reduce((sum, t) => sum + (t.price || 0), 0),
-    totalCommissions: f.tests.reduce((sum, t) => sum + commissionOf(t), 0),
+    totalClinicalRevenue,
+    totalCommissions,
     avgTAT: averageTat(f.tests),
     totalBilledNet,
     totalReceptionCollections,
@@ -223,6 +246,11 @@ export function totalsFor(f: FilteredData): Totals {
     // should not read as "112% collected".
     collectionRate: totalBilledNet > 0 ? Math.min((totalReceptionCollections / totalBilledNet) * 100, 100) : 100,
     outstandingReceivables: Math.max(totalBilledNet - totalReceptionCollections, 0),
+    totalDiscounts,
+    totalAverageCost,
+    totalStaffBonuses,
+    grossProfit,
+    netProfit: grossProfit - totalCommissions - totalStaffBonuses,
   };
 }
 
@@ -231,6 +259,7 @@ export interface StaffRow {
   testCount: number;
   testRev: number;
   commissionSum: number;
+  bonusSum: number;
   receiptCount: number;
   collectionSum: number;
   avgTat: number;
@@ -248,6 +277,7 @@ export function staffRows(staff: StaffMember[], f: FilteredData): StaffRow[] {
       testCount: staffTests.length,
       testRev: staffTests.reduce((sum, t) => sum + (t.price || 0), 0),
       commissionSum: staffTests.reduce((sum, t) => sum + commissionOf(t), 0),
+      bonusSum: staffTests.reduce((sum, t) => sum + (t.staff_bonus_amount || 0), 0),
       receiptCount: deposits.length + extTx.length,
       collectionSum:
         deposits.reduce((sum, t) => sum + (t.amount || 0), 0) +
@@ -278,7 +308,7 @@ export function searchStaff(rows: StaffRow[], query: string): StaffRow[] {
 export function sortStaff(rows: StaffRow[], field: SortField): StaffRow[] {
   const sorted = [...rows];
   if (field === 'volume') return sorted.sort((a, b) => volumeOf(b) - volumeOf(a));
-  if (field === 'commission') return sorted.sort((a, b) => b.commissionSum - a.commissionSum);
+  if (field === 'commission') return sorted.sort((a, b) => b.bonusSum - a.bonusSum);
   if (field === 'tat') {
     // Faster is better, so this one ascends — and anyone with no measurable
     // turnaround sorts to the end rather than to the top.

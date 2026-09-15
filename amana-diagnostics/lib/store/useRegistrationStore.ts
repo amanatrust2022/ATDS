@@ -142,7 +142,7 @@ export const useRegistrationStore = create<RegistrationState>((set, get) => ({
     const slipNumber = await params.generateSlipNumber(params.organizationId);
     const isReferral = !!(params.selectedDoctorId && params.selectedDoctorId !== 'none') || !!(params.selectedFacilityId && params.selectedFacilityId !== 'none');
 
-    const tests = buildPatientTests(selectedTestDetails, params.catalogue, isReferral);
+    const tests = buildPatientTests(selectedTestDetails, params.catalogue, isReferral, params.testPrices);
 
     const totalCommission = tests.reduce((sum, t) => sum + (t.commissionAmount || 0), 0);
     const selDoctor = params.doctors.find(d => d.id === params.selectedDoctorId);

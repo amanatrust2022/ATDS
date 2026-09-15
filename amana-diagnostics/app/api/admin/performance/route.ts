@@ -48,7 +48,11 @@ export async function GET(request: Request) {
           t.commission_type,
           t.commission_value,
           t.commission_amount,
-          p.registered_at as patient_created_at
+          t.average_cost,
+          t.staff_bonus_amount,
+          p.registered_at as patient_created_at,
+          p.total_amount as patient_total_amount,
+          p.discount_amount as patient_discount_amount
         FROM patient_tests t
         LEFT JOIN patients p ON t.patient_id = p.id
         WHERE t.organization_id = ? AND t.status = 'completed' AND t.completed_by IS NOT NULL
@@ -70,7 +74,7 @@ export async function GET(request: Request) {
 
       // 3. Fetch summary metrics for Billing Health (total billables)
       const patientBilling = db.prepare(`
-        SELECT total_amount, net_amount, registered_at as created_at
+        SELECT total_amount, net_amount, discount_amount, registered_at as created_at
         FROM patients
         WHERE organization_id = ? AND registered_at >= ?
       `).all(orgId, since) as any[];
@@ -102,7 +106,9 @@ export async function GET(request: Request) {
             commission_type,
             commission_value,
             commission_amount,
-            patients(registered_at)
+            average_cost,
+            staff_bonus_amount,
+            patients(registered_at, total_amount, discount_amount)
           `)
           .eq('organization_id', orgId)
           .eq('status', 'completed')
@@ -110,13 +116,15 @@ export async function GET(request: Request) {
           .gte('completed_at', since),
         supabaseAdmin.from('billing_ledger_transactions').select('created_by, amount, created_at, type').eq('organization_id', orgId).not('created_by', 'is', null).gte('created_at', since),
         supabaseAdmin.from('external_department_charges').select('created_by, amount, created_at').eq('organization_id', orgId).not('created_by', 'is', null).gte('created_at', since),
-        supabaseAdmin.from('patients').select('total_amount, net_amount, registered_at').eq('organization_id', orgId).gte('registered_at', since)
+        supabaseAdmin.from('patients').select('total_amount, net_amount, discount_amount, registered_at').eq('organization_id', orgId).gte('registered_at', since)
       ]);
 
       // Map Supabase nested join response to flat patient_created_at
       const mappedTests = (testsRes.data || []).map((t: any) => ({
         ...t,
-        patient_created_at: t.patients?.registered_at || null
+        patient_created_at: t.patients?.registered_at || null,
+        patient_total_amount: t.patients?.total_amount || 0,
+        patient_discount_amount: t.patients?.discount_amount || 0
       }));
 
       const mappedBilling = (billingRes.data || []).map((b: any) => ({

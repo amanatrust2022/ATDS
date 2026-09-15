@@ -15,6 +15,7 @@ export interface StaffMember {
   full_name: string | null;
   email: string | null;
   role: string | null;
+  role_label?: string | null;
   title?: string | null;
   signature_url?: string | null;
   created_at?: string | null;

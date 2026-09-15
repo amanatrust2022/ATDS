@@ -65,12 +65,22 @@ export interface PatientTest {
   commissionType?: 'percentage' | 'flat' | 'none';
   commissionValue?: number;
   commissionAmount?: number;
+  /** Cost and staff incentive frozen when the visit is registered. */
+  averageCost?: number;
+  staffBonusType?: 'percentage' | 'flat' | 'none';
+  staffBonusValue?: number;
+  staffBonusAmount?: number;
   packageId?: string;
   packageName?: string;
 }
 
 export const isInvestigationPackage = (test: Pick<Test, 'kind' | 'investigationIds' | 'category'>): boolean =>
-  test.kind === 'package' || Array.isArray(test.investigationIds) || test.category === 'Special Health Check Plans';
+  test.kind === 'package' ||
+  test.category === 'Special Health Check Plans' ||
+  // Older package rows pre-date `kind`. Repositories also normalise every
+  // ordinary custom investigation to `investigationIds: []`, so merely being
+  // an array must not turn every custom investigation into an empty package.
+  (test.kind == null && (test.investigationIds?.length ?? 0) > 0);
 
 export interface PatientProfile {
   id: number;
@@ -558,6 +568,9 @@ export interface TestPrice {
   price: number;
   commission_type?: 'percentage' | 'flat' | 'none';
   commission_value?: number;
+  average_cost?: number;
+  staff_bonus_type?: 'percentage' | 'flat' | 'none';
+  staff_bonus_value?: number;
 }
 
 export const fetchTestPrices = async (organizationId: string): Promise<TestPrice[]> =>

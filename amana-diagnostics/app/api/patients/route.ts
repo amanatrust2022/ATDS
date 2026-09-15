@@ -200,6 +200,10 @@ export async function GET(request: Request) {
         commissionType: t.commission_type || 'none',
         commissionValue: t.commission_value || 0,
         commissionAmount: t.commission_amount || 0,
+        averageCost: t.average_cost || 0,
+        staffBonusType: t.staff_bonus_type || 'none',
+        staffBonusValue: t.staff_bonus_value || 0,
+        staffBonusAmount: t.staff_bonus_amount || 0,
         packageId: t.package_id || undefined,
         packageName: t.package_name || undefined,
       });
@@ -478,8 +482,8 @@ export async function POST(request: Request) {
           const testId = crypto.randomUUID();
           const testStmt = db.prepare(`
             INSERT INTO patient_tests (
-              id, patient_id, test_id, test_name, department, status, specimen, price, commission_type, commission_value, commission_amount, package_id, package_name, organization_id, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              id, patient_id, test_id, test_name, department, status, specimen, price, commission_type, commission_value, commission_amount, average_cost, staff_bonus_type, staff_bonus_value, staff_bonus_amount, package_id, package_name, organization_id, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `);
           testStmt.run(
             testId,
@@ -493,6 +497,10 @@ export async function POST(request: Request) {
             t.commissionType || 'none',
             t.commissionValue ?? 0,
             t.commissionAmount ?? 0,
+            t.averageCost ?? 0,
+            t.staffBonusType || 'none',
+            t.staffBonusValue ?? 0,
+            t.staffBonusAmount ?? 0,
             t.packageId || null,
             t.packageName || null,
             organizationId,
@@ -512,6 +520,10 @@ export async function POST(request: Request) {
             commission_type: t.commissionType || 'none',
             commission_value: t.commissionValue ?? 0,
             commission_amount: t.commissionAmount ?? 0,
+            average_cost: t.averageCost ?? 0,
+            staff_bonus_type: t.staffBonusType || 'none',
+            staff_bonus_value: t.staffBonusValue ?? 0,
+            staff_bonus_amount: t.staffBonusAmount ?? 0,
             package_id: t.packageId || null,
             package_name: t.packageName || null,
             organization_id: organizationId,

@@ -76,7 +76,7 @@ export async function GET(req: NextRequest) {
   // 4. Fetch profile using user-scoped client (PostgREST verifies JWT signature & applies RLS)
   const { data: profile, error: profileError } = await client
     .from('profiles')
-    .select('id, full_name, role, organization_id, email')
+    .select('id, full_name, role, role_label, organization_id, email')
     .eq('id', userId)
     .maybeSingle();
 
@@ -111,4 +111,3 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({ profile, organization });
 }
-

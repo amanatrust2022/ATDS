@@ -19,7 +19,7 @@ export async function POST(request: Request) {
       // The screen's audit row for this change, so the log carries one row
       // whether the call came straight from the browser or through a hub's
       // outbox — the hub wrote the same id first, and the upsert ignores it.
-      auditId, previousRole, reversesId, actorName,
+      auditId, previousRole, reversesId, actorName, roleLabel,
     } = await request.json();
 
     if (!staffId || !action) {
@@ -67,7 +67,8 @@ export async function POST(request: Request) {
       if (authErr) throw authErr;
 
       // 3. Update Profiles
-      const { error: profErr } = await supabaseAdmin.from('profiles').update({ role }).eq('id', staffId);
+      const cleanRoleLabel = typeof roleLabel === 'string' ? roleLabel.trim().slice(0, 80) || null : null;
+      const { error: profErr } = await supabaseAdmin.from('profiles').update({ role, role_label: cleanRoleLabel }).eq('id', staffId);
       if (profErr) throw profErr;
 
       await writeAudit(supabaseAdmin, {

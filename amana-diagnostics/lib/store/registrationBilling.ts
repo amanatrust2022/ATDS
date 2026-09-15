@@ -11,6 +11,9 @@ export interface SelectedTestDetail {
   price: number;
   commissionType: CommissionType;
   commissionValue: number;
+  averageCost?: number;
+  staffBonusType?: CommissionType;
+  staffBonusValue?: number;
   kind?: 'investigation' | 'package';
   investigationIds?: string[];
 }
@@ -33,6 +36,9 @@ export const buildSelectedTestDetails = (
       price: catalog ? catalog.price : 0,
       commissionType: catalog?.commission_type ?? 'none',
       commissionValue: catalog?.commission_value ?? 0,
+      averageCost: catalog?.average_cost ?? 0,
+      staffBonusType: catalog?.staff_bonus_type ?? 'none',
+      staffBonusValue: catalog?.staff_bonus_value ?? 0,
       kind: isInvestigationPackage(test) ? 'package' : 'investigation',
       investigationIds: test.investigationIds ?? [],
     }];
@@ -63,11 +69,18 @@ export const commissionForTest = (detail: SelectedTestDetail, isReferral: boolea
 export const calculateTotalCommission = (details: SelectedTestDetail[], isReferral: boolean): number =>
   details.reduce((sum, t) => sum + commissionForTest(t, isReferral), 0);
 
+export const staffBonusFor = (price: number, type: CommissionType, value: number): number => {
+  if (type === 'percentage') return Math.max(0, price * value / 100);
+  if (type === 'flat') return Math.max(0, value);
+  return 0;
+};
+
 /** Expand package bill lines into independently routed clinical work items. */
 export const buildPatientTests = (
   details: SelectedTestDetail[],
   catalogue: Test[],
   isReferral: boolean,
+  testPrices: TestPrice[] = [],
 ): Omit<PatientTest, 'id' | 'patient_id'>[] => details.flatMap((detail) => {
   if (detail.kind !== 'package') {
     return [{
@@ -75,23 +88,41 @@ export const buildPatientTests = (
       status: 'pending' as const, specimen: detail.specimen, price: detail.price,
       commissionType: detail.commissionType, commissionValue: detail.commissionValue,
       commissionAmount: commissionForTest(detail, isReferral),
+      averageCost: detail.averageCost ?? 0,
+      staffBonusType: detail.staffBonusType ?? 'none',
+      staffBonusValue: detail.staffBonusValue ?? 0,
+      staffBonusAmount: staffBonusFor(detail.price, detail.staffBonusType ?? 'none', detail.staffBonusValue ?? 0),
     }];
   }
 
-  const members = (detail.investigationIds ?? []).flatMap((id) => {
+  const memberIds = [...new Set(detail.investigationIds ?? [])];
+  const missing = memberIds.filter((id) => !catalogue.some((candidate) => candidate.id === id && !isInvestigationPackage(candidate)));
+  if (missing.length > 0) {
+    throw new Error(`Package "${detail.testName}" is incomplete. Missing investigation${missing.length === 1 ? '' : 's'}: ${missing.join(', ')}.`);
+  }
+  const members = memberIds.flatMap((id) => {
     const test = catalogue.find((candidate) => candidate.id === id && !isInvestigationPackage(candidate));
     return test ? [test] : [];
   });
-  return members.map((member, index) => ({
+  return members.map((member, index) => {
+    const memberPrice = testPrices.find((price) => price.test_id === member.id);
+    const bonusType = memberPrice?.staff_bonus_type ?? 'none';
+    const bonusValue = memberPrice?.staff_bonus_value ?? 0;
+    return ({
     testId: member.id, testName: member.name, department: member.department,
     status: 'pending' as const, specimen: member.specimen,
     price: index === 0 ? detail.price : 0,
     commissionType: index === 0 ? detail.commissionType : 'none',
     commissionValue: index === 0 ? detail.commissionValue : 0,
     commissionAmount: index === 0 ? commissionForTest(detail, isReferral) : 0,
+    averageCost: memberPrice?.average_cost ?? 0,
+    staffBonusType: bonusType,
+    staffBonusValue: bonusValue,
+    staffBonusAmount: staffBonusFor(memberPrice?.price ?? 0, bonusType, bonusValue),
     packageId: detail.testId,
     packageName: detail.testName,
-  }));
+  });
+  });
 });
 
 export const paymentStatusFor = (amountPaid: number, netBill: number): 'paid' | 'partial' | 'unpaid' => {
