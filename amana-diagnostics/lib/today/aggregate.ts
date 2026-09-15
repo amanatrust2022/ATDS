@@ -455,6 +455,7 @@ export function buildToday(payload: TodayPayload, opts: BuildOptions): TodayMode
       test_name: t.test_name,
       completed_at: t.completed_at,
       completed_by: t.completed_by,
+      completed_by_profile_id: t.completed_by_profile_id,
       patient_created_at: t.registered_at,
       department: t.department,
       price: t.price,
@@ -492,7 +493,7 @@ export function buildToday(payload: TodayPayload, opts: BuildOptions): TodayMode
 
   const topStaff: StaffActivityRow[] = payload.staff
     .map((s) => {
-      const mine = nowCompleted.filter((t) => matchesStaff(t.completed_by, s));
+      const mine = nowCompleted.filter((t) => matchesStaff(t.completed_by, s, t.completed_by_profile_id));
       return {
         id: s.id,
         name: s.full_name || 'Not set up yet',

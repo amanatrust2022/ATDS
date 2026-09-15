@@ -46,6 +46,7 @@ const test = (over: Partial<TodayTest> = {}): TodayTest => ({
   department: 'lab',
   status: 'completed',
   completed_by: 'Musa Ibrahim',
+  completed_by_profile_id: null,
   completed_at: at(30),
   price: 3000,
   commission_amount: 0,
@@ -320,6 +321,20 @@ describe('referrers and staff', () => {
     expect(m.topStaff).toHaveLength(5);
     expect(m.topStaff[0]).toMatchObject({ id: 'F', completed: 6, departments: ['lab'] });
     expect(m.topStaff.map((r) => r.id)).not.toContain('A');
+  });
+
+  it('uses the immutable profile id when two staff members share a name', () => {
+    const staff = [
+      { id: 'right', full_name: 'Amina Bello', role: 'lab', signature_url: 's' },
+      { id: 'wrong', full_name: 'Amina Bello', role: 'lab', signature_url: 's' },
+    ];
+    const m = build({
+      staff,
+      tests: [test({ completed_by: 'Amina Bello', completed_by_profile_id: 'right' })],
+    });
+    expect(m.topStaff).toEqual([
+      { id: 'right', name: 'Amina Bello', completed: 1, departments: ['lab'] },
+    ]);
   });
 
   it('draws a week of trend for today, and passes the truncation through', () => {

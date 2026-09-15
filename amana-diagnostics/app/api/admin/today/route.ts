@@ -75,12 +75,12 @@ function fromHub(orgId: string, since: string): Rows {
   ).all(orgId, cap) as any[];
 
   const tests = db.prepare(`
-    SELECT t.id, t.patient_id, t.test_name, t.department, t.status, t.completed_by, t.completed_at,
+    SELECT t.id, t.patient_id, t.test_name, t.department, t.status, t.completed_by, t.completed_by_profile_id, t.completed_at,
            t.price, t.commission_amount, t.results, t.notes,
            p.registered_at, p.first_name, p.surname, p.slip_number
     FROM patient_tests t
     JOIN patients p ON p.id = t.patient_id
-    WHERE t.organization_id = ? AND (p.registered_at >= ? OR t.status <> 'completed')
+    WHERE t.organization_id = ? AND (t.completed_at >= ? OR t.status <> 'completed')
   `).all(orgId, since) as any[];
 
   const ledger = db.prepare(
@@ -117,23 +117,25 @@ async function fromCloud(orgId: string, since: string): Promise<Rows> {
   const cap = TODAY_ROW_CAP + 1;
 
   const TEST_SELECT =
-    'id, patient_id, test_name, department, status, completed_by, completed_at, price, ' +
+    'id, patient_id, test_name, department, status, completed_by, completed_by_profile_id, completed_at, price, ' +
     'commission_amount, results, notes, patients!inner(registered_at, first_name, surname, slip_number)';
 
   const [recent, unpaid, owing, recentTests, openTests, ledger, charges, staff, doctors, facilities, pendingTests, invites] =
     await Promise.all([
-      admin.from('patients').select(VISIT_COLUMNS).eq('organization_id', orgId).gte('registered_at', since),
+      fetchAllResult((from, to) => admin.from('patients').select(VISIT_COLUMNS).eq('organization_id', orgId)
+        .gte('registered_at', since).order('registered_at').order('id').range(from, to)),
       admin.from('patients').select(VISIT_COLUMNS).eq('organization_id', orgId).neq('payment_status', 'paid')
         .order('registered_at', { ascending: false }).limit(cap),
       admin.from('patients').select(VISIT_COLUMNS).eq('organization_id', orgId)
         .eq('commission_assigned', true).eq('commission_status', 'pending')
         .order('registered_at', { ascending: true }).limit(cap),
-      admin.from('patient_tests').select(TEST_SELECT).eq('organization_id', orgId).gte('patients.registered_at', since),
+      fetchAllResult((from, to) => admin.from('patient_tests').select(TEST_SELECT).eq('organization_id', orgId)
+        .gte('completed_at', since).order('completed_at').order('id').range(from, to)),
       admin.from('patient_tests').select(TEST_SELECT).eq('organization_id', orgId).neq('status', 'completed'),
-      admin.from('billing_ledger_transactions').select('created_at, type, amount, created_by')
-        .eq('organization_id', orgId).gte('created_at', since),
-      admin.from('external_department_charges').select('created_at, amount, department, created_by')
-        .eq('organization_id', orgId).gte('created_at', since),
+      fetchAllResult((from, to) => admin.from('billing_ledger_transactions').select('created_at, type, amount, created_by')
+        .eq('organization_id', orgId).gte('created_at', since).order('created_at').order('id').range(from, to)),
+      fetchAllResult((from, to) => admin.from('external_department_charges').select('created_at, amount, department, created_by')
+        .eq('organization_id', orgId).gte('created_at', since).order('created_at').order('id').range(from, to)),
       admin.from('profiles').select('id, full_name, role, signature_url').eq('organization_id', orgId),
       admin.from('referring_doctors').select('id, name, is_active').eq('organization_id', orgId),
       admin.from('referring_facilities').select('id, name, is_active').eq('organization_id', orgId),
@@ -245,6 +247,7 @@ function toTest(r: any): TodayTest {
     department: r.department,
     status: r.status,
     completed_by: r.completed_by ?? null,
+    completed_by_profile_id: r.completed_by_profile_id ? String(r.completed_by_profile_id) : null,
     completed_at: r.completed_at ?? null,
     price: num(r.price),
     commission_amount: num(r.commission_amount),
@@ -269,3 +272,17 @@ function parseResults(value: unknown): any[] {
 
 const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : Number(v) || 0);
 const truthy = (v: unknown) => v === true || v === 1 || v === '1';
+
+const PAGE_SIZE = 1000;
+
+/** Return a Supabase-shaped result after walking past its per-response cap. */
+async function fetchAllResult(makeQuery: (from: number, to: number) => PromiseLike<any>) {
+  const data: any[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const result = await makeQuery(from, from + PAGE_SIZE - 1);
+    if (result.error) return { data: null, error: result.error };
+    const page = result.data ?? [];
+    data.push(...page);
+    if (page.length < PAGE_SIZE) return { data, error: null };
+  }
+}

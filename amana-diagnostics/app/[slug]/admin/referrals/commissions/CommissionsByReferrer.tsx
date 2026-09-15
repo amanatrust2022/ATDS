@@ -26,9 +26,9 @@ export function CommissionsByReferrer({
 }: {
   groups: ReferrerGroup[];
   expanded: Record<string, boolean>;
-  onToggle: (name: string) => void;
-  onPrint: (name: string) => void;
-  onPayOut: (name: string) => void;
+  onToggle: (key: string) => void;
+  onPrint: (group: ReferrerGroup) => void;
+  onPayOut: (group: ReferrerGroup) => void;
 }) {
   if (groups.length === 0) {
     return (
@@ -41,11 +41,11 @@ export function CommissionsByReferrer({
   return (
     <ul className={styles['groups']}>
       {groups.map((ref) => {
-        const isOpen = Boolean(expanded[ref.name]);
-        const bodyId = `referrer-${ref.name.replace(/\W+/g, '-')}`;
+        const isOpen = Boolean(expanded[ref.key]);
+        const bodyId = `referrer-${ref.key.replace(/\W+/g, '-')}`;
 
         return (
-          <li key={ref.name}>
+          <li key={ref.key}>
             <Card as="div" className={styles['groupCard']}>
               <div className={styles['groupHead']}>
                 {/* The disclosure is a button; printing is a separate button
@@ -56,7 +56,7 @@ export function CommissionsByReferrer({
                   className={styles['groupToggle']}
                   aria-expanded={isOpen}
                   aria-controls={bodyId}
-                  onClick={() => onToggle(ref.name)}
+                  onClick={() => onToggle(ref.key)}
                 >
                   <span className={styles['chevron']} aria-hidden="true">
                     {isOpen ? <RiArrowDownSLine size={18} /> : <RiArrowRightSLine size={18} />}
@@ -101,7 +101,7 @@ export function CommissionsByReferrer({
                 <Button
                   size="sm"
                   icon={<RiPrinterLine size={13} />}
-                  onClick={() => onPrint(ref.name)}
+                  onClick={() => onPrint(ref)}
                 >
                   Statement
                 </Button>
@@ -110,7 +110,7 @@ export function CommissionsByReferrer({
                   <Button
                     size="sm"
                     intent="primary"
-                    onClick={() => onPayOut(ref.name)}
+                    onClick={() => onPayOut(ref)}
                   >
                     Pay out {ref.patients.filter((p) => p.commissionStatus === 'pending').length} visit
                     {ref.patients.filter((p) => p.commissionStatus === 'pending').length === 1 ? '' : 's'}

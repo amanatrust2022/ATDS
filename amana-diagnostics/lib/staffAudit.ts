@@ -47,7 +47,7 @@ export function buildStaffAuditHtml({
           <td>${escapeHtml((p.member.role || '—').toUpperCase())}</td>
           <td>${volumeOf(p)} ${isReception ? 'receipts' : 'tests'}</td>
           <td class="money">${naira(revenueOf(p))}</td>
-          <td class="money">${naira(p.commissionSum)}</td>
+          <td class="money">${naira(p.bonusSum)}</td>
           <td>${isReception ? '—' : formatTAT(p.avgTat)}</td>
         </tr>`;
     })
@@ -94,8 +94,8 @@ export function buildStaffAuditHtml({
             <div class="kpi-value">${naira(totals.totalClinicalRevenue)}</div>
           </div>
           <div class="kpi">
-            <div class="kpi-title">Commissions</div>
-            <div class="kpi-value">${naira(totals.totalCommissions)}</div>
+            <div class="kpi-title">Staff bonuses</div>
+            <div class="kpi-value">${naira(totals.totalStaffBonuses)}</div>
           </div>
           <div class="kpi">
             <div class="kpi-title">Average turnaround</div>
@@ -112,7 +112,7 @@ export function buildStaffAuditHtml({
               <th>Role</th>
               <th>Work</th>
               <th>Revenue</th>
-              <th>Commission</th>
+              <th>Staff bonus</th>
               <th>Turnaround</th>
             </tr>
           </thead>

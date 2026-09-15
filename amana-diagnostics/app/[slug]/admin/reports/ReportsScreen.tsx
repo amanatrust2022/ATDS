@@ -279,7 +279,7 @@ function Reports() {
                   <Table
                     caption="Referrers owed commission"
                     rows={groups}
-                    rowKey={(g) => g.name}
+                    rowKey={(g) => g.key}
                     empty={<EmptyState title="Nothing is owed" compact>Every commission has been settled.</EmptyState>}
                     columns={[
                       { key: 'name', header: 'Referrer', render: (g) => g.name },

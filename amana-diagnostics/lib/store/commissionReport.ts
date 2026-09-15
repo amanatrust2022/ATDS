@@ -30,7 +30,7 @@ export const buildCommissionReport = (
       testName: t.testName,
       // The price recorded on the visit wins; the current price list is only a fallback
       // so an old visit is not re-valued when prices change.
-      price: t.price || priceMap.get(t.testId) || 0,
+      price: t.price ?? priceMap.get(t.testId) ?? 0,
       commissionType: t.commissionType || 'none',
       commissionValue: t.commissionValue || 0,
       commissionAmount: t.commissionAmount || 0,

@@ -366,7 +366,9 @@ export function StaffPerformance({
                 <EmptyState title="Nothing completed in this period" compact />
               ) : (
                 <ul className={styles['log']}>
-                  {filtered.tests.slice(0, 4).map((t, idx) => (
+                  {[...filtered.tests]
+                    .sort((a, b) => new Date(b.completed_at ?? 0).getTime() - new Date(a.completed_at ?? 0).getTime())
+                    .slice(0, 4).map((t, idx) => (
                     <li key={idx} className={styles['logItem']}>
                       <span className={styles['logMark']} aria-hidden="true">
                         <RiCheckDoubleLine size={14} />

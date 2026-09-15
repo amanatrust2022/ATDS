@@ -35,6 +35,7 @@ export interface TodayTest {
   department: 'lab' | 'radiology';
   status: 'pending' | 'in_progress' | 'completed';
   completed_by: string | null;
+  completed_by_profile_id: string | null;
   completed_at: string | null;
   price: number;
   commission_amount: number;

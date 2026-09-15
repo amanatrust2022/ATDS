@@ -365,38 +365,53 @@ export const cloudPatientsRepository: CloudPatientsRepository = {
     // Any condition on a test has to be an inner join, for the same reason.
     const testCondition = Boolean(query.department || query.unfinished || query.completedSince);
 
-    let request = supabase
-      .from('patients')
-      .select(testCondition ? '*, tests:patient_tests!inner(*)' : '*, tests:patient_tests(*)')
-      .eq('organization_id', organizationId);
+    if (query.ids?.length === 0) return [];
 
-    if (query.department) request = request.eq('tests.department', query.department);
-    if (query.unfinished) request = request.neq('tests.status', 'completed');
-    if (query.completedSince) {
-      request = request.eq('tests.status', 'completed').gte('tests.completed_at', query.completedSince);
-    }
-    if (query.since) request = request.gte('registered_at', query.since);
-    if (query.until) request = request.lte('registered_at', query.until);
-    if (query.withBillingAccount) request = request.not('billing_account_id', 'is', null);
-    if (query.billingAccountId) request = request.eq('billing_account_id', query.billingAccountId);
-    if (query.ids) {
-      // An empty list means nothing, not everything.
-      if (query.ids.length === 0) return [];
-      request = request.in('id', query.ids as any);
-    }
-    if (query.patientProfileId != null) request = request.eq('patient_profile_id', query.patientProfileId);
-    if (query.search) {
-      // Commas and parentheses would be read as more filter clauses.
-      const term = query.search.replace(/[,()]/g, ' ').trim();
-      request = request.or(`first_name.ilike.%${term}%,surname.ilike.%${term}%,phone.ilike.%${term}%`);
+    const makeRequest = () => {
+      let request = supabase
+        .from('patients')
+        .select(testCondition ? '*, tests:patient_tests!inner(*)' : '*, tests:patient_tests(*)')
+        .eq('organization_id', organizationId);
+
+      if (query.department) request = request.eq('tests.department', query.department);
+      if (query.unfinished) request = request.neq('tests.status', 'completed');
+      if (query.completedSince) request = request.eq('tests.status', 'completed').gte('tests.completed_at', query.completedSince);
+      if (query.since) request = request.gte('registered_at', query.since);
+      if (query.until) request = request.lte('registered_at', query.until);
+      if (query.withBillingAccount) request = request.not('billing_account_id', 'is', null);
+      if (query.billingAccountId) request = request.eq('billing_account_id', query.billingAccountId);
+      if (query.ids) request = request.in('id', query.ids as any);
+      if (query.patientProfileId != null) request = request.eq('patient_profile_id', query.patientProfileId);
+      if (query.search) {
+        const term = query.search.replace(/[,()]/g, ' ').trim();
+        request = request.or(`first_name.ilike.%${term}%,surname.ilike.%${term}%,phone.ilike.%${term}%`);
+      }
+      return request.order('registered_at', { ascending: false }).order('id', { ascending: false });
+    };
+
+    if (query.limit) {
+      const { data, error } = await makeRequest().limit(query.limit);
+      if (error) { console.error('Error fetching patients:', error); return []; }
+      return (data || []).map(toPatient);
     }
 
-    request = request.order('registered_at', { ascending: false });
-    if (query.limit) request = request.limit(query.limit);
-
-    const { data, error } = await request;
-    if (error) { console.error('Error fetching patients:', error); return []; }
-    return (data || []).map(toPatient);
+    // PostgREST responses are normally capped at 1,000 rows. Admin patient
+    // counts and lifetime commission totals must not quietly become "1,000".
+    const pageSize = 1000;
+    const all: any[] = [];
+    for (let from = 0; ; from += pageSize) {
+      const request = makeRequest();
+      // Some lightweight repository adapters expose a thenable query without
+      // range(); production Supabase always has it, but retaining the fallback
+      // keeps the repository portable.
+      const { data, error } = typeof (request as any).range === 'function'
+        ? await (request as any).range(from, from + pageSize - 1)
+        : await request;
+      if (error) { console.error('Error fetching patients:', error); return []; }
+      const page = data || [];
+      all.push(...page);
+      if (page.length < pageSize || typeof (request as any).range !== 'function') return all.map(toPatient);
+    }
   },
 
   async listProfiles(organizationId) {

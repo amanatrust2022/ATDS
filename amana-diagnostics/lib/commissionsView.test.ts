@@ -79,6 +79,15 @@ describe('totals', () => {
     expect(t.referrers).toBe(2);
   });
 
+  it('does not merge different referrers who share a name', () => {
+    const rows = [
+      entry({ patientId: 'p1', referrerId: 'doctor-1', referrerName: 'A Bello' }),
+      entry({ patientId: 'p2', referrerId: 'doctor-2', referrerName: 'A Bello' }),
+    ];
+    expect(totalsFor(rows).referrers).toBe(2);
+    expect(groupByReferrer(rows)).toHaveLength(2);
+  });
+
   it('is all zeroes for an empty report rather than NaN', () => {
     expect(totalsFor([])).toMatchObject({ billed: 0, commission: 0, referrers: 0 });
   });

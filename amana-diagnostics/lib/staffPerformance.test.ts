@@ -131,6 +131,15 @@ describe('commission', () => {
     expect(commissionOf({ price: 10000, commission_type: 'none' })).toBe(0);
     expect(commissionOf({})).toBe(0);
   });
+
+  it('does not recompute an explicitly zero commission for a walk-in test', () => {
+    expect(commissionOf({
+      price: 10000,
+      commission_type: 'percentage',
+      commission_value: 10,
+      commission_amount: 0,
+    })).toBe(0);
+  });
 });
 
 describe('profit and loss', () => {
@@ -187,7 +196,7 @@ const DATA: PerformanceData = {
     { created_at: iso('2026-09-10T11:00:00Z'), created_by: 'Ngozi Ade', type: 'charge', amount: 4000 },
   ],
   externalCharges: [{ created_at: iso('2026-09-10T11:30:00Z'), created_by: 'Ngozi Ade', amount: 5000 }],
-  patientBilling: [{ created_at: iso('2026-09-10T09:00:00Z'), net_amount: 36000 }],
+  patientBilling: [{ created_at: iso('2026-09-10T09:00:00Z'), net_amount: 36000, paid_amount: 18000 }],
 };
 
 const STAFF = [
@@ -205,6 +214,12 @@ describe('the totals', () => {
     expect(totalsFor(f).totalClinicalRevenue).toBe(36000);
   });
 
+  it('keeps a fully discounted visit at a zero net bill', () => {
+    const totals = totalsFor({ ...f, billing: [{ total_amount: 10000, net_amount: 0, paid_amount: 0 }] });
+    expect(totals.totalBilledNet).toBe(0);
+    expect(totals.outstandingReceivables).toBe(0);
+  });
+
   it('adds stored and computed commissions together', () => {
     // 10% of 10,000 plus a stored 900.
     expect(totalsFor(f).totalCommissions).toBe(1900);
@@ -216,9 +231,23 @@ describe('the totals', () => {
   });
 
   it('never reports collecting more than was billed', () => {
-    const over = totalsFor({ ...f, billing: [{ created_at: iso('2026-09-10T09:00:00Z'), net_amount: 1000 }] });
+    const over = totalsFor({ ...f, billing: [{ created_at: iso('2026-09-10T09:00:00Z'), net_amount: 1000, paid_amount: 2000 }] });
     expect(over.collectionRate).toBe(100);
     expect(over.outstandingReceivables).toBe(0);
+  });
+
+  it('works out collection and outstanding from payments against each visit', () => {
+    const cohort = totalsFor({
+      ...f,
+      ledger: [{ type: 'deposit', amount: 999999 }],
+      charges: [{ amount: 999999 }],
+      billing: [
+        { net_amount: 10000, paid_amount: 2500 },
+        { net_amount: 5000, paid_amount: 5000 },
+      ],
+    });
+    expect(cohort.collectionRate).toBe(50);
+    expect(cohort.outstandingReceivables).toBe(7500);
   });
 
   it('says fully collected when nothing was billed, rather than dividing by zero', () => {
@@ -277,6 +306,22 @@ describe('the trend chart', () => {
   it('makes one bucket per day, oldest first', () => {
     const series = trendSeries([], '7days', NOW);
     expect(series).toHaveLength(7);
+  });
+
+  it('covers all thirty days in fifteen two-day buckets', () => {
+    const old = new Date(NOW);
+    old.setDate(old.getDate() - 29);
+    old.setHours(8, 0, 0, 0);
+    const series = trendSeries([{ completed_at: old.toISOString(), price: 700 }], '30days', NOW);
+    expect(series).toHaveLength(15);
+    expect(series[0]).toMatchObject({ count: 1, rev: 700 });
+  });
+
+  it('does not merge the same month from the previous year into the current month', () => {
+    const priorYear = new Date(NOW);
+    priorYear.setFullYear(priorYear.getFullYear() - 1);
+    const series = trendSeries([{ completed_at: priorYear.toISOString(), price: 700 }], 'all', NOW);
+    expect(series.reduce((sum, point) => sum + point.rev, 0)).toBe(0);
   });
 
   it('drops revenue into the day it belongs to', () => {

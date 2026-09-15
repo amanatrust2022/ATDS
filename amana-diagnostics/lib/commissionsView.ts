@@ -64,7 +64,7 @@ export function totalsFor(entries: CommissionEntry[]): CommissionTotals {
     commission,
     paid,
     outstanding,
-    referrers: new Set(entries.map((e) => e.referrerName)).size,
+    referrers: new Set(entries.map(referrerKey)).size,
     entries: entries.length,
   };
 }
@@ -122,6 +122,9 @@ export function ageingBuckets(
 }
 
 export interface ReferrerGroup {
+  /** Stable identity; names are not unique across doctors and facilities. */
+  key: string;
+  id?: string;
   name: string;
   type: 'doctor' | 'facility';
   patients: CommissionEntry[];
@@ -142,9 +145,12 @@ export function groupByReferrer(entries: CommissionEntry[]): ReferrerGroup[] {
   const groups = new Map<string, ReferrerGroup>();
 
   for (const entry of entries) {
-    let group = groups.get(entry.referrerName);
+    const key = referrerKey(entry);
+    let group = groups.get(key);
     if (!group) {
       group = {
+        key,
+        id: entry.referrerId,
         name: entry.referrerName,
         type: entry.referrerType,
         patients: [],
@@ -153,7 +159,7 @@ export function groupByReferrer(entries: CommissionEntry[]): ReferrerGroup[] {
         paid: 0,
         outstanding: 0,
       };
-      groups.set(entry.referrerName, group);
+      groups.set(key, group);
     }
     group.patients.push(entry);
     group.totalBilled += entry.totalAmount;
@@ -164,6 +170,11 @@ export function groupByReferrer(entries: CommissionEntry[]): ReferrerGroup[] {
 
   return [...groups.values()];
 }
+
+const referrerKey = (entry: CommissionEntry): string =>
+  entry.referrerId
+    ? `${entry.referrerType}:id:${entry.referrerId}`
+    : `${entry.referrerType}:name:${entry.referrerName.trim().toLowerCase()}`;
 
 export interface SettleResult {
   paid: (string | number)[];

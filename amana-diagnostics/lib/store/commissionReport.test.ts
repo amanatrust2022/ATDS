@@ -119,6 +119,14 @@ describe('Valuing the visit', () => {
     expect(build([noPrice])[0].tests[0].price).toBe(7000);
   });
 
+  it('keeps an explicitly free historical test free', () => {
+    const free = patient({
+      tests: [{ testId: 'fbc', testName: 'Full Blood Count', department: 'lab', status: 'completed', price: 0 }],
+    });
+    expect(build([free])[0].tests[0].price).toBe(0);
+    expect(build([free])[0].totalAmount).toBe(0);
+  });
+
   it('values a test at zero when neither the visit nor the price list knows it', () => {
     const unknown = patient({
       tests: [{ testId: 'ghost', testName: 'Unknown', department: 'lab', status: 'completed' }],

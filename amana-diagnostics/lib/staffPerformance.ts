@@ -52,6 +52,7 @@ export interface PatientBilling {
   net_amount?: number | null;
   total_amount?: number | null;
   discount_amount?: number | null;
+  paid_amount?: number | null;
 }
 
 export interface PerformanceData {
@@ -127,12 +128,10 @@ export function withinRange(dateStr: string | null | undefined, range: DateRange
   const date = new Date(dateStr);
   if (Number.isNaN(date.getTime())) return false;
 
-  if (range === 'today') return date.toDateString() === now.toDateString();
-
-  const days = range === '7days' ? 7 : 30;
   const from = new Date(now);
-  from.setDate(now.getDate() - days);
-  return date >= from;
+  from.setHours(0, 0, 0, 0);
+  if (range !== 'today') from.setDate(from.getDate() - (range === '7days' ? 6 : 29));
+  return date >= from && date <= now;
 }
 
 /**
@@ -143,7 +142,9 @@ export function withinRange(dateStr: string | null | undefined, range: DateRange
  * the price list.
  */
 export function commissionOf(t: CompletedTest): number {
-  if (t.commission_amount) return t.commission_amount;
+  if (t.commission_amount != null && Number.isFinite(Number(t.commission_amount))) {
+    return Math.max(Number(t.commission_amount), 0);
+  }
   if (t.commission_type === 'percentage') {
     return ((t.price || 0) * (t.commission_value || 0)) / 100;
   }
@@ -252,12 +253,20 @@ export interface Totals {
 }
 
 export function totalsFor(f: FilteredData): Totals {
-  const totalBilledNet = f.billing.reduce((sum, p) => sum + (p.net_amount || p.total_amount || 0), 0);
+  const totalBilledNet = f.billing.reduce((sum, p) => sum + (p.net_amount ?? p.total_amount ?? 0), 0);
   const ledgerCollections = f.ledger
     .filter((t) => t.type === 'deposit')
     .reduce((sum, t) => sum + (t.amount || 0), 0);
   const externalCollections = f.charges.reduce((sum, c) => sum + (c.amount || 0), 0);
   const totalReceptionCollections = ledgerCollections + externalCollections;
+  const patientCollections = f.billing.reduce((sum, p) => {
+    const billed = Math.max(p.net_amount ?? p.total_amount ?? 0, 0);
+    return sum + Math.min(Math.max(p.paid_amount ?? 0, 0), billed);
+  }, 0);
+  const outstandingReceivables = f.billing.reduce((sum, p) => {
+    const billed = Math.max(p.net_amount ?? p.total_amount ?? 0, 0);
+    return sum + Math.max(billed - Math.max(p.paid_amount ?? 0, 0), 0);
+  }, 0);
   const totalDiscounts = f.tests.reduce((sum, t) => sum + discountOf(t), 0);
   const totalAverageCost = f.tests.reduce((sum, t) => sum + (t.average_cost || 0), 0);
   const totalStaffBonuses = f.tests.reduce((sum, t) => sum + (t.staff_bonus_amount || 0), 0);
@@ -274,8 +283,8 @@ export function totalsFor(f: FilteredData): Totals {
     totalReceptionCollections,
     // Capped at 100: an overpayment or a deposit against an earlier visit
     // should not read as "112% collected".
-    collectionRate: totalBilledNet > 0 ? Math.min((totalReceptionCollections / totalBilledNet) * 100, 100) : 100,
-    outstandingReceivables: Math.max(totalBilledNet - totalReceptionCollections, 0),
+    collectionRate: totalBilledNet > 0 ? (patientCollections / totalBilledNet) * 100 : 100,
+    outstandingReceivables,
     totalDiscounts,
     totalAverageCost,
     totalStaffBonuses,
@@ -378,20 +387,43 @@ export interface TrendPoint {
  * same reason the chart is 580px wide — it is what fits.
  */
 export function trendSeries(tests: CompletedTest[], range: DateRange, now: Date = new Date()): TrendPoint[] {
-  const days: TrendPoint[] = [];
-  const buckets = range === 'today' ? 1 : range === '7days' ? 7 : range === '30days' ? 15 : 12;
+  type Bucket = TrendPoint & { start: number; end: number };
+  const days: Bucket[] = [];
+  const midnight = new Date(now);
+  midnight.setHours(0, 0, 0, 0);
 
-  for (let i = buckets - 1; i >= 0; i--) {
-    const d = new Date(now);
-    if (range === 'all') {
-      d.setMonth(now.getMonth() - i);
-      days.push({ dateLabel: d.toLocaleString('en-US', { month: 'short' }), count: 0, rev: 0 });
-    } else {
-      d.setDate(now.getDate() - i);
+  if (range === 'all') {
+    for (let i = 11; i >= 0; i--) {
+      const start = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const end = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
       days.push({
-        dateLabel: d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' }),
+        dateLabel: start.toLocaleString('en-US', { month: 'short' }),
         count: 0,
         rev: 0,
+        start: start.getTime(),
+        end: end.getTime(),
+      });
+    }
+  } else {
+    const bucketDays = range === '30days' ? 2 : 1;
+    const bucketCount = range === 'today' ? 1 : range === '7days' ? 7 : 15;
+    const first = new Date(midnight);
+    first.setDate(first.getDate() - (bucketCount * bucketDays - 1));
+    for (let i = 0; i < bucketCount; i++) {
+      const start = new Date(first);
+      start.setDate(first.getDate() + i * bucketDays);
+      const end = new Date(start);
+      end.setDate(start.getDate() + bucketDays);
+      const last = new Date(end);
+      last.setDate(last.getDate() - 1);
+      days.push({
+        dateLabel: bucketDays === 1
+          ? start.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
+          : `${start.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}â€“${last.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}`,
+        count: 0,
+        rev: 0,
+        start: start.getTime(),
+        end: end.getTime(),
       });
     }
   }
@@ -401,20 +433,14 @@ export function trendSeries(tests: CompletedTest[], range: DateRange, now: Date 
     const testDate = new Date(t.completed_at);
     if (Number.isNaN(testDate.getTime())) continue;
 
-    const label =
-      range === 'all'
-        ? testDate.toLocaleString('en-US', { month: 'short' })
-        : testDate.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
-
-    for (const day of days) {
-      if (day.dateLabel === label) {
-        day.count += 1;
-        day.rev += t.price || 0;
-      }
+    const bucket = days.find((day) => testDate.getTime() >= day.start && testDate.getTime() < day.end);
+    if (bucket) {
+      bucket.count += 1;
+      bucket.rev += t.price || 0;
     }
   }
 
-  return days;
+  return days.map(({ dateLabel, count, rev }) => ({ dateLabel, count, rev }));
 }
 
 export interface ChartGeometry {

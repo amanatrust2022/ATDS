@@ -202,7 +202,7 @@ export function PriceList({
       await upsertTestPrices(rows, organizationId);
       setSaved(draft);
       setPendingSaved(null);
-      setSuccess(`Saved ${rows.length} prices.`);
+      setSuccess(`Saved ${changedTests.length} price${changedTests.length === 1 ? '' : 's'}.`);
 
       // One audit row per test actually changed. A failure here does not
       // unwind the save that already happened — it is only logged.

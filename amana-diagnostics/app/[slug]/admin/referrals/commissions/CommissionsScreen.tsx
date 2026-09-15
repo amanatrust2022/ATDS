@@ -41,6 +41,7 @@ import {
   totalsFor,
   type StatusFilter,
   type TypeFilter,
+  type ReferrerGroup,
 } from '@/lib/commissionsView';
 import { SettleReferrerDialog } from '@/components/features/commissions/SettleReferrerDialog';
 import type { SettleResult } from '@/lib/commissionsView';
@@ -81,7 +82,7 @@ function CommissionsPage() {
   const [partialAlert, setPartialAlert] = useState<{ failed: SettleResult['failed']; paidCount: number } | null>(null);
 
   // Batch-referrer dialog
-  const [settlingReferrer, setSettlingReferrer] = useState<string | null>(null);
+  const [settlingReferrer, setSettlingReferrer] = useState<ReferrerGroup | null>(null);
 
   useShellSlot(
     { subtitle: 'What is owed to the doctors and facilities who send you patients.' },
@@ -307,6 +308,13 @@ function CommissionsPage() {
       }),
     );
 
+  const printReferrerStatement = (group: ReferrerGroup) =>
+    printHtml(buildCommissionStatementHtml({
+      clinicName: orgName(organization),
+      entries: group.patients,
+      referrerName: group.name,
+    }));
+
   const exportCsv = () => {
     const blob = new Blob([buildCommissionCsv(filtered)], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
@@ -319,7 +327,7 @@ function CommissionsPage() {
 
   const settlingReferrerEntries = useMemo(() => {
     if (!settlingReferrer) return [];
-    return filtered.filter((e) => e.referrerName === settlingReferrer && e.commissionStatus === 'pending');
+    return settlingReferrer.patients.filter((e) => e.commissionStatus === 'pending');
   }, [filtered, settlingReferrer]);
 
   return (
@@ -469,8 +477,8 @@ function CommissionsPage() {
             groups={groups}
             expanded={expanded}
             onToggle={(name) => setExpanded((p) => ({ ...p, [name]: !p[name] }))}
-            onPrint={printStatement}
-            onPayOut={(name) => setSettlingReferrer(name)}
+            onPrint={printReferrerStatement}
+            onPayOut={setSettlingReferrer}
           />
         </TabPanel>
       </Tabs>
@@ -489,7 +497,7 @@ function CommissionsPage() {
 
       {settlingReferrer && (
         <SettleReferrerDialog
-          referrerName={settlingReferrer}
+          referrerName={settlingReferrer.name}
           pendingEntries={settlingReferrerEntries}
           open={Boolean(settlingReferrer)}
           onClose={() => setSettlingReferrer(null)}
