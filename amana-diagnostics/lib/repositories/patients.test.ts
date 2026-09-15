@@ -685,6 +685,63 @@ describe('Registering a patient who pays from a wallet', () => {
     warn.mockRestore();
   });
 
+  it('registers against an older patient_tests schema without package provenance', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const testPayloads: any[][] = [];
+    let patientTestAttempt = 0;
+    createClientMock.mockReturnValue({
+      from: (table: string) => ({
+        insert: (rows: any[]) => {
+          if (table !== 'patient_tests') return Promise.resolve({ error: null });
+          testPayloads.push(rows);
+          patientTestAttempt += 1;
+          return Promise.resolve(patientTestAttempt === 1
+            ? {
+                error: {
+                  code: 'PGRST204',
+                  message: "Could not find the 'package_id' column of 'patient_tests' in the schema cache",
+                },
+              }
+            : { error: null });
+        },
+      }),
+    });
+
+    await cloudPatientsRepository.addWithReferralSequentially(
+      { ...walletPatient, id: 123, patientProfileId: 42, paymentMethod: 'cash' } as any,
+      [{ ...someTests[0], packageId: 'wellness', packageName: 'Wellness' }] as any,
+      'org-1',
+    );
+
+    expect(testPayloads).toHaveLength(2);
+    expect(testPayloads[0][0]).toMatchObject({ package_id: 'wellness', package_name: 'Wellness' });
+    expect(testPayloads[1][0]).not.toHaveProperty('package_id');
+    expect(testPayloads[1][0]).not.toHaveProperty('package_name');
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('supabase_catalogue_packages.sql'));
+    warn.mockRestore();
+  });
+
+  it('does not hide unrelated patient_tests write failures', async () => {
+    const patientTestsInsert = vi.fn().mockResolvedValue({
+      error: { code: '42501', message: 'new row violates row-level security policy' },
+    });
+    createClientMock.mockReturnValue({
+      from: (table: string) => ({
+        insert: table === 'patient_tests'
+          ? patientTestsInsert
+          : () => Promise.resolve({ error: null }),
+      }),
+    });
+
+    await expect(cloudPatientsRepository.addWithReferralSequentially(
+      { ...walletPatient, id: 123, patientProfileId: 42, paymentMethod: 'cash' } as any,
+      someTests,
+      'org-1',
+    )).rejects.toMatchObject({ code: '42501' });
+
+    expect(patientTestsInsert).toHaveBeenCalledTimes(1);
+  });
+
   // ─── D-04: ids come from a counter, not from chance ──────────────────────
 
   it('reserves the patient and profile ids before writing anything', async () => {

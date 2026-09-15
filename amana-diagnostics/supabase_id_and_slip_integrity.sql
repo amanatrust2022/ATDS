@@ -120,7 +120,9 @@ GRANT EXECUTE ON FUNCTION public.allocate_numeric_id(uuid, text, int) TO authent
 --
 -- If this fails, there are already duplicate slip numbers in the table. Run the
 -- DUPLICATE CHECK query in the VERIFY section, settle those rows by hand, then
--- re-run this statement. Do not force it.
+-- re-run this statement. Do not force it. The production repair prepared for
+-- the 2026-09-15 collision set is in ../supabase_repair_duplicate_slips.sql; it
+-- preserves every visit and updates linked registration wallet references.
 CREATE UNIQUE INDEX IF NOT EXISTS patients_org_slip_number_key
   ON public.patients (organization_id, slip_number)
   WHERE slip_number IS NOT NULL;

@@ -14,6 +14,50 @@ import type { Patient, PatientProfile, PatientTest } from '@/lib/store';
 type NewPatient = Omit<Patient, 'id' | 'tests'> & { id?: number };
 type NewTest = Omit<PatientTest, 'id' | 'patient_id'>;
 
+type PatientTestInsertRow = ReturnType<typeof toTestRowsWithBilling>[number];
+
+/** Set once per session so an out-of-date cloud schema does not flood the console. */
+let warnedMissingPackageColumns = false;
+
+/**
+ * Package provenance was added after patient_tests itself. During a staggered
+ * deployment an older database can still accept the investigation, but only
+ * after the two new columns are omitted. Retry only that precise compatibility
+ * failure; constraints, RLS errors and every other write failure still surface.
+ */
+const isMissingPatientTestPackageColumn = (error: { code?: string; message?: string }): boolean =>
+  error.code === 'PGRST204' &&
+  /(?:package_id|package_name)/i.test(error.message || '') &&
+  /patient_tests/i.test(error.message || '') &&
+  /schema cache/i.test(error.message || '');
+
+const withoutPackageProvenance = (rows: PatientTestInsertRow[]) => rows.map(row => {
+  const { package_id: _packageId, package_name: _packageName, ...legacyRow } = row;
+  return legacyRow;
+});
+
+async function insertPatientTestsCompat(
+  supabase: any,
+  rows: PatientTestInsertRow[],
+): Promise<void> {
+  const { error } = await supabase.from('patient_tests').insert(rows);
+  if (!error) return;
+  if (!isMissingPatientTestPackageColumn(error)) throw error;
+
+  if (!warnedMissingPackageColumns) {
+    warnedMissingPackageColumns = true;
+    console.warn(
+      '[patients] patient_tests package columns are not deployed; registering without package ' +
+      'provenance. Apply supabase_catalogue_packages.sql to fix this.',
+    );
+  }
+
+  const { error: legacyError } = await supabase
+    .from('patient_tests')
+    .insert(withoutPackageProvenance(rows));
+  if (legacyError) throw legacyError;
+}
+
 /**
  * Narrows what `list` returns.
  *
@@ -538,10 +582,10 @@ export const cloudPatientsRepository: CloudPatientsRepository = {
       if (txError) throw txError;
     }
 
-    const { error: tError } = await supabase
-      .from('patient_tests')
-      .insert(toTestRowsWithBilling(tests, patientId, organizationId));
-    if (tError) throw tError;
+    await insertPatientTestsCompat(
+      supabase,
+      toTestRowsWithBilling(tests, patientId, organizationId),
+    );
 
     return patientId;
   },

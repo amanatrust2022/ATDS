@@ -19,3 +19,17 @@ alter table if exists public.custom_tests
 create index if not exists idx_patient_tests_package
   on public.patient_tests (organization_id, package_id)
   where package_id is not null;
+
+-- Make the new columns visible to PostgREST immediately. Without this, an app
+-- deployed straight after the ALTER can continue receiving PGRST204 from a
+-- stale schema cache until PostgREST reloads on its own.
+notify pgrst, 'reload schema';
+
+-- VERIFY: expect two rows, both with the indicated data type.
+--
+-- select column_name, data_type
+--   from information_schema.columns
+--  where table_schema = 'public'
+--    and table_name = 'patient_tests'
+--    and column_name in ('package_id', 'package_name')
+--  order by column_name;
