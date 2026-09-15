@@ -225,9 +225,17 @@ describe('the totals', () => {
     expect(totalsFor(f).totalCommissions).toBe(1900);
   });
 
-  it('counts deposits and external charges as collected, but not ledger charges', () => {
-    // A charge is money owed, not money taken.
-    expect(totalsFor(f).totalReceptionCollections).toBe(20000);
+  it('counts direct registration payments, deposits and external charges, but not ledger charges', () => {
+    // A charge is money owed, not money taken. The visit's direct payment is.
+    expect(totalsFor(f).totalReceptionCollections).toBe(38000);
+  });
+
+  it('does not count a wallet-funded registration a second time', () => {
+    const totals = totalsFor({
+      ...f,
+      billing: [{ paid_amount: 18000, payment_method: 'wallet' }],
+    });
+    expect(totals.totalReceptionCollections).toBe(20000);
   });
 
   it('never reports collecting more than was billed', () => {
@@ -269,6 +277,20 @@ describe('the leaderboard', () => {
     expect(bala.testCount).toBe(2);
     expect(bala.testRev).toBe(16000);
     expect(bala.commissionSum).toBe(1900);
+  });
+
+  it('credits direct registration payment only to its immutable receiver id', () => {
+    const attributed = staffRows(STAFF, {
+      ...f,
+      billing: [
+        { paid_amount: 12000, payment_method: 'cash', received_by_profile_id: 'u4' },
+        { paid_amount: 9000, payment_method: 'wallet', received_by_profile_id: 'u4' },
+        { paid_amount: 5000, payment_method: 'pos', received_by_profile_id: 'someone-else' },
+      ],
+    });
+    const ngozi = attributed.find((r) => r.member.id === 'u4')!;
+    expect(ngozi.receiptCount).toBe(3);
+    expect(ngozi.collectionSum).toBe(32000);
   });
 
   it('ranks by revenue, comparing reception on collections', () => {

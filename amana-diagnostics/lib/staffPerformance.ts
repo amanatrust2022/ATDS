@@ -53,6 +53,8 @@ export interface PatientBilling {
   total_amount?: number | null;
   discount_amount?: number | null;
   paid_amount?: number | null;
+  payment_method?: string | null;
+  received_by_profile_id?: string | null;
 }
 
 export interface PerformanceData {
@@ -258,7 +260,12 @@ export function totalsFor(f: FilteredData): Totals {
     .filter((t) => t.type === 'deposit')
     .reduce((sum, t) => sum + (t.amount || 0), 0);
   const externalCollections = f.charges.reduce((sum, c) => sum + (c.amount || 0), 0);
-  const totalReceptionCollections = ledgerCollections + externalCollections;
+  // A wallet-funded visit is not a second receipt: the money was already
+  // counted when reception deposited it into the wallet.
+  const registrationCollections = f.billing
+    .filter((p) => p.payment_method !== 'wallet')
+    .reduce((sum, p) => sum + Math.max(p.paid_amount ?? 0, 0), 0);
+  const totalReceptionCollections = ledgerCollections + externalCollections + registrationCollections;
   const patientCollections = f.billing.reduce((sum, p) => {
     const billed = Math.max(p.net_amount ?? p.total_amount ?? 0, 0);
     return sum + Math.min(Math.max(p.paid_amount ?? 0, 0), billed);
@@ -310,6 +317,11 @@ export function staffRows(staff: StaffMember[], f: FilteredData): StaffRow[] {
     const ledgerTx = f.ledger.filter((t) => matchesStaff(t.created_by, member));
     const extTx = f.charges.filter((c) => matchesStaff(c.created_by, member));
     const deposits = ledgerTx.filter((t) => t.type === 'deposit');
+    const registrations = f.billing.filter((p) =>
+      p.payment_method !== 'wallet' &&
+      (p.paid_amount ?? 0) > 0 &&
+      p.received_by_profile_id === member.id
+    );
 
     return {
       member,
@@ -317,10 +329,11 @@ export function staffRows(staff: StaffMember[], f: FilteredData): StaffRow[] {
       testRev: staffTests.reduce((sum, t) => sum + (t.price || 0), 0),
       commissionSum: staffTests.reduce((sum, t) => sum + commissionOf(t), 0),
       bonusSum: staffTests.reduce((sum, t) => sum + (t.staff_bonus_amount || 0), 0),
-      receiptCount: deposits.length + extTx.length,
+      receiptCount: deposits.length + extTx.length + registrations.length,
       collectionSum:
         deposits.reduce((sum, t) => sum + (t.amount || 0), 0) +
-        extTx.reduce((sum, c) => sum + (c.amount || 0), 0),
+        extTx.reduce((sum, c) => sum + (c.amount || 0), 0) +
+        registrations.reduce((sum, p) => sum + Math.max(p.paid_amount ?? 0, 0), 0),
       avgTat: averageTat(staffTests),
     };
   });

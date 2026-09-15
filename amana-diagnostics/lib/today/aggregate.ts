@@ -171,7 +171,9 @@ export function buildToday(payload: TodayPayload, opts: BuildOptions): TodayMode
 
   const billedOf = (rows: TodayVisit[]) => sum(rows, (v) => v.net_amount);
   const collectedOf = (r: Range) =>
-    sum(visitsIn(r), (v) => v.paid_amount) +
+    // Wallet money was received when it was deposited. Counting the visit's
+    // wallet debit here as well would report the same naira twice.
+    sum(visitsIn(r).filter((v) => v.payment_method !== 'wallet'), (v) => v.paid_amount) +
     sum(payload.ledger.filter((l) => l.type === 'deposit' && inRange(l.created_at, r)), (l) => l.amount) +
     sum(payload.charges.filter((c) => inRange(c.created_at, r)), (c) => c.amount);
   const commissionOf = (rows: TodayVisit[]) =>
@@ -196,7 +198,9 @@ export function buildToday(payload: TodayPayload, opts: BuildOptions): TodayMode
       value: collectedOf(range),
       delta: delta(collectedOf(range), collectedOf(prior), { label: cmp }),
       spark: spark([
-        ...payload.visits.map((v) => ({ at: v.registered_at, value: v.paid_amount })),
+        ...payload.visits
+          .filter((v) => v.payment_method !== 'wallet')
+          .map((v) => ({ at: v.registered_at, value: v.paid_amount })),
         ...payload.ledger.filter((l) => l.type === 'deposit').map((l) => ({ at: l.created_at, value: l.amount })),
         ...payload.charges.map((c) => ({ at: c.created_at, value: c.amount })),
       ]),

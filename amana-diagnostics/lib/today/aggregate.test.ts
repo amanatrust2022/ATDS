@@ -105,6 +105,14 @@ describe('money', () => {
     expect(m.money.collected.value).toBe(3500);
   });
 
+  it('does not count a wallet-funded visit after counting its deposit', () => {
+    const m = build({
+      visits: [visit({ paid_amount: 5000, payment_method: 'wallet' })],
+      ledger: [{ created_at: at(5), type: 'deposit', amount: 5000, created_by: 'Reception' }],
+    });
+    expect(m.money.collected.value).toBe(5000);
+  });
+
   it('counts outstanding money across all time, and says how much is from this period', () => {
     const m = build({
       visits: [

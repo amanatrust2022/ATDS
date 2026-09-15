@@ -259,6 +259,7 @@ export default function ReceptionPage() {
               catalogue={catalogue}
               billingAccounts={billingAccounts}
               organization={organization}
+              receivedByProfileId={profile?.id}
               setShowSlipModal={(p) => setShowSlipModal({ patient: p, purpose: 'register' })}
               onRegistered={(p) => setPatients((prev) => [p, ...prev])}
             />

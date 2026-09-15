@@ -776,6 +776,12 @@ export function buildReportPdfDefinition(
                 alignment: 'center',
                 margin: [0, 4, 0, 0],
               },
+              ...(completedTests[0]?.completedByTitle ? [{
+                text: completedTests[0].completedByTitle,
+                fontSize: 9,
+                alignment: 'center',
+                margin: [0, 2, 0, 0],
+              }] : []),
             ]
           },
         ]

@@ -32,6 +32,8 @@ interface RegistrationTabProps {
   catalogue: Test[];
   billingAccounts: BillingAccount[];
   organization: Organization | null;
+  /** Logged-in receptionist credited for direct payment taken at registration. */
+  receivedByProfileId?: string;
   /** Opens the receipt-and-slip preview for the patient just registered. */
   setShowSlipModal: (patient: Patient) => void;
   /**
@@ -44,6 +46,7 @@ interface RegistrationTabProps {
 export default function RegistrationTab({
   patients, patientProfiles, doctors, setDoctors, facilities, setFacilities,
   testPrices, catalogue, billingAccounts, organization,
+  receivedByProfileId,
   setShowSlipModal, onRegistered
 }: RegistrationTabProps) {
   const { notify } = useNotices();
@@ -320,6 +323,7 @@ export default function RegistrationTab({
         paidAmount: amountPaidVal,
         paymentStatus: paymentStatus,
         paymentMethod: paymentMethod,
+        receivedByProfileId,
         billingAccountId: paymentMethod === 'wallet' ? checkoutBillingAccountId : (selectedPatientBillingAccountId || undefined),
         patientProfileId: selectedPatientProfileId || undefined,
       };

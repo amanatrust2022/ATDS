@@ -241,6 +241,7 @@ export async function GET(request: Request) {
       paidAmount: p.paid_amount || 0,
       paymentStatus: p.payment_status || 'paid',
       paymentMethod: p.payment_method || 'cash',
+      receivedByProfileId: p.received_by_profile_id || undefined,
       billingAccountId: p.billing_account_id || null,
       patientProfileId: p.patient_profile_id || null,
       tests: testsByPatientId.get(p.id) || []
@@ -365,8 +366,8 @@ export async function POST(request: Request) {
             referred_by, referring_facility, referring_doctor_id, referring_facility_id,
             commission_assigned, commission_type, commission_value, commission_amount, commission_status,
             total_amount, discount_type, discount_value, discount_amount, net_amount, paid_amount, payment_status, payment_method,
-            organization_id, billing_account_id, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            received_by_profile_id, organization_id, billing_account_id, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
 
         patientStmt.run(
@@ -399,6 +400,7 @@ export async function POST(request: Request) {
           finalPaidAmount,
           finalPaymentStatus,
           patient.paymentMethod || 'cash',
+          patient.receivedByProfileId || null,
           organizationId,
           patient.billingAccountId || null,
           nowStr
@@ -435,6 +437,7 @@ export async function POST(request: Request) {
           paid_amount: finalPaidAmount,
           payment_status: finalPaymentStatus,
           payment_method: patient.paymentMethod || 'cash',
+          received_by_profile_id: patient.receivedByProfileId || null,
           organization_id: organizationId,
           billing_account_id: patient.billingAccountId || null,
           updated_at: nowStr

@@ -42,7 +42,7 @@ function addColumn(db: any, table: string, column: string, definition: string): 
 }
 
 /** Bumped when the expected schema changes, so a machine can say where it is. */
-export const EXPECTED_SCHEMA_VERSION = 3;
+export const EXPECTED_SCHEMA_VERSION = 4;
 
 /** Records which schema this database has been brought up to. */
 function recordSchemaVersion(db: any): void {
@@ -232,6 +232,7 @@ export function initDb(db: any) {
       paid_amount REAL DEFAULT 0.0,
       payment_status TEXT DEFAULT 'paid',
       payment_method TEXT DEFAULT 'cash',
+      received_by_profile_id TEXT,
       billing_account_id TEXT,
       updated_at TEXT,
       FOREIGN KEY (patient_profile_id) REFERENCES patient_profiles(id) ON DELETE SET NULL
@@ -431,6 +432,7 @@ export function initDb(db: any) {
     addColumn(db, 'patients', 'paid_amount', `paid_amount REAL DEFAULT 0.0`);
     addColumn(db, 'patients', 'payment_status', `payment_status TEXT DEFAULT 'paid'`);
     addColumn(db, 'patients', 'payment_method', `payment_method TEXT DEFAULT 'cash'`);
+    addColumn(db, 'patients', 'received_by_profile_id', `received_by_profile_id TEXT`);
 
   // 13. Billing and Wallets Tables
   db.exec(`

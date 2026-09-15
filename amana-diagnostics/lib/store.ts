@@ -132,6 +132,8 @@ export interface Patient {
   paidAmount?: number;
   paymentStatus?: 'paid' | 'partial' | 'unpaid';
   paymentMethod?: string;
+  /** Immutable profile id of the staff member who took payment at registration. */
+  receivedByProfileId?: string;
   billingAccountId?: string;
   tests: PatientTest[];
 }

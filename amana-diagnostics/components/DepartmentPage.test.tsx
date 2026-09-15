@@ -373,6 +373,25 @@ describe('Submitting a result', () => {
     expect(screen.queryByText('Entering Results: Full Blood Count')).toBeNull();
   });
 
+  it('snapshots the current directory name so an admin report never prints only stale signatory details', async () => {
+    fetchStaff.mockResolvedValueOnce([{
+      ...authState.profile,
+      full_name: 'Dr. Aisha Bello',
+      title: 'Medical Director',
+      signature_url: 'current-signature.png',
+    }]);
+    await openFbc();
+
+    fireEvent.click(screen.getByText(/Submit & Send to Reception/));
+
+    await waitFor(() => expect(updateTestResult).toHaveBeenCalledTimes(1));
+    expect(updateTestResult.mock.calls[0][1]).toMatchObject({
+      completedBy: 'Dr. Aisha Bello',
+      completedByTitle: 'Medical Director',
+      completedBySignatureUrl: 'current-signature.png',
+    });
+  });
+
   it('snapshots the current staff commission when the investigation is completed', async () => {
     authState.profile = {
       ...authState.profile,

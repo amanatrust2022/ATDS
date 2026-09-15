@@ -77,6 +77,7 @@ export const toPatient = (p: any): Patient => ({
   paidAmount: p.paid_amount,
   paymentStatus: p.payment_status,
   paymentMethod: p.payment_method,
+  receivedByProfileId: p.received_by_profile_id,
   billingAccountId: p.billing_account_id,
   patientProfileId: p.patient_profile_id,
   tests: (p.tests || []).map(toPatientTest),
@@ -161,6 +162,7 @@ export const toPatientRowWithBilling = (
   paid_amount: patient.paidAmount ?? 0,
   payment_status: patient.paymentStatus || 'paid',
   payment_method: patient.paymentMethod || 'cash',
+  received_by_profile_id: patient.receivedByProfileId || null,
 });
 
 export const toTestRows = (

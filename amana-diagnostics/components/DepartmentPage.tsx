@@ -363,10 +363,11 @@ export default function DepartmentPage({ department }: Props) {
       // with the next completion, not the next login.
       let staffPlanType = profile?.performance_commission_type ?? 'none';
       let staffPlanValue = profile?.performance_commission_value ?? 0;
+      let currentProfile: Awaited<ReturnType<typeof fetchStaff>>[number] | undefined;
       if (profile?.id && organization?.id) {
         try {
           const currentStaff = await fetchStaff(organization.id);
-          const currentProfile = currentStaff.find((person) => person.id === profile.id);
+          currentProfile = currentStaff.find((person) => person.id === profile.id);
           staffPlanType = currentProfile?.performance_commission_type ?? staffPlanType;
           staffPlanValue = currentProfile?.performance_commission_value ?? staffPlanValue;
         } catch {
@@ -385,10 +386,10 @@ export default function DepartmentPage({ department }: Props) {
       await updateTestResult(selected.test.id!, {
         status: 'completed',
         results: finalResults,
-        completedBy: professional,
+        completedBy: currentProfile?.full_name?.trim() || profile?.full_name?.trim() || professional.trim(),
         completedByProfileId: profile?.id || undefined,
-        completedBySignatureUrl: profile?.signature_url || undefined,
-        completedByTitle: profile?.title || undefined,
+        completedBySignatureUrl: currentProfile?.signature_url || profile?.signature_url || undefined,
+        completedByTitle: currentProfile?.title || profile?.title || undefined,
         completedAt: new Date().toISOString(),
         notes: notesToSave,
         staffBonusType: hasStaffPlan ? staffPlanType : selected.test.staffBonusType,

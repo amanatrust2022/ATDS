@@ -75,7 +75,8 @@ export async function GET(request: Request) {
 
       // 3. Fetch summary metrics for Billing Health (total billables)
       const patientBilling = db.prepare(`
-        SELECT total_amount, net_amount, discount_amount, paid_amount, registered_at as created_at
+        SELECT total_amount, net_amount, discount_amount, paid_amount, payment_method,
+               received_by_profile_id, registered_at as created_at
         FROM patients
         WHERE organization_id = ? AND registered_at >= ?
       `).all(orgId, since) as any[];
@@ -118,7 +119,7 @@ export async function GET(request: Request) {
           .gte('completed_at', since).order('completed_at').order('id').range(from, to)),
         fetchAllPages((from, to) => supabaseAdmin.from('billing_ledger_transactions').select('created_by, amount, created_at, type').eq('organization_id', orgId).not('created_by', 'is', null).gte('created_at', since).order('created_at').order('id').range(from, to)),
         fetchAllPages((from, to) => supabaseAdmin.from('external_department_charges').select('created_by, amount, created_at').eq('organization_id', orgId).not('created_by', 'is', null).gte('created_at', since).order('created_at').order('id').range(from, to)),
-        fetchAllPages((from, to) => supabaseAdmin.from('patients').select('total_amount, net_amount, discount_amount, paid_amount, registered_at').eq('organization_id', orgId).gte('registered_at', since).order('registered_at').order('id').range(from, to))
+        fetchAllPages((from, to) => supabaseAdmin.from('patients').select('total_amount, net_amount, discount_amount, paid_amount, payment_method, received_by_profile_id, registered_at').eq('organization_id', orgId).gte('registered_at', since).order('registered_at').order('id').range(from, to))
       ]);
 
       // Map Supabase nested join response to flat patient_created_at

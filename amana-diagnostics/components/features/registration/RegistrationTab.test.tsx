@@ -45,6 +45,7 @@ const show = () =>
       catalogue={catalogue as never}
       billingAccounts={[]}
       organization={{ id: 'org-1', name: 'Kano Diagnostics', slug: 'kano' } as never}
+      receivedByProfileId="reception-1"
       setShowSlipModal={vi.fn()}
       onRegistered={vi.fn()}
     />,

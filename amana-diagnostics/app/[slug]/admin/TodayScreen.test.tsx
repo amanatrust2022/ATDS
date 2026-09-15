@@ -60,6 +60,7 @@ function renderScreen() {
 
 const NOW = new Date();
 const minutesAgo = (m: number) => new Date(NOW.getTime() - m * 60_000).toISOString();
+const startOfToday = () => new Date(NOW.getFullYear(), NOW.getMonth(), NOW.getDate()).toISOString();
 
 function payload(over: Partial<TodayPayload> = {}): TodayPayload {
   return {
@@ -67,13 +68,13 @@ function payload(over: Partial<TodayPayload> = {}): TodayPayload {
     since: minutesAgo(61 * 24 * 60),
     visits: [
       {
-        id: 'v1', slip_number: 'RD-1', registered_at: minutesAgo(40), first_name: 'Ada', surname: 'Okafor',
+        id: 'v1', slip_number: 'RD-1', registered_at: startOfToday(), first_name: 'Ada', surname: 'Okafor',
         referred_by: null, referring_doctor_id: null, referring_facility_id: null,
         commission_assigned: false, commission_amount: 0, commission_status: null, commission_paid_at: null,
         net_amount: 12000, paid_amount: 12000, payment_status: 'paid', payment_method: 'cash',
       },
       {
-        id: 'v2', slip_number: 'RD-2', registered_at: minutesAgo(30), first_name: 'Bala', surname: 'Yusuf',
+        id: 'v2', slip_number: 'RD-2', registered_at: startOfToday(), first_name: 'Bala', surname: 'Yusuf',
         referred_by: null, referring_doctor_id: null, referring_facility_id: null,
         commission_assigned: false, commission_amount: 0, commission_status: null, commission_paid_at: null,
         net_amount: 5000, paid_amount: 1000, payment_status: 'partial', payment_method: 'cash',

@@ -160,13 +160,21 @@ describe('Mapping a patient into Postgres', () => {
 
   it('adds the commission and billing snapshot on a registration', () => {
     const row = toPatientRowWithBilling(
-      { ...patient, commissionAssigned: true, commissionAmount: 500, totalAmount: 17000, netAmount: 14450 },
+      {
+        ...patient,
+        commissionAssigned: true,
+        commissionAmount: 500,
+        totalAmount: 17000,
+        netAmount: 14450,
+        receivedByProfileId: 'reception-1',
+      },
       111, 42, 'org-1',
     );
 
     expect(row).toMatchObject({
       commission_assigned: true, commission_amount: 500,
       commission_status: 'pending', total_amount: 17000, net_amount: 14450,
+      received_by_profile_id: 'reception-1',
     });
   });
 
