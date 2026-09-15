@@ -68,3 +68,52 @@ describe('Parameter grid', () => {
     expect(within(line).getByText('13-17')).toBeInTheDocument();
   });
 });
+
+describe('Qualitative entry grids', () => {
+  it('shows serology as Investigation and Result only', () => {
+    render(
+      <ParameterTable
+        testId="hbsag"
+        testName="HBsAg"
+        results={[row({ parameter: 'HBsAg', unit: '', range: '' })]}
+        onUpdate={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('columnheader', { name: 'Investigation' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Result' })).toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'Unit' })).toBeNull();
+    expect(screen.queryByRole('columnheader', { name: /Reference range/i })).toBeNull();
+  });
+
+  it('offers graded positive and negative urinalysis results', () => {
+    render(
+      <ParameterTable
+        testId="urinalysis"
+        testName="Urinalysis"
+        results={[row({ parameter: 'Protein', unit: '', range: '' })]}
+        onUpdate={vi.fn()}
+      />,
+    );
+
+    const result = screen.getByRole('combobox', { name: 'Protein result' });
+    expect(within(result).getByRole('option', { name: 'Negative' })).toBeInTheDocument();
+    expect(within(result).getByRole('option', { name: 'Positive (++++)' })).toBeInTheDocument();
+  });
+
+  it('offers the standard RVS wording without preventing a custom result', () => {
+    render(
+      <ParameterTable
+        testId="rvs"
+        testName="RVS"
+        results={[row({ parameter: 'RVS', unit: '', range: '' })]}
+        onUpdate={vi.fn()}
+      />,
+    );
+
+    const input = screen.getByRole('combobox', { name: 'RVS result' });
+    expect(input).toHaveAttribute('list');
+    expect(document.querySelector('option[value="Sero positive to determine 1/2"]')).toBeInTheDocument();
+    expect(document.querySelector('option[value="Sero negative to determine 1/2"]')).toBeInTheDocument();
+  });
+});

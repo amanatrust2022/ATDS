@@ -5,8 +5,35 @@ import {
   serializeWidalResults, deserializeWidalResults,
   serializeMpsResults, deserializeMpsResults,
   emptyMcsState, emptyWidalState, emptyMpsState, isNoGrowth, stripMatrixRows,
+  normaliseLabRows, usesSimpleResultTable,
   type McsFormState, type WidalFormState, type MpsFormState,
 } from './labResults';
+
+describe('Compact and qualitative report rules', () => {
+  it('keeps only the requested FBC parameters in analyser order', () => {
+    const rows = ['PLT', 'RDW-CV', 'HGB', 'WBC', 'Gran%', 'Lym%', 'Mid%', 'RBC', 'HCT', 'MCV', 'MCH', 'MCHC']
+      .map((parameter) => ({ parameter, result: '', unit: 'u', range: 'r' }));
+    expect(normaliseLabRows('fbc', 'Full Blood Count', rows).map((row) => row.parameter)).toEqual([
+      'WBC', 'LYM%', 'GRAN%', 'MID%', 'RBC', 'HGB', 'HCT', 'MCV', 'MCH', 'MCHC', 'PLT',
+    ]);
+  });
+
+  it('removes units and ranges from qualitative results and urinalysis', () => {
+    expect(normaliseLabRows('hbsag', 'HBsAg', [
+      { parameter: 'HBsAg', result: 'Reactive', unit: 'index', range: 'Non-Reactive' },
+    ])[0]).toMatchObject({ unit: '', range: '' });
+    expect(normaliseLabRows('urinalysis', 'Urinalysis', [
+      { parameter: 'Protein', result: 'Positive (+)', unit: 'mg/dL', range: 'Negative' },
+    ])[0]).toMatchObject({ unit: '', range: '' });
+  });
+
+  it('uses a two-column result table when every investigation is qualitative', () => {
+    expect(usesSimpleResultTable('hb_combo', 'HB Combo', [
+      { parameter: 'HBsAg', result: '', unit: '', range: '' },
+      { parameter: 'HCV', result: '', unit: '', range: '' },
+    ])).toBe(true);
+  });
+});
 
 /**
  * Characterisation tests for the on-disk format of a medical result.

@@ -5,11 +5,13 @@ import { Alert, Button, Dialog, Field, Input, LoadingPanel, Textarea } from '@/c
 import { useNotices } from '@/components/Notices';
 import styles from './DepartmentPage.module.css';
 import { Department, Patient, PatientTest, getTestById, fetchPatients, updateTestResult, subscribeToPatients, fetchCustomTemplates, RadiologyTemplate, fetchCustomTests, setCustomCatalogueCache } from '@/lib/store';
+import { flattenTestParameters } from '@/lib/catalogue';
 import { RiCheckLine, RiErrorWarningLine, RiSettings3Line } from '@remixicon/react';
 import { useAuth } from '@/components/AuthProvider';
 import { RADIOLOGY_TEMPLATES, serializeRadiologyResults, deserializeRadiologyResults, RadiologyFormState, convertTextToFormattedHtml, stripImpressionHeading } from '@/lib/radiology-templates';
 import { windowStartIso } from '@/lib/store/useQueueStore';
 import DepartmentQueue from '@/components/features/department/DepartmentQueue';
+import ResultModal from '@/components/features/reception/ResultModal';
 import ParameterTable, { criticalRows, resolveFlags } from '@/components/features/department/ParameterTable';
 import { CriticalValueDialog } from '@/components/features/department/CriticalValueDialog';
 import { normaliseSex } from '@/lib/clinical/referenceRange';
@@ -32,6 +34,7 @@ import {
   serializeMcsResults, deserializeMcsResults,
   serializeWidalResults, deserializeWidalResults,
   serializeMpsResults, deserializeMpsResults,
+  normaliseLabRows,
   type McsFormState, type WidalFormState, type MpsFormState,
 } from '@/lib/store/labResults';
 
@@ -71,6 +74,7 @@ export default function DepartmentPage({ department }: Props) {
   const [customTemplates, setCustomTemplates] = useState<RadiologyTemplate[]>([]);
   const [showTemplateManager, setShowTemplateManager] = useState(false);
   const [showTestManager, setShowTestManager] = useState(false);
+  const [reportPatient, setReportPatient] = useState<Patient | null>(null);
   /** Tests with a half-typed result kept on this machine. Shown in the queue. */
   const [drafts, setDrafts] = useState<Set<string>>(() => new Set());
   useEffect(() => {
@@ -125,7 +129,7 @@ export default function DepartmentPage({ department }: Props) {
     // visit.
     const [waiting, finished] = await Promise.all([
       fetchPatients(organization.id, { department, unfinished: true }),
-      fetchPatients(organization.id, { department, completedSince: windowStartIso('today') }),
+      fetchPatients(organization.id, { department, completedSince: windowStartIso('thirty_days') }),
     ]);
     setPatients(waiting);
     setCompletedPatients(finished);
@@ -177,9 +181,12 @@ export default function DepartmentPage({ department }: Props) {
    */
   const loadForm = (test: PatientTest): boolean => {
     const testDef = getTestById(test.testId);
+    const flatParameters = flattenTestParameters(testDef?.parameters || []);
     const mcsCheck = isMcsTest(test.testId, test.testName);
     const widalCheck = isWidalTest(test.testId, test.testName);
     const mpsCheck = isMPsTest(test.testId, test.testName);
+    const normaliseRows = <T extends { parameter: string; result: string; unit: string; range: string }>(rows: T[]) =>
+      normaliseLabRows(test.testId, test.testName, rows);
 
     setIsMcs(mcsCheck);
     setIsWidal(widalCheck);
@@ -236,7 +243,7 @@ export default function DepartmentPage({ department }: Props) {
       setRadiologyState(null);
     }
 
-    const extraParams = (testDef?.parameters || []).filter(p =>
+    const extraParams = flatParameters.filter(p =>
       !p.name.startsWith('Widal:') && !p.name.startsWith('MPs:')
     );
 
@@ -244,18 +251,18 @@ export default function DepartmentPage({ department }: Props) {
       if (test.results && test.results.length > 0) {
         const extraResults = stripMatrixRows(test.results);
         if (extraResults.length > 0) {
-          setResults(extraResults.map(r => ({ ...r, flag: r.flag || '' })));
+          setResults(normaliseRows(extraResults.map(r => ({ ...r, flag: r.flag || '' }))));
         } else {
-          setResults(extraParams.map(p => ({ parameter: p.name, result: '', unit: p.unit, range: p.range, flag: '' })));
+          setResults(normaliseRows(extraParams.map(p => ({ parameter: p.name, result: '', unit: p.unit, range: p.range, flag: '' }))));
         }
       } else {
-        setResults(extraParams.map(p => ({ parameter: p.name, result: '', unit: p.unit, range: p.range, flag: '' })));
+        setResults(normaliseRows(extraParams.map(p => ({ parameter: p.name, result: '', unit: p.unit, range: p.range, flag: '' }))));
       }
     } else if (!mcsCheck && !widalCheck && !mpsCheck && !isFreeText) {
       if (test.results && test.results.length > 0) {
-        setResults(test.results.map(r => ({ ...r, flag: r.flag || '' })));
+        setResults(normaliseRows(test.results.map(r => ({ ...r, flag: r.flag || '' }))));
       } else {
-        setResults((testDef?.parameters || []).map(p => ({ parameter: p.name, result: '', unit: p.unit, range: p.range, flag: '' })));
+        setResults(normaliseRows(flatParameters.map(p => ({ parameter: p.name, result: '', unit: p.unit, range: p.range, flag: '' }))));
       }
     } else {
       setResults([]);
@@ -267,7 +274,7 @@ export default function DepartmentPage({ department }: Props) {
     // newer than anything above. See lib/store/resultDrafts.ts.
     const draft = organization?.id && test.id ? loadDraft(organization.id, test.id) : null;
     if (draft) {
-      setResults(draft.results.map(r => ({ ...r, flag: r.flag || '' })));
+      setResults(normaliseRows(draft.results.map(r => ({ ...r, flag: r.flag || '' }))));
       setNotes(draft.notes);
       if (mcsCheck && draft.mcsState) setMcsState(draft.mcsState);
       if (widalCheck && draft.widalState) setWidalState(draft.widalState);
@@ -519,10 +526,12 @@ export default function DepartmentPage({ department }: Props) {
         <DepartmentQueue
           department={department}
           pending={deptPatients}
-          completedToday={completedToday}
+          completed={completedPatients}
           pendingCount={pendingCount}
           loading={loadingData}
           onOpenTest={openEntry}
+          onViewTest={(patient, test) => setReportPatient({ ...patient, tests: [test] })}
+          onUpdateTest={openEntry}
           draftTestIds={drafts}
         />
       </div>
@@ -612,7 +621,7 @@ export default function DepartmentPage({ department }: Props) {
               />
             ) : (
               <div className={styles['scroll']}>
-                <ParameterTable results={results} onUpdate={updateResult} sex={normaliseSex(selected.patient.sex)} />
+                <ParameterTable results={results} onUpdate={updateResult} testId={selected.test.testId} testName={selected.test.testName} sex={normaliseSex(selected.patient.sex)} />
               </div>
             )}
 
@@ -620,7 +629,7 @@ export default function DepartmentPage({ department }: Props) {
               <section className={styles['extra']} aria-labelledby="extra-title">
                 <h3 id="extra-title" className={styles['extraTitle']}>Additional parameters</h3>
                 <div className={styles['extraTable']}>
-                  <ParameterTable results={results} onUpdate={updateResult} sex={normaliseSex(selected.patient.sex)} />
+                  <ParameterTable results={results} onUpdate={updateResult} testId={selected.test.testId} testName={selected.test.testName} sex={normaliseSex(selected.patient.sex)} />
                 </div>
               </section>
             )}
@@ -670,6 +679,10 @@ export default function DepartmentPage({ department }: Props) {
           </div>
         )}
       </Dialog>
+
+      {reportPatient && (
+        <ResultModal patient={reportPatient} org={organization} onClose={() => setReportPatient(null)} />
+      )}
 
 
       <TemplateManager

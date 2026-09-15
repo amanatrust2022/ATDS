@@ -259,6 +259,8 @@ export function initDb(db: any) {
       commission_type TEXT DEFAULT 'none',
       commission_value REAL DEFAULT 0.0,
       commission_amount REAL DEFAULT 0.0,
+      package_id TEXT,
+      package_name TEXT,
       updated_at TEXT,
       FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE CASCADE
     );
@@ -377,6 +379,8 @@ export function initDb(db: any) {
       category TEXT NOT NULL,
       specimen TEXT NOT NULL,
       parameters TEXT NOT NULL DEFAULT '[]',
+      kind TEXT NOT NULL DEFAULT 'investigation',
+      investigation_ids TEXT NOT NULL DEFAULT '[]',
       is_active INTEGER DEFAULT 1,
       updated_at TEXT,
       PRIMARY KEY (organization_id, id),
@@ -392,6 +396,10 @@ export function initDb(db: any) {
     addColumn(db, 'patient_tests', 'commission_type', `commission_type TEXT DEFAULT 'none'`);
     addColumn(db, 'patient_tests', 'commission_value', `commission_value REAL DEFAULT 0.0`);
     addColumn(db, 'patient_tests', 'commission_amount', `commission_amount REAL DEFAULT 0.0`);
+    addColumn(db, 'patient_tests', 'package_id', `package_id TEXT`);
+    addColumn(db, 'patient_tests', 'package_name', `package_name TEXT`);
+    addColumn(db, 'custom_tests', 'kind', `kind TEXT NOT NULL DEFAULT 'investigation'`);
+    addColumn(db, 'custom_tests', 'investigation_ids', `investigation_ids TEXT NOT NULL DEFAULT '[]'`);
 
     addColumn(db, 'patients', 'total_amount', `total_amount REAL DEFAULT 0.0`);
     addColumn(db, 'patients', 'discount_type', `discount_type TEXT DEFAULT 'none'`);

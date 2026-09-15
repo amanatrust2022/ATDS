@@ -143,6 +143,26 @@
   color: var(--text-secondary);
 }
 
+.doneFilters {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-3);
+}
+
+.doneSearch {
+  flex: 1 1 260px;
+}
+
+.doneEmpty {
+  margin: 0;
+  padding: var(--space-4);
+  color: var(--text-muted);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-subtle);
+}
+
 .doneList {
   display: flex;
   flex-direction: column;
@@ -170,7 +190,27 @@
 }
 
 .doneTests {
-  margin-left: auto;
   color: var(--success-text);
   font-weight: var(--weight-medium);
+}
+
+.doneActions {
+  display: flex;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+@media (max-width: 720px) {
+  .doneFilters {
+    align-items: stretch;
+  }
+
+  .doneSearch {
+    flex-basis: 100%;
+  }
+
+  .doneActions {
+    width: 100%;
+    margin-left: 0;
+  }
 }

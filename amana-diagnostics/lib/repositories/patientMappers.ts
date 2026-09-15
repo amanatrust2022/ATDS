@@ -39,6 +39,8 @@ export const toPatientTest = (t: any): PatientTest => ({
   commissionType: t.commission_type,
   commissionValue: t.commission_value,
   commissionAmount: t.commission_amount,
+  packageId: t.package_id,
+  packageName: t.package_name,
 });
 
 export const toPatient = (p: any): Patient => ({
@@ -181,4 +183,6 @@ export const toTestRowsWithBilling = (
   commission_type: t.commissionType || 'none',
   commission_value: t.commissionValue ?? 0,
   commission_amount: t.commissionAmount ?? 0,
+  package_id: t.packageId || null,
+  package_name: t.packageName || null,
 }));

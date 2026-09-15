@@ -41,7 +41,7 @@ export default function RegistrationForm({ errors }: RegistrationFormProps) {
         <Field label="Phone number" required error={errors.phone}>
           <Input value={form.phone} onChange={e => setForm({ phone: e.target.value })} placeholder="+234 803 000 0000" />
         </Field>
-        <Field label="Patient email" hint="Where the result is sent, if they want it by email.">
+        <Field label="Patient email" hint="">
           <Input type="email" value={form.email} onChange={e => setForm({ email: e.target.value })} placeholder="patient@example.com" />
         </Field>
       </div>

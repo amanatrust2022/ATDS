@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { Test, TestPrice } from '@/lib/store';
-import { calculateDiscountAmount } from './registrationBilling';
+import { buildPatientTests, buildSelectedTestDetails, calculateDiscountAmount } from './registrationBilling';
 
 interface RegistrationForm {
   firstName: string;
@@ -122,19 +122,7 @@ export const useRegistrationStore = create<RegistrationState>((set, get) => ({
 
     if (Object.keys(e).length > 0) return { patient: null as any, errors: e };
 
-    const selectedTestDetails = state.selectedTests.map(tid => {
-      const test = params.catalogue.find((t: any) => t.id === tid)!;
-      const catalog = params.testPrices.find(p => p.test_id === tid);
-      return {
-        testId: test.id,
-        testName: test.name,
-        department: test.department,
-        specimen: test.specimen,
-        price: catalog ? catalog.price : 0,
-        commissionType: catalog ? catalog.commission_type : 'none',
-        commissionValue: catalog ? catalog.commission_value : 0,
-      };
-    });
+    const selectedTestDetails = buildSelectedTestDetails(state.selectedTests, params.catalogue, params.testPrices);
 
     const subtotal = selectedTestDetails.reduce((sum, t) => sum + t.price, 0);
     const discVal = parseFloat(state.discountValue) || 0;
@@ -154,27 +142,7 @@ export const useRegistrationStore = create<RegistrationState>((set, get) => ({
     const slipNumber = await params.generateSlipNumber(params.organizationId);
     const isReferral = !!(params.selectedDoctorId && params.selectedDoctorId !== 'none') || !!(params.selectedFacilityId && params.selectedFacilityId !== 'none');
 
-    const tests = selectedTestDetails.map(t => {
-      let commAmt = 0;
-      if (isReferral && t.commissionType !== 'none') {
-        if (t.commissionType === 'percentage') {
-          commAmt = (t.price * (t.commissionValue || 0)) / 100;
-        } else if (t.commissionType === 'flat') {
-          commAmt = t.commissionValue || 0;
-        }
-      }
-      return {
-        testId: t.testId,
-        testName: t.testName,
-        department: t.department,
-        status: 'pending' as const,
-        specimen: t.specimen,
-        price: t.price,
-        commissionType: t.commissionType as any || 'none',
-        commissionValue: t.commissionValue || 0,
-        commissionAmount: commAmt,
-      };
-    });
+    const tests = buildPatientTests(selectedTestDetails, params.catalogue, isReferral);
 
     const totalCommission = tests.reduce((sum, t) => sum + (t.commissionAmount || 0), 0);
     const selDoctor = params.doctors.find(d => d.id === params.selectedDoctorId);

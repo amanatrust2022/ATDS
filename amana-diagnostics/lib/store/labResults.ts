@@ -18,6 +18,91 @@ export interface ResultRow {
   flag?: string;
 }
 
+/** The compact FBC order used by the analyser, entry form and report. */
+export const FBC_PARAMETERS = [
+  'WBC', 'LYM%', 'GRAN%', 'MID%', 'RBC', 'HGB', 'HCT', 'MCV', 'MCH', 'MCHC', 'PLT',
+] as const;
+
+const parameterKey = (value: string) => value.toUpperCase().replace(/[^A-Z0-9%]/g, '');
+
+const FBC_ALIASES: Record<string, typeof FBC_PARAMETERS[number]> = {
+  WBC: 'WBC', 'LYM%': 'LYM%', LYMPHOCYTES: 'LYM%', 'LYMPHOCYTES%': 'LYM%',
+  'GRAN%': 'GRAN%', GRANULOCYTES: 'GRAN%', 'GRANULOCYTES%': 'GRAN%',
+  'MID%': 'MID%', RBC: 'RBC', HGB: 'HGB', HB: 'HGB', HCT: 'HCT',
+  MCV: 'MCV', MCH: 'MCH', MCHC: 'MCHC', HAEMOGLOBIN: 'HGB', HEMOGLOBIN: 'HGB',
+  PLT: 'PLT', PLATELETS: 'PLT',
+};
+
+const QUALITATIVE_PARAMETERS = new Set([
+  'HBSAG', 'HBSAB', 'HBEAG', 'HBEAB', 'HBCAB', 'HCV', 'HCVANTIBODY',
+  'RVS', 'VDRL', 'HIV', 'HIV12', 'HPYLORI', 'PREGNANCYTEST', 'HCG',
+  'RHEUMATOIDFACTOR', 'RHESUSFACTOR', 'BLOODGROUP', 'HBGENOTYPE', 'PT',
+  'MPS', 'MALARIAPARASITE', 'MALARIAPARASITERDT',
+]);
+
+export function isFbcTest(testId: string, testName: string) {
+  const id = testId.toLowerCase();
+  const name = testName.toLowerCase();
+  return id === 'fbc' || name.includes('full blood count') || name.includes('full blood picture');
+}
+
+export function isUrinalysisTest(testId: string, testName: string) {
+  const id = testId.toLowerCase();
+  const name = testName.toLowerCase();
+  return id === 'urinalysis' || name.includes('urinalysis');
+}
+
+export function isRvsParameter(parameter: string) {
+  return parameterKey(parameter) === 'RVS';
+}
+
+export function isQualitativeParameter(parameter: string) {
+  return QUALITATIVE_PARAMETERS.has(parameterKey(parameter));
+}
+
+/**
+ * Applies the clinic's reporting rules to both catalogue rows and already
+ * stored rows. That second part matters: changing the seed catalogue alone
+ * would leave every existing organisation on the old report shape.
+ */
+export function normaliseLabRows<T extends ResultRow>(
+  testId: string,
+  testName: string,
+  rows: T[],
+): T[] {
+  let next = rows;
+  if (isFbcTest(testId, testName)) {
+    const byName = new Map<typeof FBC_PARAMETERS[number], T>();
+    rows.forEach((row) => {
+      const canonical = FBC_ALIASES[parameterKey(row.parameter)];
+      if (canonical && !byName.has(canonical)) byName.set(canonical, { ...row, parameter: canonical });
+    });
+    next = FBC_PARAMETERS.flatMap((name) => byName.get(name) ? [byName.get(name)!] : []);
+  }
+
+  return next.map((row) =>
+    isUrinalysisTest(testId, testName) || isQualitativeParameter(row.parameter) || row.parameter.startsWith('MPs:')
+      ? { ...row, unit: '', range: '' }
+      : row,
+  );
+}
+
+/** Tests whose entry and report tables contain only Investigation and Result. */
+export function usesSimpleResultTable(testId: string, testName: string, rows: ResultRow[]) {
+  return isUrinalysisTest(testId, testName) || (
+    rows.length > 0 && rows.every((row) => isQualitativeParameter(row.parameter))
+  );
+}
+
+export const URINALYSIS_RESULTS = [
+  'Negative', 'Positive (+)', 'Positive (++)', 'Positive (+++)', 'Positive (++++)',
+] as const;
+
+export const RVS_RESULTS = [
+  'Sero positive to determine 1/2',
+  'Sero negative to determine 1/2',
+] as const;
+
 // ── Option lists shown by the MCS form ───────────────────────────────────────
 
 export const colourOptions = ['Yellow', 'Amber', 'Pale Yellow', 'Straw', 'Colourless', 'Turbid Yellow', 'Bloody', 'Brown', 'Green'];
@@ -311,9 +396,9 @@ export const serializeMpsResults = (mpsState: MpsFormState) => {
   const blank = mpsState.parasiteSeen === 'Seen' ? 'Not recorded' : 'Nil';
 
   return [
-    { parameter: 'MPs: Parasites', result: mpsState.parasiteSeen || 'Not Seen', unit: '', range: 'Not Seen' },
-    { parameter: 'MPs: Density (Plus)', result: mpsState.densityPlus || blank, unit: '', range: 'Nil' },
-    { parameter: 'MPs: Density (Count)', result: mpsState.densityCount || blank, unit: 'p/µL', range: 'Nil' },
+    { parameter: 'MPs: Parasites', result: mpsState.parasiteSeen || 'Not Seen', unit: '', range: '' },
+    { parameter: 'MPs: Density (Plus)', result: mpsState.densityPlus || blank, unit: '', range: '' },
+    { parameter: 'MPs: Density (Count)', result: mpsState.densityCount || blank, unit: 'p/µL', range: '' },
     { parameter: 'MPs: Species', result: mpsState.species || blank, unit: '', range: '' },
     { parameter: 'MPs: Stage', result: mpsState.stage || blank, unit: '', range: '' },
     { parameter: 'MPs: Comment', result: mpsState.comment || 'Nil', unit: '', range: '' },

@@ -56,7 +56,7 @@ describe('text a person typed, on the way into a report', () => {
   it('prints a reference range written with an inequality', () => {
     const html = getResultTemplate(
       patient(),
-      [test({ results: [{ parameter: 'LDL', result: '3.4', unit: 'mmol/L', range: '< 3.0', flag: 'H' }] as any }),
+      [test({ testId: 'lipid', testName: 'Lipid Profile', results: [{ parameter: 'LDL', result: '3.4', unit: 'mmol/L', range: '< 3.0', flag: 'H' }] as any }),
       ],
     );
 
@@ -66,6 +66,38 @@ describe('text a person typed, on the way into a report', () => {
   it('escapes the ampersand in a clinic or patient name rather than printing &amp;', () => {
     expect(esc('Smith & Sons')).toBe('Smith &amp; Sons');
     expect(esc(undefined)).toBe('');
+  });
+});
+
+describe('compact clinical report tables', () => {
+  it('prints qualitative serology with only Investigation and Result columns', () => {
+    const html = getResultTemplate(patient(), [test({
+      testId: 'hbsag',
+      testName: 'HBsAg',
+      results: [{ parameter: 'HBsAg', result: 'Reactive', unit: '', range: 'Non-Reactive' }] as any,
+    })]);
+
+    expect(html).toContain('<th>Investigation</th><th>Result</th>');
+    expect(html).not.toContain('<th>Reference Range</th>');
+  });
+
+  it('filters and compacts an existing full blood count', () => {
+    const html = getResultTemplate(patient(), [test({ results: [
+      { parameter: 'RDW-CV', result: '13', unit: '%', range: '11-15' },
+      { parameter: 'WBC', result: '6', unit: 'x10^9/L', range: '4-11' },
+      { parameter: 'HGB', result: '14', unit: 'g/dL', range: '12-16' },
+    ] as any })]);
+
+    expect(html).toContain('class="test-block fbc-block"');
+    expect(html).toContain('WBC');
+    expect(html).toContain('HGB');
+    expect(html).not.toContain('RDW-CV');
+  });
+
+  it('uses muted blue and translucent clinical sections', () => {
+    const html = getResultTemplate(patient(), [test({ notes: 'Reviewed.' })]);
+    expect(html).toContain('#486b8f');
+    expect(html).toContain('rgba(72, 107, 143, 0.05)');
   });
 });
 
@@ -123,7 +155,7 @@ describe('the running footer', () => {
     // 90px of footer + the 12px gap, kept clear on every page by the repeating
     // spacer row — not by a page margin the fixed footer sits above.
     expect(html).toContain('<tfoot><tr><td><div style="height:102px"></div></td></tr></tfoot>');
-    expect(html).toContain('margin-bottom: 20mm;');
+    expect(html).toContain('margin-bottom: 5mm;');
   });
 
   it('measures the footer it was actually given', () => {

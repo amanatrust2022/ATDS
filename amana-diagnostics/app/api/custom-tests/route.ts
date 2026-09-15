@@ -30,6 +30,8 @@ export async function GET(request: Request) {
       category: r.category,
       specimen: r.specimen,
       parameters: typeof r.parameters === 'string' ? JSON.parse(r.parameters) : r.parameters,
+      kind: r.kind || 'investigation',
+      investigationIds: typeof r.investigation_ids === 'string' ? JSON.parse(r.investigation_ids) : (r.investigation_ids || []),
       is_active: r.is_active !== 0,
       updated_at: r.updated_at
     }));
@@ -55,8 +57,8 @@ export async function POST(request: Request) {
     if (action === 'add') {
       const stmt = db.prepare(`
         INSERT INTO custom_tests (
-          id, organization_id, name, department, category, specimen, parameters, is_active, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          id, organization_id, name, department, category, specimen, parameters, kind, investigation_ids, is_active, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       const isActiveValue = (test.is_active === 0 || test.is_active === false) ? 0 : 1;
@@ -69,6 +71,8 @@ export async function POST(request: Request) {
         test.category,
         test.specimen,
         test.parameters || '[]',
+        test.kind || 'investigation',
+        test.investigation_ids || '[]',
         isActiveValue,
         nowStr
       );
@@ -82,6 +86,8 @@ export async function POST(request: Request) {
         category: test.category,
         specimen: test.specimen,
         parameters: typeof test.parameters === 'string' ? JSON.parse(test.parameters) : test.parameters,
+        kind: test.kind || 'investigation',
+        investigation_ids: typeof test.investigation_ids === 'string' ? JSON.parse(test.investigation_ids) : (test.investigation_ids || []),
         is_active: isActiveValue === 1,
         updated_at: nowStr
       });
@@ -91,14 +97,16 @@ export async function POST(request: Request) {
 
     if (action === 'update') {
       const stmt = db.prepare(`
-        INSERT INTO custom_tests (id, organization_id, name, department, category, specimen, parameters, is_active, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO custom_tests (id, organization_id, name, department, category, specimen, parameters, kind, investigation_ids, is_active, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(organization_id, id) DO UPDATE SET
           name = COALESCE(excluded.name, custom_tests.name),
           department = COALESCE(excluded.department, custom_tests.department),
           category = COALESCE(excluded.category, custom_tests.category),
           specimen = COALESCE(excluded.specimen, custom_tests.specimen),
           parameters = COALESCE(excluded.parameters, custom_tests.parameters),
+          kind = COALESCE(excluded.kind, custom_tests.kind),
+          investigation_ids = COALESCE(excluded.investigation_ids, custom_tests.investigation_ids),
           is_active = COALESCE(excluded.is_active, custom_tests.is_active),
           updated_at = excluded.updated_at
       `);
@@ -111,6 +119,8 @@ export async function POST(request: Request) {
         updates.category !== undefined ? updates.category : null,
         updates.specimen !== undefined ? updates.specimen : null,
         updates.parameters !== undefined ? updates.parameters : null,
+        updates.kind !== undefined ? updates.kind : null,
+        updates.investigation_ids !== undefined ? updates.investigation_ids : null,
         updates.is_active !== undefined ? updates.is_active : null,
         nowStr
       );
@@ -128,6 +138,8 @@ export async function POST(request: Request) {
         category: row.category,
         specimen: row.specimen,
         parameters: typeof row.parameters === 'string' ? JSON.parse(row.parameters) : row.parameters,
+        kind: row.kind || 'investigation',
+        investigation_ids: typeof row.investigation_ids === 'string' ? JSON.parse(row.investigation_ids) : (row.investigation_ids || []),
         is_active: row.is_active === 1,
         updated_at: nowStr
       });

@@ -117,6 +117,34 @@ describe('The investigation catalogue editor', () => {
     expect(screen.getByLabelText(/parameter 1 (range|reference)/i)).toBeInTheDocument();
   });
 
+  it('adds and saves a sub-parameter beneath its parent parameter', async () => {
+    renderManager();
+    await openNew();
+    fireEvent.change(field(/investigation name/i), { target: { value: 'Differential count' } });
+    fireEvent.change(field(/specimen/i), { target: { value: 'Whole Blood' } });
+    fireEvent.change(screen.getByLabelText(/parameter 1 name/i), { target: { value: 'White cells' } });
+    fireEvent.click(screen.getByRole('button', { name: /add sub-parameter/i }));
+    fireEvent.change(screen.getByLabelText(/sub-parameter 1 name/i), { target: { value: 'Neutrophils' } });
+    fireEvent.click(save());
+
+    await waitFor(() => expect(storeFns.addCustomTest).toHaveBeenCalled());
+    const [test] = storeFns.addCustomTest.mock.calls[0]!;
+    expect(test.parameters[0].children[0].name).toBe('Neutrophils');
+  });
+
+  it('creates a package from existing investigations without exposing parameters', async () => {
+    renderManager();
+    fireEvent.click(await screen.findByRole('button', { name: /add special health check plan/i }));
+    fireEvent.change(field(/investigation name/i), { target: { value: 'Executive Plan' } });
+    fireEvent.click(screen.getByRole('button', { name: /add full blood count to package/i }));
+    fireEvent.click(save());
+
+    await waitFor(() => expect(storeFns.addCustomTest).toHaveBeenCalled());
+    const [test] = storeFns.addCustomTest.mock.calls[0]!;
+    expect(test).toMatchObject({ kind: 'package', investigationIds: ['fbc'], parameters: [] });
+    expect(screen.queryByText(/parameters and reference ranges/i)).not.toBeInTheDocument();
+  });
+
   it('will not save a test whose name is only spaces', async () => {
     renderManager();
     await openNew();

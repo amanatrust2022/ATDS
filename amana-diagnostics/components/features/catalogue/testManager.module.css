@@ -206,14 +206,82 @@
 
 .param {
   display: grid;
+  grid-template-columns: 1.5fr 0.8fr 1.5fr auto auto;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.paramGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.subParam {
+  display: grid;
   grid-template-columns: 1.5fr 0.8fr 1.5fr auto;
   gap: var(--space-2);
   align-items: center;
+  margin-left: var(--space-6);
+  padding-left: var(--space-3);
+  border-left: var(--focus-width) solid var(--accent-border);
+}
+
+.packageEditor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.memberList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  overflow-y: auto;
+}
+
+.member {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  color: var(--text-primary);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-default);
+  cursor: pointer;
+}
+
+.member span:first-child {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.member small {
+  color: var(--text-secondary);
+}
+
+.memberOn {
+  background: var(--accent-subtle);
+  border-color: var(--accent-border);
+  box-shadow: inset var(--space-1) 0 0 var(--accent-solid);
+}
+
+.member:focus-visible {
+  outline: var(--focus-width) solid var(--focus-color);
+  outline-offset: var(--focus-offset);
 }
 
 @media (max-width: 40rem) {
   .param {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .subParam {
+    grid-template-columns: 1fr 1fr;
+    margin-left: 0;
   }
 }
 

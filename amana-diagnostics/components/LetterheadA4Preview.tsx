@@ -20,7 +20,7 @@ const MM = 96 / 25.4;              // px per mm at 96dpi
 const PAGE_W = 210 * MM;           // A4 width  ≈ 793.7px
 const PAGE_H = 297 * MM;           // A4 height ≈ 1122.5px
 const MARGIN_X = 20;               // @page margin-left / margin-right (px)
-const MARGIN_BOTTOM = 20 * MM;     // @page margin-bottom (20mm, same as the top)
+const MARGIN_BOTTOM = 5 * MM;      // @page margin-bottom
 const PAD_TOP = 10;                // body padding-top on print
 const FOOTER_GAP = 12;             // clearance kept above the running footer
 const SCALE = 0.72;                // shrink the sheet to fit the settings column
@@ -68,8 +68,8 @@ export default function LetterheadA4Preview({ html, footerHtml, bgHtml, bgTop = 
               .a4-report .custom-letterhead p { margin: 0 0 4px 0; }
               .a4-report .custom-letterhead div { margin: 0; }
               .a4-report .custom-letterhead *:last-child { margin-bottom: 0 !important; padding-bottom: 0 !important; }
-              .a4-report .report-title { text-align: center; font-size: 14pt; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; margin: 2.5px 0 10px; color: #0563c1; text-decoration: underline; }
-              .a4-report .patient-info { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; font-size: 12pt; border: 1px solid #0563c1; padding: 12px; }
+              .a4-report .report-title { text-align: center; font-size: 14pt; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; margin: 2.5px 0 10px; color: #486b8f; text-decoration: underline; }
+              .a4-report .patient-info { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; font-size: 12pt; border: 1px solid #486b8f; padding: 12px; }
               .a4-report .pi-label { font-weight: bold; margin-right: 8px; }
             `}</style>
 

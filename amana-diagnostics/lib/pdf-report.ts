@@ -9,9 +9,11 @@ import { deserializeRadiologyResults, stripImpressionHeading } from './radiology
 import { SUPPORT_EMAIL, FALLBACK_ORG_NAME } from '@/lib/branding';
 import { letterheadFor } from './letterhead';
 import { scriptsToPdfRuns, markScriptsInHtml } from './scriptNotation';
+import { isFbcTest, normaliseLabRows, usesSimpleResultTable } from './store/labResults';
 
 /** A pdfmake text value with "x10^9/L", "mm3", "CO2", "Ca2+" as real sub- and superscripts. */
 const sci = (v: unknown) => scriptsToPdfRuns(v == null ? '' : String(v));
+const PDF_BOTTOM_MARGIN = 5 * 72 / 25.4; // pdfmake uses points; this is exactly 5mm.
 
 function parseHtmlToPdfmake(html: string): any[] {
   if (!html) return [];
@@ -107,7 +109,7 @@ export function buildReportPdfDefinition(
 
   const signatureUrl = completedTests[0]?.completedBySignatureUrl || null;
 
-  const blue = '#0563c1';
+  const blue = '#486b8f';
   const reportTitle = completedTests.every(t => t.department === 'lab')
     ? 'LABORATORY RESULT REPORT'
     : completedTests.every(t => t.department === 'radiology')
@@ -117,15 +119,18 @@ export function buildReportPdfDefinition(
   // Build test section content
   const testContent: any[] = [];
   for (const t of completedTests) {
+    const reportResults = normaliseLabRows(t.testId, t.testName, t.results || []);
+    const simpleResults = usesSimpleResultTable(t.testId, t.testName, reportResults);
+    const compactFbc = isFbcTest(t.testId, t.testName);
     testContent.push({
       table: {
         widths: ['*'],
         body: [
-          [{ text: t.testName, style: 'testHeader', fillColor: '#4472c4', color: 'white', bold: true }],
+          [{ text: t.testName, style: compactFbc ? 'compactTestHeader' : 'testHeader', fillColor: blue, color: 'white', bold: true }],
         ]
       },
       layout: 'noBorders',
-      margin: [0, 8, 0, 0],
+      margin: [0, compactFbc ? 4 : 8, 0, 0],
     });
 
     const isWidal = t.testId.toLowerCase() === 'widal' || t.testId.toLowerCase().includes('widal') || t.testName.toLowerCase().includes('widal');
@@ -145,7 +150,7 @@ export function buildReportPdfDefinition(
         let stage = 'Nil';
         let comment = 'Nil';
 
-        (t.results || []).forEach(r => {
+        reportResults.forEach(r => {
           const param = r.parameter;
           const val = r.result;
           if (param === 'MPs: Parasites') parasiteSeen = val || 'Not Seen';
@@ -190,7 +195,7 @@ export function buildReportPdfDefinition(
         ]);
 
         stackElements.push(
-          { text: 'MALARIA PARASITE MICROSCOPY REPORT', bold: true, fontSize: 10, color: '#0563c1', margin: [0, 6, 0, 4] },
+          { text: 'MALARIA PARASITE MICROSCOPY REPORT', bold: true, fontSize: 10, color: blue, margin: [0, 6, 0, 4] },
           {
             table: {
               widths: ['40%', '60%'],
@@ -217,7 +222,7 @@ export function buildReportPdfDefinition(
         let paratyphiCO = 'Negative';
         let paratyphiCH = 'Negative';
 
-        (t.results || []).forEach(r => {
+        reportResults.forEach(r => {
           const param = r.parameter;
           const val = r.result;
           if (param === 'Widal: S. Typhi O') typhiO = val || 'Negative';
@@ -255,16 +260,16 @@ export function buildReportPdfDefinition(
         };
 
         stackElements.push(
-          { text: 'WIDAL AGGLUTINATION REACTION TITRES', bold: true, fontSize: 10, color: '#0563c1', margin: [0, 6, 0, 4] },
+          { text: 'WIDAL AGGLUTINATION REACTION TITRES', bold: true, fontSize: 10, color: blue, margin: [0, 6, 0, 4] },
           {
             table: {
               widths: ['*', 160, 160],
               headerRows: 1,
               body: [
                 [
-                  { text: 'Antigen', bold: true, fontSize: 10, color: '#0563c1', fillColor: '#f2f2f2' },
-                  { text: 'O Titre', bold: true, fontSize: 10, color: '#0563c1', alignment: 'center', fillColor: '#f2f2f2' },
-                  { text: 'H Titre', bold: true, fontSize: 10, color: '#0563c1', alignment: 'center', fillColor: '#f2f2f2' }
+                  { text: 'Antigen', bold: true, fontSize: 10, color: blue, fillColor: '#f2f2f2' },
+                  { text: 'O Titre', bold: true, fontSize: 10, color: blue, alignment: 'center', fillColor: '#f2f2f2' },
+                  { text: 'H Titre', bold: true, fontSize: 10, color: blue, alignment: 'center', fillColor: '#f2f2f2' }
                 ],
                 antigenRow('S. Typhi', typhiO, typhiH),
                 antigenRow('S. Paratyphi A', paratyphiAO, paratyphiAH),
@@ -284,22 +289,25 @@ export function buildReportPdfDefinition(
         );
       }
 
-      const extraResults = (t.results || []).filter(r => 
+      const extraResults = reportResults.filter(r =>
         !r.parameter.startsWith('Widal:') && !r.parameter.startsWith('MPs:')
       );
       if (extraResults.length > 0) {
+        const extraSimple = usesSimpleResultTable(t.testId, t.testName, extraResults);
         stackElements.push(
-          { text: 'ADDITIONAL PARAMETERS', bold: true, fontSize: 10, color: '#0563c1', margin: [0, 8, 0, 4] },
+          { text: 'ADDITIONAL PARAMETERS', bold: true, fontSize: 10, color: blue, margin: [0, 8, 0, 4] },
           {
             table: {
-              widths: ['*', 80, 60, 100],
+              widths: extraSimple ? ['*', 140] : ['*', 80, 60, 100],
               headerRows: 1,
               body: [
                 [
-                  { text: 'Parameter', style: 'tableHeader', fillColor: '#4472c4', color: 'white' },
-                  { text: 'Result', style: 'tableHeader', fillColor: '#4472c4', color: 'white' },
-                  { text: 'Unit', style: 'tableHeader', fillColor: '#4472c4', color: 'white' },
-                  { text: 'Reference Range', style: 'tableHeader', fillColor: '#4472c4', color: 'white' },
+                  { text: extraSimple ? 'Investigation' : 'Parameter', style: 'tableHeader', fillColor: blue, color: 'white' },
+                  { text: 'Result', style: 'tableHeader', fillColor: blue, color: 'white' },
+                  ...(!extraSimple ? [
+                    { text: 'Unit', style: 'tableHeader', fillColor: blue, color: 'white' },
+                    { text: 'Reference Range', style: 'tableHeader', fillColor: blue, color: 'white' },
+                  ] : []),
                 ],
                 ...extraResults.map(r => [
                   { text: sci(r.parameter), style: 'tableCell' },
@@ -309,8 +317,10 @@ export function buildReportPdfDefinition(
                     bold: true,
                     color: flagColour(r.flag),
                   },
-                  { text: sci(r.unit || '—'), style: 'tableCell', color: '#555' },
-                  { text: sci(r.range || '—'), style: 'tableCell', color: '#555' },
+                  ...(!extraSimple ? [
+                    { text: sci(r.unit || '—'), style: 'tableCell', color: '#555' },
+                    { text: sci(r.range || '—'), style: 'tableCell', color: '#555' },
+                  ] : []),
                 ])
               ]
             },
@@ -356,19 +366,18 @@ export function buildReportPdfDefinition(
             body: [
               [{
                 stack: [
-                  { text: 'IMPRESSION / CONCLUSION:', bold: true, color: '#0563c1', fontSize: 10, margin: [0, 0, 0, 4] },
+                  { text: 'IMPRESSION / CONCLUSION:', bold: true, color: blue, fontSize: 10, margin: [0, 0, 0, 4] },
                   // The section already says the word; the stored text must not
                   // say it again directly underneath. See stripImpressionHeading.
                   ...parseHtmlToPdfmake(stripImpressionHeading(radData.impression))
                 ],
                 margin: [8, 8, 8, 8],
-                fillColor: '#f8fafc'
               }]
             ]
           },
           layout: {
-            hLineColor: () => '#0563c1',
-            vLineColor: () => '#0563c1',
+            hLineColor: () => blue,
+            vLineColor: () => blue,
             hLineWidth: (i: number) => 0,
             vLineWidth: (i: number) => i === 0 ? 3 : 0,
           }
@@ -394,7 +403,7 @@ export function buildReportPdfDefinition(
         }
         
         if (imagesRow.length > 0) {
-          testContent.push({ text: 'ATTACHED IMAGERY', bold: true, fontSize: 10, color: '#0563c1', margin: [0, 12, 0, 6] });
+          testContent.push({ text: 'ATTACHED IMAGERY', bold: true, fontSize: 10, color: blue, margin: [0, 12, 0, 6] });
           const columnsGroup: any[] = [];
           for (let i = 0; i < imagesRow.length; i += 2) {
             const cols = [imagesRow[i]];
@@ -484,7 +493,7 @@ export function buildReportPdfDefinition(
                 [
                   {
                     stack: [
-                      { text: 'MACROSCOPY', bold: true, fontSize: 9, color: '#4472c4', margin: [0, 0, 0, 4] },
+                      { text: 'MACROSCOPY', bold: true, fontSize: 9, color: blue, margin: [0, 0, 0, 4] },
                       {
                         table: {
                           widths: ['*', '*'],
@@ -500,7 +509,7 @@ export function buildReportPdfDefinition(
                   },
                   {
                     stack: [
-                      { text: 'MICROSCOPY', bold: true, fontSize: 9, color: '#4472c4', margin: [0, 0, 0, 4] },
+                      { text: 'MICROSCOPY', bold: true, fontSize: 9, color: blue, margin: [0, 0, 0, 4] },
                       {
                         table: {
                           widths: ['*', '*'],
@@ -531,7 +540,7 @@ export function buildReportPdfDefinition(
                 [
                   {
                     stack: [
-                      { text: 'CULTURE FINDINGS', bold: true, fontSize: 9, color: '#4472c4', margin: [0, 0, 0, 4] },
+                      { text: 'CULTURE FINDINGS', bold: true, fontSize: 9, color: blue, margin: [0, 0, 0, 4] },
                       {
                         table: {
                           widths: ['15%', '25%', '15%', '25%', '10%', '10%'],
@@ -579,7 +588,7 @@ export function buildReportPdfDefinition(
                 [
                   {
                     stack: [
-                      { text: 'ANTIBIOTIC SENSITIVITY PROFILE', bold: true, fontSize: 9, color: '#4472c4', margin: [0, 0, 0, 4] },
+                      { text: 'ANTIBIOTIC SENSITIVITY PROFILE', bold: true, fontSize: 9, color: blue, margin: [0, 0, 0, 4] },
                       {
                         table: {
                           widths: ['33.3%', '33.3%', '33.3%'],
@@ -609,29 +618,33 @@ export function buildReportPdfDefinition(
         ]
       });
     } else {
-      if (t.results && t.results.length > 0) {
+      if (reportResults.length > 0) {
         testContent.push({
           margin: [0, 0, 0, 0],
           table: {
-            widths: ['*', 80, 60, 100],
+            widths: simpleResults ? ['*', 140] : ['*', 80, 60, 100],
             headerRows: 1,
             body: [
               [
-                { text: 'Parameter', style: 'tableHeader', fillColor: '#4472c4', color: 'white' },
-                { text: 'Result', style: 'tableHeader', fillColor: '#4472c4', color: 'white' },
-                { text: 'Unit', style: 'tableHeader', fillColor: '#4472c4', color: 'white' },
-                { text: 'Reference Range', style: 'tableHeader', fillColor: '#4472c4', color: 'white' },
+                { text: simpleResults ? 'Investigation' : 'Parameter', style: compactFbc ? 'compactTableHeader' : 'tableHeader', fillColor: blue, color: 'white' },
+                { text: 'Result', style: compactFbc ? 'compactTableHeader' : 'tableHeader', fillColor: blue, color: 'white' },
+                ...(!simpleResults ? [
+                  { text: 'Unit', style: compactFbc ? 'compactTableHeader' : 'tableHeader', fillColor: blue, color: 'white' },
+                  { text: 'Reference Range', style: compactFbc ? 'compactTableHeader' : 'tableHeader', fillColor: blue, color: 'white' },
+                ] : []),
               ],
-              ...t.results.map(r => [
-                { text: sci(r.parameter), style: 'tableCell' },
+              ...reportResults.map(r => [
+                { text: sci(r.parameter), style: compactFbc ? 'compactTableCell' : 'tableCell' },
                 {
                   text: sci(`${r.result}${r.flag ? ` (${r.flag})` : ''}`),
-                  style: 'tableCell',
+                  style: compactFbc ? 'compactTableCell' : 'tableCell',
                   bold: true,
                   color: flagColour(r.flag),
                 },
-                { text: sci(r.unit || '—'), style: 'tableCell', color: '#555' },
-                { text: sci(r.range || '—'), style: 'tableCell', color: '#555' },
+                ...(!simpleResults ? [
+                  { text: sci(r.unit || '—'), style: compactFbc ? 'compactTableCell' : 'tableCell', color: '#555' },
+                  { text: sci(r.range || '—'), style: compactFbc ? 'compactTableCell' : 'tableCell', color: '#555' },
+                ] : []),
               ])
             ]
           },
@@ -647,7 +660,7 @@ export function buildReportPdfDefinition(
       testContent.push({
         text: [{ text: 'Comment: ', bold: true }, t.notes],
         italics: true, fontSize: 9, margin: [0, 3, 0, 0],
-        background: '#fffbe6', color: '#333',
+        color: '#333',
       });
     }
 
@@ -656,7 +669,7 @@ export function buildReportPdfDefinition(
 
   const docDef: any = {
     pageSize: 'A4',
-    pageMargins: [40, 12, 40, 48],
+    pageMargins: [40, 12, 40, PDF_BOTTOM_MARGIN],
     content: [
       // ── Letterhead ──
       { text: orgName, style: 'orgName1', alignment: 'center' },
@@ -670,7 +683,7 @@ export function buildReportPdfDefinition(
         columnGap: 10,
         margin: [0, 2, 0, 5],
       },
-      { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 2, lineColor: '#4472c4' }], margin: [0, 0, 0, 0] },
+      { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 2, lineColor: blue }], margin: [0, 0, 0, 0] },
 
       // ── Report Title ──
       { text: reportTitle, style: 'reportTitle', alignment: 'center' },
@@ -707,8 +720,8 @@ export function buildReportPdfDefinition(
           ]
         },
         layout: {
-          hLineColor: () => '#4472c4',
-          vLineColor: () => '#4472c4',
+          hLineColor: () => blue,
+          vLineColor: () => blue,
           paddingLeft: () => 12,
           paddingRight: () => 12,
           paddingTop: () => 6,
@@ -761,10 +774,13 @@ export function buildReportPdfDefinition(
       orgName2: { fontSize: 24, bold: true, color: blue, lineHeight: 1, margin: [0, 2, 0, 2] },
       orgAddr: { fontSize: 13, color: '#222a35', margin: [0, 2, 0, 2] },
       orgContact: { fontSize: 13 },
-      reportTitle: { fontSize: 14, bold: true, color: '#4472c4', decoration: 'underline', margin: [0, 2.5, 0, 8] },
+      reportTitle: { fontSize: 14, bold: true, color: blue, decoration: 'underline', margin: [0, 2.5, 0, 8] },
       testHeader: { fontSize: 11, bold: true, padding: [7, 7, 7, 7] },
+      compactTestHeader: { fontSize: 10, bold: true, padding: [4, 4, 4, 4] },
       tableHeader: { fontSize: 11, bold: true, padding: [5, 5, 5, 5] },
       tableCell: { fontSize: 11, margin: [0, 3, 0, 3] },
+      compactTableHeader: { fontSize: 9, bold: true, padding: [2, 2, 2, 2] },
+      compactTableCell: { fontSize: 9, margin: [0, 1, 0, 1] },
     },
     defaultStyle: { font: 'Roboto', fontSize: 11 },
   };

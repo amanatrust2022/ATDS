@@ -1,6 +1,6 @@
 import React from 'react';
 import { RiCloseLine } from '@remixicon/react';
-import { Test } from '@/lib/store';
+import { isInvestigationPackage, Test } from '@/lib/store';
 import { useRegistrationStore } from '@/lib/store/useRegistrationStore';
 import { SelectedTestDetail } from '@/lib/store/registrationBilling';
 import { Badge, EmptyState } from '@/components/ui';
@@ -49,6 +49,11 @@ export default function TestSelection({ catalogue, selectedTestDetails }: TestSe
               const priceDetail = selectedTestDetails.find((d) => d.testId === tid);
               const price = priceDetail ? priceDetail.price : 0;
               const isLab = t.department === 'lab';
+              const isPackage = isInvestigationPackage(t);
+              const members = (t.investigationIds || []).flatMap((id) => {
+                const member = getTestById(id);
+                return member ? [member] : [];
+              });
 
               return (
                 <div
@@ -58,9 +63,10 @@ export default function TestSelection({ catalogue, selectedTestDetails }: TestSe
                   <div className={styles.rowMain}>
                     <div className={styles.rowName}>{t.name}</div>
                     <div className={styles.rowMeta}>
-                      <Badge tone={isLab ? 'accent' : 'info'}>{isLab ? 'Lab' : 'Radiology'}</Badge>
+                      <Badge tone={isPackage ? 'warning' : isLab ? 'accent' : 'info'}>{isPackage ? 'Package' : isLab ? 'Lab' : 'Radiology'}</Badge>
                       <span>{t.category} • {t.specimen}</span>
                     </div>
+                    {isPackage && <div className={styles.packageContents}>{members.map((member) => `${member.name} (${member.department === 'lab' ? 'Lab' : 'Radiology'})`).join(', ')}</div>}
                   </div>
                   <div className={styles.rowSide}>
                     <span className={styles.price}>

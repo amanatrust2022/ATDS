@@ -199,6 +199,8 @@ export async function GET(request: Request) {
         commissionType: t.commission_type || 'none',
         commissionValue: t.commission_value || 0,
         commissionAmount: t.commission_amount || 0,
+        packageId: t.package_id || undefined,
+        packageName: t.package_name || undefined,
       });
     });
 
@@ -475,8 +477,8 @@ export async function POST(request: Request) {
           const testId = crypto.randomUUID();
           const testStmt = db.prepare(`
             INSERT INTO patient_tests (
-              id, patient_id, test_id, test_name, department, status, specimen, price, commission_type, commission_value, commission_amount, organization_id, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              id, patient_id, test_id, test_name, department, status, specimen, price, commission_type, commission_value, commission_amount, package_id, package_name, organization_id, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `);
           testStmt.run(
             testId,
@@ -490,6 +492,8 @@ export async function POST(request: Request) {
             t.commissionType || 'none',
             t.commissionValue ?? 0,
             t.commissionAmount ?? 0,
+            t.packageId || null,
+            t.packageName || null,
             organizationId,
             nowStr
           );
@@ -507,6 +511,8 @@ export async function POST(request: Request) {
             commission_type: t.commissionType || 'none',
             commission_value: t.commissionValue ?? 0,
             commission_amount: t.commissionAmount ?? 0,
+            package_id: t.packageId || null,
+            package_name: t.packageName || null,
             organization_id: organizationId,
             updated_at: nowStr
           });

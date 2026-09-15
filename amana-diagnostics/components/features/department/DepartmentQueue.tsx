@@ -1,11 +1,12 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { RiTestTubeLine, RiRadarLine, RiCheckLine, RiMoreLine, RiTimeLine } from '@remixicon/react';
+import { RiTestTubeLine, RiRadarLine, RiCheckLine, RiMoreLine, RiTimeLine, RiSearchLine, RiEyeLine, RiEditLine } from '@remixicon/react';
 
 import type { Department, Patient, PatientTest } from '@/lib/store';
 import { patientDisplayName } from '@/lib/store/patientName';
-import { Badge, Button, EmptyState } from '@/components/ui';
+import { Badge, Button, EmptyState, Field, Input, SegmentedControl } from '@/components/ui';
+import { windowStartFor, type DateFilter } from '@/lib/store/useQueueStore';
 
 import styles from './queue.module.css';
 
@@ -13,12 +14,14 @@ interface Props {
   department: Department;
   /** Patients with at least one unfinished test in this department. */
   pending: Patient[];
-  /** Patients with a test finished today in this department. */
-  completedToday: Patient[];
+  /** Patients with a test finished in the last thirty days in this department. */
+  completed: Patient[];
   /** Counts only tests still `pending`, so it excludes ones already picked up. */
   pendingCount: number;
   loading: boolean;
   onOpenTest: (patient: Patient, test: PatientTest) => void;
+  onViewTest: (patient: Patient, test: PatientTest) => void;
+  onUpdateTest: (patient: Patient, test: PatientTest) => void;
   /** Tests with a half-typed result kept on this machine (lib/store/resultDrafts). */
   draftTestIds?: Set<string>;
 }
@@ -59,13 +62,15 @@ function waitLabel(mins: number) {
  * walked in a minute ago. A queue in no particular order is not a queue.
  */
 export default function DepartmentQueue({
-  department, pending, completedToday, pendingCount, loading, onOpenTest, draftTestIds,
+  department, pending, completed, pendingCount, loading, onOpenTest, onViewTest, onUpdateTest, draftTestIds,
 }: Props) {
   const isLab = department === 'lab';
 
   // One clock for the whole list, so every card agrees and the times keep up
   // with the wall without the parent having to re-render.
   const [now, setNow] = useState(() => Date.now());
+  const [completedSearch, setCompletedSearch] = useState('');
+  const [completedRange, setCompletedRange] = useState<DateFilter>('today');
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), TICK_MS);
     return () => clearInterval(id);
@@ -74,6 +79,19 @@ export default function DepartmentQueue({
   const queue = [...pending].sort(
     (a, b) => new Date(a.registeredAt).getTime() - new Date(b.registeredAt).getTime(),
   );
+  const completedSince = windowStartFor(completedRange).getTime();
+  const query = completedSearch.trim().toLowerCase();
+  const completedInvestigations = completed
+    .flatMap((patient) => patient.tests
+      .filter((test) => test.department === department && test.status === 'completed')
+      .map((test) => ({ patient, test })))
+    .filter(({ patient, test }) => {
+      const completedAt = new Date(test.completedAt || '').getTime();
+      const matchesDate = Number.isFinite(completedAt) && completedAt >= completedSince;
+      const matchesSearch = !query || `${fullName(patient)} ${patient.slipNumber} ${test.testName}`.toLowerCase().includes(query);
+      return matchesDate && matchesSearch;
+    })
+    .sort((a, b) => new Date(b.test.completedAt || 0).getTime() - new Date(a.test.completedAt || 0).getTime());
 
   return (
     <>
@@ -170,26 +188,66 @@ export default function DepartmentQueue({
         </ul>
       )}
 
-      {completedToday.length > 0 && (
-        <section className={styles['done']}>
-          <h3 className={styles['doneTitle']}>Completed today ({completedToday.length})</h3>
+      <section className={styles['done']}>
+          <h3 className={styles['doneTitle']}>Completed investigations ({completedInvestigations.length})</h3>
+          <div className={styles['doneFilters']}>
+            <div className={styles['doneSearch']}>
+              <Field label="Search completed investigations" labelHidden>
+                <Input
+                  type="search"
+                  prefix={<RiSearchLine size={14} />}
+                  value={completedSearch}
+                  onChange={(event) => setCompletedSearch(event.target.value)}
+                  placeholder="Search by name or slip number..."
+                />
+              </Field>
+            </div>
+            <SegmentedControl
+              ariaLabel="Completed date range"
+              value={completedRange}
+              onValueChange={setCompletedRange}
+              options={[
+                { value: 'today', label: 'Today' },
+                { value: 'seven_days', label: 'Last 7 Days' },
+                { value: 'thirty_days', label: 'Last 30 Days' },
+              ]}
+            />
+          </div>
+          {completedInvestigations.length === 0 ? (
+            <p className={styles['doneEmpty']}>No completed investigations match this search and date range.</p>
+          ) : (
           <ul className={styles['doneList']}>
-            {completedToday.map((p) => (
-              <li key={p.id} className={styles['doneRow']}>
+            {completedInvestigations.map(({ patient, test }) => (
+              <li key={`${patient.id}-${test.id || test.testId}`} className={styles['doneRow']}>
                 <RiCheckLine size={14} aria-hidden="true" className={styles['doneTick']} />
-                <span className={styles['name']}>{fullName(p)}</span>
-                <span className={styles['slip']}>{p.slipNumber}</span>
-                <span className={styles['doneTests']}>
-                  {p.tests
-                    .filter((t) => t.department === department && t.status === 'completed')
-                    .map((t) => t.testName)
-                    .join(', ')}
+                <span className={styles['name']}>{fullName(patient)}</span>
+                <span className={styles['slip']}>{patient.slipNumber}</span>
+                <span className={styles['doneTests']}>{test.testName}</span>
+                <span className={styles['doneActions']}>
+                  <Button
+                    size="sm"
+                    intent="secondary"
+                    aria-label={`View ${test.testName} for ${fullName(patient)}`}
+                    icon={<RiEyeLine size={14} />}
+                    onClick={() => onViewTest(patient, test)}
+                  >
+                    View
+                  </Button>
+                  <Button
+                    size="sm"
+                    intent="secondary"
+                    aria-label={`Update ${test.testName} for ${fullName(patient)}`}
+                    icon={<RiEditLine size={14} />}
+                    onClick={() => onUpdateTest(patient, test)}
+                  >
+                    Update
+                  </Button>
                 </span>
               </li>
             ))}
           </ul>
+          )}
         </section>
-      )}
     </>
   );
 }

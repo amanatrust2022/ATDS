@@ -51,10 +51,12 @@ const renderQueue = (over: Partial<React.ComponentProps<typeof DepartmentQueue>>
     <DepartmentQueue
       department="lab"
       pending={[patient()]}
-      completedToday={[]}
+      completed={[]}
       pendingCount={1}
       loading={false}
       onOpenTest={vi.fn()}
+      onViewTest={vi.fn()}
+      onUpdateTest={vi.fn()}
       {...over}
     />,
   );
@@ -152,11 +154,13 @@ describe('The bench queue', () => {
 
   it('lists what was finished today', () => {
     renderQueue({
-      completedToday: [
-        patient({ id: 9, firstName: 'Done', tests: [aTest({ status: 'completed' })] }),
+      completed: [
+        patient({ id: 9, firstName: 'Done', tests: [aTest({ status: 'completed', completedAt: NOW.toISOString() })] }),
       ],
     });
-    expect(screen.getByText(/completed today/i)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /completed investigations/i })).toBeInTheDocument();
     expect(screen.getByText(/Done Bello/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /View Full Blood Count for Done Bello/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Update Full Blood Count for Done Bello/i })).toBeInTheDocument();
   });
 });

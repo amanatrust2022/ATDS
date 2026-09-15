@@ -20,9 +20,19 @@ import { getStaffRepository, type StaffMember } from './repositories/staff';
 export type { StaffMember } from './repositories/staff';
 import { newAuditEntry, type AuditEntry, type AuditInput } from './audit';
 import { getRuntimeMode } from './runtimeMode';
+import { isQualitativeParameter, isUrinalysisTest } from './store/labResults';
+export { flattenTestParameters } from './catalogue';
 
 export type Department = 'lab' | 'radiology';
 export type TestStatus = 'pending' | 'in_progress' | 'completed';
+
+export interface TestParameter {
+  name: string;
+  unit: string;
+  range: string;
+  /** Child analytes beneath a panel heading. */
+  children?: TestParameter[];
+}
 
 export interface Test {
   id: string;
@@ -30,7 +40,10 @@ export interface Test {
   department: Department;
   category: string;
   specimen: string;
-  parameters: { name: string; unit: string; range: string }[];
+  parameters: TestParameter[];
+  kind?: 'investigation' | 'package';
+  /** Catalogue investigation ids included by a special health-check package. */
+  investigationIds?: string[];
   is_active?: boolean;
 }
 
@@ -52,7 +65,12 @@ export interface PatientTest {
   commissionType?: 'percentage' | 'flat' | 'none';
   commissionValue?: number;
   commissionAmount?: number;
+  packageId?: string;
+  packageName?: string;
 }
+
+export const isInvestigationPackage = (test: Pick<Test, 'kind' | 'investigationIds' | 'category'>): boolean =>
+  test.kind === 'package' || Array.isArray(test.investigationIds) || test.category === 'Special Health Check Plans';
 
 export interface PatientProfile {
   id: number;
@@ -107,30 +125,20 @@ export interface Patient {
   tests: PatientTest[];
 }
 
-export const TEST_CATALOGUE: Test[] = [
+const RAW_TEST_CATALOGUE: Test[] = [
   // --- HEMATOLOGY ---
   { id: 'fbc', name: 'Full Blood Count', department: 'lab', category: 'Hematology', specimen: 'Whole Blood', parameters: [
     { name: 'WBC', unit: 'ul', range: '3.50-9.50' },
-    { name: 'Lym%', unit: '%', range: '20.0-50.0' },
-    { name: 'Gran%', unit: '%', range: '50.0-70.0' },
-    { name: 'Mid%', unit: '%', range: '3.0-9.0' },
-    { name: 'Lym#', unit: 'ul', range: '1.10-3.20' },
-    { name: 'Gran#', unit: 'ul', range: '2.00-7.00' },
-    { name: 'Mid#', unit: 'ul', range: '0.10-0.90' },
+    { name: 'LYM%', unit: '%', range: '20.0-50.0' },
+    { name: 'GRAN%', unit: '%', range: '50.0-70.0' },
+    { name: 'MID%', unit: '%', range: '3.0-9.0' },
     { name: 'RBC', unit: 'ul', range: '3.00-5.80' },
     { name: 'HGB', unit: 'g/dl', range: '11.5-17.5' },
     { name: 'HCT', unit: '%', range: '35.0-50.0' },
     { name: 'MCV', unit: 'fl', range: '82.0-100.0' },
     { name: 'MCH', unit: 'pg', range: '27.0-34.0' },
     { name: 'MCHC', unit: 'g/dl', range: '31.6-35.4' },
-    { name: 'RDW-CV', unit: '%', range: '11.5-14.5' },
-    { name: 'RDW-SD', unit: 'fl', range: '35.0-56.0' },
     { name: 'PLT', unit: 'ul', range: '125-350' },
-    { name: 'MPV', unit: 'fl', range: '7.0-11.0' },
-    { name: 'PDW-SD', unit: 'fl', range: '9.0-17.0' },
-    { name: 'PCT', unit: '%', range: '0.108-0.282' },
-    { name: 'P-LCR', unit: '%', range: '11.0-45.0' },
-    { name: 'P-LCC', unit: 'ul', range: '30-90' },
   ]},
   { id: 'esr', name: 'ESR', department: 'lab', category: 'Hematology', specimen: 'Whole Blood', parameters: [{ name: 'ESR', unit: 'mm/hr', range: '<15' }]},
   { id: 'pcv', name: 'PCV', department: 'lab', category: 'Hematology', specimen: 'Whole Blood', parameters: [{ name: 'PCV', unit: '%', range: '35-48' }]},
@@ -416,87 +424,29 @@ export const TEST_CATALOGUE: Test[] = [
   ]},
 
   // --- SPECIAL HEALTH CHECK PLANS ---
-  { id: 'pkg_premarital', name: 'Premarital Screening', department: 'lab', category: 'Special Health Check Plans', specimen: 'Blood', parameters: [
-    { name: 'RVS', unit: '', range: 'Non-Reactive' },
-    { name: 'HBsAg', unit: '', range: 'Non-Reactive' },
-    { name: 'Hb Genotype', unit: '', range: '' },
-  ]},
-  { id: 'pkg_premarital_silver', name: 'Premarital Screening (Silver)', department: 'lab', category: 'Special Health Check Plans', specimen: 'Blood', parameters: [
-    { name: 'RVS', unit: '', range: 'Non-Reactive' },
-    { name: 'HBsAg', unit: '', range: 'Non-Reactive' },
-    { name: 'Hb Genotype', unit: '', range: '' },
-    { name: 'PT', unit: '', range: 'Negative' },
-  ]},
-  { id: 'pkg_premarital_gold', name: 'Premarital Screening (Gold)', department: 'lab', category: 'Special Health Check Plans', specimen: 'Blood', parameters: [
-    { name: 'RVS', unit: '', range: 'Non-Reactive' },
-    { name: 'HBsAg', unit: '', range: 'Non-Reactive' },
-    { name: 'Hb Genotype', unit: '', range: '' },
-    { name: 'PT', unit: '', range: 'Negative' },
-    { name: 'Blood Group', unit: '', range: '' },
-    { name: 'Rhesus Factor', unit: '', range: '' },
-  ]},
-  { id: 'pkg_premarital_diamond', name: 'Premarital Screening (Diamond)', department: 'lab', category: 'Special Health Check Plans', specimen: 'Blood', parameters: [
-    { name: 'RVS', unit: '', range: 'Non-Reactive' },
-    { name: 'HBsAg', unit: '', range: 'Non-Reactive' },
-    { name: 'HCV', unit: '', range: 'Non-Reactive' },
-    { name: 'VDRL', unit: '', range: 'Non-Reactive' },
-    { name: 'Hb Genotype', unit: '', range: '' },
-    { name: 'Blood Group', unit: '', range: '' },
-    { name: 'Rhesus Factor', unit: '', range: '' },
-    { name: 'PT', unit: '', range: 'Negative' },
-  ]},
-  { id: 'pkg_antenatal', name: 'Antenatal Screening', department: 'lab', category: 'Special Health Check Plans', specimen: 'Blood', parameters: [
-    { name: 'Blood Group', unit: '', range: '' },
-    { name: 'Rhesus Factor', unit: '', range: '' },
-    { name: 'Hb Genotype', unit: '', range: '' },
-    { name: 'RVS', unit: '', range: 'Non-Reactive' },
-    { name: 'MPs', unit: '', range: 'Not Seen' },
-    { name: 'PCV', unit: '%', range: '35-48' },
-    { name: 'P.H', unit: '', range: '5.0-8.5' },
-    { name: 'Specific Gravity', unit: '', range: '1.001-1.030' },
-    { name: 'Urobilinogen', unit: '', range: 'Normal' },
-    { name: 'Protein', unit: '', range: 'Negative' },
-    { name: 'Nitrate', unit: '', range: 'Negative' },
-    { name: 'Bilirubin', unit: '', range: 'Negative' },
-    { name: 'Ascorbate', unit: '', range: 'Negative' },
-    { name: 'Ketone', unit: '', range: 'Negative' },
-    { name: 'Glucose', unit: '', range: 'Negative' },
-    { name: 'Blood', unit: '', range: 'Negative' },
-    { name: 'Leucocytes', unit: '', range: 'Negative' },
-  ]},
-  { id: 'pkg_health_checkup', name: 'Health Check Up', department: 'lab', category: 'Special Health Check Plans', specimen: 'Blood/Urine', parameters: [
-    { name: 'Blood Group', unit: '', range: '' },
-    { name: 'Rhesus Factor', unit: '', range: '' },
-    { name: 'Hb Genotype', unit: '', range: '' },
-    { name: 'HBsAg', unit: '', range: 'Non-Reactive' },
-    { name: 'HCV', unit: '', range: 'Non-Reactive' },
-    { name: 'RVS', unit: '', range: 'Non-Reactive' },
-    { name: 'VDRL', unit: '', range: 'Non-Reactive' },
-    { name: 'P.H', unit: '', range: '5.0-8.5' },
-    { name: 'Specific Gravity', unit: '', range: '1.001-1.030' },
-    { name: 'Urobilinogen', unit: '', range: 'Normal' },
-    { name: 'Protein', unit: '', range: 'Negative' },
-    { name: 'Nitrate', unit: '', range: 'Negative' },
-    { name: 'Bilirubin', unit: '', range: 'Negative' },
-    { name: 'Ascorbate', unit: '', range: 'Negative' },
-    { name: 'Ketone', unit: '', range: 'Negative' },
-    { name: 'Glucose', unit: '', range: 'Negative' },
-    { name: 'Blood', unit: '', range: 'Negative' },
-    { name: 'Leucocytes', unit: '', range: 'Negative' },
-  ]},
-  { id: 'pkg_health_screening', name: 'Health Screening', department: 'lab', category: 'Special Health Check Plans', specimen: 'Blood', parameters: [
-    { name: 'Blood Group', unit: '', range: '' },
-    { name: 'Rhesus Factor', unit: '', range: '' },
-    { name: 'HBsAg', unit: '', range: 'Non-Reactive' },
-    { name: 'HCV', unit: '', range: 'Non-Reactive' },
-    { name: 'RVS', unit: '', range: 'Non-Reactive' },
-    { name: 'MPs', unit: '', range: 'Not Seen' },
-  ]},
-  { id: 'pkg_basic', name: 'Basic', department: 'lab', category: 'Special Health Check Plans', specimen: 'Blood/Urine', parameters: [{ name: 'Basic Profile', unit: '', range: '' }]},
-  { id: 'pkg_silver', name: 'Silver', department: 'lab', category: 'Special Health Check Plans', specimen: 'Blood/Urine', parameters: [{ name: 'Silver Profile', unit: '', range: '' }]},
-  { id: 'pkg_gold', name: 'Gold', department: 'lab', category: 'Special Health Check Plans', specimen: 'Blood/Urine', parameters: [{ name: 'Gold Profile', unit: '', range: '' }]},
-  { id: 'pkg_diamond', name: 'Diamond', department: 'lab', category: 'Special Health Check Plans', specimen: 'Blood/Urine', parameters: [{ name: 'Diamond Profile', unit: '', range: '' }]},
+  { id: 'pkg_premarital', name: 'Premarital Screening', department: 'lab', category: 'Special Health Check Plans', specimen: 'Whole Blood / Serum', parameters: [], kind: 'package', investigationIds: ['rvs', 'hbsag', 'genotype'] },
+  { id: 'pkg_premarital_silver', name: 'Premarital Screening (Silver)', department: 'lab', category: 'Special Health Check Plans', specimen: 'Whole Blood / Serum / Urine', parameters: [], kind: 'package', investigationIds: ['rvs', 'hbsag', 'genotype', 'pregnancy_test'] },
+  { id: 'pkg_premarital_gold', name: 'Premarital Screening (Gold)', department: 'lab', category: 'Special Health Check Plans', specimen: 'Whole Blood / Serum / Urine', parameters: [], kind: 'package', investigationIds: ['rvs', 'hbsag', 'genotype', 'pregnancy_test', 'blood_group', 'rh_typing'] },
+  { id: 'pkg_premarital_diamond', name: 'Premarital Screening (Diamond)', department: 'lab', category: 'Special Health Check Plans', specimen: 'Whole Blood / Serum / Urine', parameters: [], kind: 'package', investigationIds: ['rvs', 'hbsag', 'hcv', 'vdrl', 'genotype', 'blood_group', 'rh_typing', 'pregnancy_test'] },
+  { id: 'pkg_antenatal', name: 'Antenatal Screening', department: 'lab', category: 'Special Health Check Plans', specimen: 'Whole Blood / Serum / Urine', parameters: [], kind: 'package', investigationIds: ['blood_group', 'rh_typing', 'genotype', 'rvs', 'mps_bf', 'pcv', 'urinalysis'] },
+  { id: 'pkg_health_checkup', name: 'Health Check Up', department: 'lab', category: 'Special Health Check Plans', specimen: 'Whole Blood / Serum / Urine', parameters: [], kind: 'package', investigationIds: ['blood_group', 'rh_typing', 'genotype', 'hbsag', 'hcv', 'rvs', 'vdrl', 'urinalysis'] },
+  { id: 'pkg_health_screening', name: 'Health Screening', department: 'lab', category: 'Special Health Check Plans', specimen: 'Whole Blood / Serum', parameters: [], kind: 'package', investigationIds: ['blood_group', 'rh_typing', 'hbsag', 'hcv', 'rvs', 'mps_bf'] },
+  { id: 'pkg_basic', name: 'Basic', department: 'lab', category: 'Special Health Check Plans', specimen: 'Whole Blood / Serum / Urine', parameters: [], kind: 'package', investigationIds: ['fbc', 'urinalysis', 'fbs'] },
+  { id: 'pkg_silver', name: 'Silver', department: 'lab', category: 'Special Health Check Plans', specimen: 'Whole Blood / Serum / Urine', parameters: [], kind: 'package', investigationIds: ['fbc', 'urinalysis', 'fbs', 'kft', 'lft'] },
+  { id: 'pkg_gold', name: 'Gold', department: 'lab', category: 'Special Health Check Plans', specimen: 'Whole Blood / Serum / Urine / Scan', parameters: [], kind: 'package', investigationIds: ['fbc', 'urinalysis', 'fbs', 'kft', 'lft', 'lipid', 'us_abd_pelvis'] },
+  { id: 'pkg_diamond', name: 'Diamond', department: 'lab', category: 'Special Health Check Plans', specimen: 'Whole Blood / Serum / Urine / Scan', parameters: [], kind: 'package', investigationIds: ['fbc', 'urinalysis', 'fbs', 'hba1c', 'kft', 'lft', 'lipid', 'hbsag', 'hcv', 'rvs', 'us_abd_pelvis'] },
 ];
+
+export const TEST_CATALOGUE: Test[] = RAW_TEST_CATALOGUE.map((test) => ({
+  ...test,
+  parameters: test.parameters.map((parameter) =>
+    isUrinalysisTest(test.id, test.name) ||
+    parameter.name.startsWith('MPs:') ||
+    isQualitativeParameter(parameter.name)
+      ? { ...parameter, unit: '', range: '' }
+      : parameter,
+  ),
+}));
 
 // ─── ORG-SCOPED DATA FUNCTIONS ────────────────────────────────────────────────
 

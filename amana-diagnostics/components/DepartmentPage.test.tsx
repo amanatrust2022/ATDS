@@ -96,7 +96,7 @@ const testDef = (over: Partial<Test> = {}): Test => ({
   id: 'fbc', name: 'Full Blood Count', department: 'lab',
   category: 'Haematology', specimen: 'Whole Blood',
   parameters: [
-    { name: 'Haemoglobin', unit: 'g/dL', range: '12-16' },
+    { name: 'HGB', unit: 'g/dL', range: '12-16' },
     { name: 'WBC', unit: '10^9/L', range: '4-11' },
   ],
   ...over,
@@ -230,7 +230,7 @@ describe('Department queue', () => {
     ]);
     await renderPage('lab');
 
-    expect(screen.getByText('Completed today (1)')).toBeDefined();
+    expect(screen.getByRole('heading', { name: 'Completed investigations (1)' })).toBeDefined();
   });
 
   it('does not count a test completed on an earlier day as done today', async () => {
@@ -282,7 +282,7 @@ describe('Opening a test for result entry', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Enter results for / }));
 
     await screen.findByText('Entering Results: Full Blood Count');
-    expect(screen.getByText('Haemoglobin')).toBeDefined();
+    expect(screen.getByText('HGB')).toBeDefined();
     expect(screen.getByText('WBC')).toBeDefined();
     expect(screen.getAllByPlaceholderText('Enter result')).toHaveLength(2);
   });
@@ -291,7 +291,7 @@ describe('Opening a test for result entry', () => {
     fetchPatients.mockResolvedValue([patient({
       tests: [patientTest({
         status: 'in_progress',
-        results: [{ parameter: 'Haemoglobin', result: '9.4', unit: 'g/dL', range: '12-16', flag: 'L' }],
+        results: [{ parameter: 'HGB', result: '9.4', unit: 'g/dL', range: '12-16', flag: 'L' }],
       })],
     })]);
     await renderPage('lab');
@@ -343,7 +343,7 @@ describe('Submitting a result', () => {
   it('sends the results, the signature and the notes, then closes the panel', async () => {
     await openFbc();
 
-    fireEvent.change(screen.getAllByPlaceholderText('Enter result')[0], { target: { value: '9.4' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'HGB result' }), { target: { value: '9.4' } });
     fireEvent.change(screen.getByPlaceholderText('Additional clinical comments or interpretation...'),
       { target: { value: 'Repeat in 2 weeks' } });
     fireEvent.click(screen.getByText(/Submit & Send to Reception/));
@@ -361,8 +361,8 @@ describe('Submitting a result', () => {
     // against 12-16 read "L — Low" on the bench and printed with no flag at all.
     // A row with no result is left unflagged: a blank line is not normal.
     expect(payload.results).toEqual([
-      { parameter: 'Haemoglobin', result: '9.4', unit: 'g/dL', range: '12-16', flag: 'L' },
       { parameter: 'WBC', result: '', unit: '10^9/L', range: '4-11', flag: '' },
+      { parameter: 'HGB', result: '9.4', unit: 'g/dL', range: '12-16', flag: 'L' },
     ]);
 
     expect(await screen.findByText('"Full Blood Count" result sent to reception ✓')).toBeDefined();
@@ -378,12 +378,12 @@ describe('Submitting a result', () => {
   it('writes the comment from the flags as results are entered', async () => {
     await openFbc();
 
-    fireEvent.change(screen.getAllByPlaceholderText('Enter result')[0], { target: { value: '9.4' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'HGB result' }), { target: { value: '9.4' } });
 
     const box = screen.getByPlaceholderText(
       'Additional clinical comments or interpretation...',
     ) as HTMLTextAreaElement;
-    await waitFor(() => expect(box.value).toContain('Haemoglobin 9.4 g/dL (reference 12-16) is low.'));
+    await waitFor(() => expect(box.value).toContain('HGB 9.4 g/dL (reference 12-16) is low.'));
   });
 
   it('does not touch a comment the technologist has written', async () => {

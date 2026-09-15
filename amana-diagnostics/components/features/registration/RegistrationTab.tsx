@@ -17,7 +17,7 @@ import { Card, CardBody, CardHeader } from '@/components/ui';
 import styles from './registrationTab.module.css';
 import {
   buildSelectedTestDetails, calculateSubtotal, calculateDiscountAmount,
-  calculateTotalCommission, commissionForTest, paymentStatusFor, isReferralVisit,
+  calculateTotalCommission, buildPatientTests, paymentStatusFor, isReferralVisit,
 } from '@/lib/store/registrationBilling';
 
 interface RegistrationTabProps {
@@ -290,17 +290,7 @@ export default function RegistrationTab({
     try {
       const slipNumber = await generateSlipNumber(organization?.id || '');
 
-      const tests = selectedTestDetails.map(t => ({
-        testId: t.testId,
-        testName: t.testName,
-        department: t.department,
-        status: 'pending' as const,
-        specimen: t.specimen,
-        price: t.price,
-        commissionType: t.commissionType as any || 'none',
-        commissionValue: t.commissionValue || 0,
-        commissionAmount: commissionForTest(t, isReferral),
-      }));
+      const tests = buildPatientTests(selectedTestDetails, catalogue, isReferral);
 
       const commissionTotal = tests.reduce((sum, t) => sum + (t.commissionAmount || 0), 0);
 

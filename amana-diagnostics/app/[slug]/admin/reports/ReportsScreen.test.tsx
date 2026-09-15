@@ -52,6 +52,13 @@ describe('Reports', () => {
     expect(await screen.findByText('Amina Bello')).toBeInTheDocument();
   });
 
+  it('uses neutral tones for the summary report blocks instead of blue accent colours', async () => {
+    render(<ReportsScreen />);
+    await screen.findByText('Amina Bello');
+    expect(document.querySelector('[data-tone="info"]')).toBeNull();
+    expect(document.querySelector('[data-tone="accent"]')).toBeNull();
+  });
+
   it('opens the selected staff details', async () => {
     render(<ReportsScreen />);
     fireEvent.click(await screen.findByText('Amina Bello'));

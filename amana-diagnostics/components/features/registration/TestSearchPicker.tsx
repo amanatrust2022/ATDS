@@ -1,6 +1,6 @@
 import React from 'react';
 import { RiCheckLine, RiAddLine } from '@remixicon/react';
-import { Test } from '@/lib/store';
+import { isInvestigationPackage, Test } from '@/lib/store';
 import { useRegistrationStore } from '@/lib/store/useRegistrationStore';
 import { Alert, Badge, Field, Input } from '@/components/ui';
 
@@ -55,6 +55,11 @@ export default function TestSearchPicker({ catalogue, search, setSearch, error }
             filteredTests.map(test => {
               const isSelected = selectedTests.includes(test.id);
               const isLab = test.department === 'lab';
+              const isPackage = isInvestigationPackage(test);
+              const members = (test.investigationIds || []).flatMap((id) => {
+                const member = catalogue.find((candidate) => candidate.id === id);
+                return member ? [member] : [];
+              });
               return (
                 <button
                   key={test.id}
@@ -66,9 +71,10 @@ export default function TestSearchPicker({ catalogue, search, setSearch, error }
                   <span className={styles.rowMain}>
                     <span className={styles.rowName}>{test.name}</span>
                     <span className={styles.rowMeta}>
-                      <Badge tone={isLab ? 'accent' : 'info'}>{isLab ? 'Lab' : 'Radiology'}</Badge>
+                      <Badge tone={isPackage ? 'warning' : isLab ? 'accent' : 'info'}>{isPackage ? 'Package' : isLab ? 'Lab' : 'Radiology'}</Badge>
                       <span>{test.category} • {test.specimen}</span>
                     </span>
+                    {isPackage && <span className={styles.packageContents}>{members.map((member) => member.name).join(', ')}</span>}
                   </span>
                   <span className={styles.action}>
                     {isSelected

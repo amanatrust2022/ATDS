@@ -3,7 +3,7 @@ import { Test, TestPrice } from '@/lib/store';
 import {
   buildSelectedTestDetails, calculateSubtotal, calculateDiscountAmount,
   commissionForTest, calculateTotalCommission, paymentStatusFor, isReferralVisit,
-  SelectedTestDetail,
+  buildPatientTests, SelectedTestDetail,
 } from './registrationBilling';
 
 const catalogue: Test[] = [
@@ -39,6 +39,29 @@ describe('buildSelectedTestDetails', () => {
 
   it('skips ids that are not in the catalogue instead of throwing', () => {
     expect(buildSelectedTestDetails(['ghost'], catalogue, prices)).toEqual([]);
+  });
+});
+
+describe('buildPatientTests', () => {
+  it('expands a package into independently routed investigations and charges it once', () => {
+    const packageTest: Test = {
+      id: 'pkg-mixed', name: 'Executive Check', department: 'lab',
+      category: 'Special Health Check Plans', specimen: 'Blood / Scan', parameters: [],
+      kind: 'package', investigationIds: ['fbc', 'usg'],
+    };
+    const details = buildSelectedTestDetails(
+      ['pkg-mixed'],
+      [...catalogue, packageTest],
+      [{ organization_id: 'org-1', test_id: 'pkg-mixed', test_name: 'Executive Check', price: 20000, commission_type: 'percentage', commission_value: 10 }],
+    );
+
+    const tests = buildPatientTests(details, [...catalogue, packageTest], true);
+    expect(tests.map((test) => [test.testId, test.department])).toEqual([
+      ['fbc', 'lab'], ['usg', 'radiology'],
+    ]);
+    expect(tests.map((test) => test.price)).toEqual([20000, 0]);
+    expect(tests.reduce((sum, test) => sum + (test.commissionAmount || 0), 0)).toBe(2000);
+    expect(tests.every((test) => test.packageName === 'Executive Check')).toBe(true);
   });
 });
 

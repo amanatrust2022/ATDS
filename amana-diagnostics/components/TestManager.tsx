@@ -32,6 +32,7 @@ import {
   deleteCustomTest,
   fetchCustomTests,
   fetchTestPrices,
+  isInvestigationPackage,
   recordAudit,
   setCustomCatalogueCache,
   updateCustomTest,
@@ -112,6 +113,9 @@ export default function TestManager({
   const [formSpecimen, setFormSpecimen] = useState('');
   const [formParameters, setFormParameters] = useState<Parameter[]>([]);
   const [formFormat, setFormFormat] = useState<Format>('parameterized');
+  const [formKind, setFormKind] = useState<'investigation' | 'package'>('investigation');
+  const [formInvestigationIds, setFormInvestigationIds] = useState<string[]>([]);
+  const [memberSearch, setMemberSearch] = useState('');
 
   const [formPrice, setFormPrice] = useState(0);
   const [formCommType, setFormCommType] = useState<'percentage' | 'flat' | 'none'>('percentage');
@@ -187,6 +191,9 @@ export default function TestManager({
       setIsNew(false);
 
       setFormName(test.name);
+      setFormKind(isInvestigationPackage(test) ? 'package' : 'investigation');
+      setFormInvestigationIds(test.investigationIds || []);
+      setMemberSearch('');
       setFormDept(test.department);
 
       if (CATEGORIES.includes(test.category)) {
@@ -218,6 +225,8 @@ export default function TestManager({
 
     const rad = restrictDepartment === 'radiology';
     setFormName('');
+    setFormKind('investigation');
+    setFormInvestigationIds([]);
     setFormDept(restrictDepartment || 'lab');
     setFormCategory(rad ? 'Ultrasound' : 'Hematology');
     setFormCustomCategory('');
@@ -230,14 +239,34 @@ export default function TestManager({
     setFormCommValue(0);
   };
 
+  const handleStartPackage = () => {
+    handleStartNew();
+    setFormKind('package');
+    setFormDept('lab');
+    setFormCategory('Special Health Check Plans');
+    setFormSpecimen('');
+    setFormParameters([]);
+    setFormFormat('parameterized');
+  };
+
   const handleFormatChange = (format: Format) => {
     setFormFormat(format);
     if (format === 'freetext') setFormParameters([]);
     else if (formParameters.length === 0) setFormParameters([{ ...BLANK_PARAM }]);
   };
 
-  const setParam = (index: number, field: keyof Parameter, value: string) =>
+  const setParam = (index: number, field: 'name' | 'unit' | 'range', value: string) =>
     setFormParameters((prev) => prev.map((p, i) => (i === index ? { ...p, [field]: value } : p)));
+
+  const addSubParameter = (index: number) => setFormParameters((prev) => prev.map((parameter, i) =>
+    i === index ? { ...parameter, children: [...(parameter.children || []), { ...BLANK_PARAM }] } : parameter,
+  ));
+
+  const setSubParameter = (parentIndex: number, childIndex: number, field: 'name' | 'unit' | 'range', value: string) =>
+    setFormParameters((prev) => prev.map((parameter, i) => i === parentIndex ? {
+      ...parameter,
+      children: (parameter.children || []).map((child, j) => j === childIndex ? { ...child, [field]: value } : child),
+    } : parameter));
 
   const isFreeText = formFormat === 'freetext' || formDept === 'radiology';
 
@@ -285,25 +314,34 @@ export default function TestManager({
       setError('Category is required.');
       return;
     }
-    if (!isFreeText && !formSpecimen.trim()) {
+    if (formKind === 'package' && formInvestigationIds.length === 0) {
+      setError('Add at least one existing investigation to the package.');
+      return;
+    }
+    if (formKind !== 'package' && !isFreeText && !formSpecimen.trim()) {
       setError('Specimen is required.');
       return;
     }
-    if (!isFreeText && formParameters.some((p) => !p.name.trim())) {
+    if (formKind !== 'package' && !isFreeText && formParameters.some((p) =>
+      !p.name.trim() || (p.children || []).some((child) => !child.name.trim()))) {
       setError('Every parameter needs a name.');
       return;
     }
 
     setSaving(true);
     try {
-      const testId = isNew ? `custom_${crypto.randomUUID().substring(0, 8)}` : editingTest!.id;
+      const testId = isNew ? `${formKind === 'package' ? 'pkg' : 'custom'}_${crypto.randomUUID().substring(0, 8)}` : editingTest!.id;
+      const packageMembers = catalogue.filter((test) => formInvestigationIds.includes(test.id));
+      const packageSpecimen = Array.from(new Set(packageMembers.map((test) => test.specimen).filter(Boolean))).join(' / ');
       const testPayload = {
         id: testId,
         name: formName.trim(),
-        department: formDept,
-        category: finalCategory as any,
-        specimen: formDept === 'radiology' ? 'Scan' : formSpecimen.trim(),
-        parameters: isFreeText ? [] : formParameters,
+        department: formKind === 'package' ? 'lab' as const : formDept,
+        category: formKind === 'package' ? 'Special Health Check Plans' : finalCategory as any,
+        specimen: formKind === 'package' ? packageSpecimen : formDept === 'radiology' ? 'Scan' : formSpecimen.trim(),
+        parameters: formKind === 'package' || isFreeText ? [] : formParameters,
+        kind: formKind,
+        investigationIds: formKind === 'package' ? formInvestigationIds : [],
       };
 
       if (isNew) {
@@ -508,7 +546,14 @@ export default function TestManager({
     return matchesSearch && (selectedCategory === 'all' || t.category === selectedCategory);
   });
 
-  const deptCategories = formDept === 'radiology' ? RAD_CATEGORIES : LAB_CATEGORIES;
+  const deptCategories = formDept === 'radiology'
+    ? RAD_CATEGORIES
+    : LAB_CATEGORIES.filter((category) => category !== 'Special Health Check Plans');
+  const eligibleMembers = catalogue.filter((test) => !isInvestigationPackage(test));
+  const visibleMembers = eligibleMembers.filter((test) => {
+    const q = memberSearch.trim().toLowerCase();
+    return !q || [test.name, test.department, test.category, test.specimen].join(' ').toLowerCase().includes(q);
+  });
 
   return (
     <div className={styles['shell']}>
@@ -636,6 +681,11 @@ export default function TestManager({
               <Button intent="secondary" icon={<RiAddLine size={15} />} onClick={handleStartNew}>
                 Add custom investigation
               </Button>
+              {!restrictDepartment && (
+                <Button intent="secondary" icon={<RiAddLine size={15} />} onClick={handleStartPackage}>
+                  Add special health check plan
+                </Button>
+              )}
             </div>
           </CardBody>
         </Card>
@@ -650,7 +700,7 @@ export default function TestManager({
             ) : (
               <form className={styles['form']} onSubmit={handleSave}>
                 <CardHeader
-                  title={isNew ? 'New custom investigation' : `Editing ${editingTest?.name}`}
+                  title={isNew ? (formKind === 'package' ? 'New special health check plan' : 'New custom investigation') : `Editing ${editingTest?.name}`}
                 />
 
                 {error && (
@@ -678,7 +728,13 @@ export default function TestManager({
                     />
                   </Field>
 
-                  {formDept === 'radiology' ? (
+                  {formKind === 'package' ? (
+                    <Field label="Required specimens" hint="Calculated from the included investigations.">
+                      <div className={styles['fixed']}>
+                        {Array.from(new Set(catalogue.filter((test) => formInvestigationIds.includes(test.id)).map((test) => test.specimen))).join(' / ') || 'Add investigations below'}
+                      </div>
+                    </Field>
+                  ) : formDept === 'radiology' ? (
                     <Field label="Specimen" hint="Scans do not have one.">
                       <div className={styles['fixed']}>Scan / exam</div>
                     </Field>
@@ -693,7 +749,7 @@ export default function TestManager({
                   )}
                 </div>
 
-                <div className={styles['pair']}>
+                {formKind !== 'package' && <div className={styles['pair']}>
                   {restrictDepartment ? (
                     <Field label="Department">
                       <div className={styles['fixed']}>
@@ -730,9 +786,9 @@ export default function TestManager({
                       <option value="custom">Something else…</option>
                     </Select>
                   </Field>
-                </div>
+                </div>}
 
-                {formCategory === 'custom' && (
+                {formKind !== 'package' && formCategory === 'custom' && (
                   <Field label="New category name" required>
                     <Input
                       value={formCustomCategory}
@@ -744,7 +800,7 @@ export default function TestManager({
 
                 {isAdmin && (
                   <div className={styles['money']}>
-                    <Field label="Price" hint="What this test costs, in naira.">
+                    <Field label="Price" hint="">
                       <Input
                         type="number"
                         min={0}
@@ -786,7 +842,7 @@ export default function TestManager({
                   </div>
                 )}
 
-                {formDept === 'lab' && (
+                {formKind !== 'package' && formDept === 'lab' && (
                   <Field label="How the result is reported" required>
                     <SegmentedControl
                       value={formFormat}
@@ -800,7 +856,39 @@ export default function TestManager({
                   </Field>
                 )}
 
-                {isFreeText ? (
+                {formKind === 'package' ? (
+                  <div className={styles['packageEditor']}>
+                    <Alert tone="info">
+                      A plan contains existing investigations only. Each investigation keeps its own parameters, reporting format, specimen and department routing.
+                    </Alert>
+                    <Field label="Find investigations to include" hint={`${formInvestigationIds.length} investigation${formInvestigationIds.length === 1 ? '' : 's'} included`}>
+                      <Input
+                        type="search"
+                        value={memberSearch}
+                        onChange={(event) => setMemberSearch(event.target.value)}
+                        placeholder="Search by name, department or specimen…"
+                      />
+                    </Field>
+                    <div className={styles['memberList']}>
+                      {visibleMembers.map((test) => {
+                        const included = formInvestigationIds.includes(test.id);
+                        return (
+                          <button
+                            key={test.id}
+                            type="button"
+                            aria-pressed={included}
+                            aria-label={`${included ? 'Remove' : 'Add'} ${test.name} ${included ? 'from' : 'to'} package`}
+                            className={[styles['member'], included ? styles['memberOn'] : ''].filter(Boolean).join(' ')}
+                            onClick={() => setFormInvestigationIds((ids) => included ? ids.filter((id) => id !== test.id) : [...ids, test.id])}
+                          >
+                            <span><strong>{test.name}</strong><small>{test.department === 'lab' ? 'Laboratory' : 'Radiology'} · {test.specimen}</small></span>
+                            <span>{included ? 'Included' : 'Add'}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : isFreeText ? (
                   <p className={styles['note']}>
                     {formDept === 'radiology'
                       ? 'Scans are reported as findings, an impression and any images. No numeric parameters or reference ranges are needed.'
@@ -813,7 +901,7 @@ export default function TestManager({
                       hint="Replaces what is below, or adds to it."
                     >
                       <div className={styles['presets']}>
-                        {CLINICAL_PRESETS.map((preset) => (
+                        {CLINICAL_PRESETS.filter((preset) => preset.category !== 'Special Health Check Plans').map((preset) => (
                           <span key={preset.name} className={styles['preset']}>
                             <Button
                               size="sm"
@@ -877,7 +965,8 @@ export default function TestManager({
                       <div className={styles['params']}>
                         {formParameters.map((p, idx) => (
                           // eslint-disable-next-line react/no-array-index-key
-                          <div key={idx} className={styles['param']}>
+                          <div key={idx} className={styles['paramGroup']}>
+                            <div className={styles['param']}>
                             {/* Named by position. A test can carry twenty of
                               * these; unnamed they were all "edit text". */}
                             <Input
@@ -898,6 +987,14 @@ export default function TestManager({
                               value={p.range}
                               onChange={(e) => setParam(idx, 'range', e.target.value)}
                             />
+                            <Button
+                              size="sm"
+                              intent="secondary"
+                              icon={<RiAddLine size={13} />}
+                              onClick={() => addSubParameter(idx)}
+                            >
+                              Add sub-parameter
+                            </Button>
                             {formParameters.length > 1 && (
                               <Button
                                 size="sm"
@@ -909,6 +1006,39 @@ export default function TestManager({
                                 }
                               />
                             )}
+                            </div>
+                            {(p.children || []).map((child, childIdx) => (
+                              <div key={childIdx} className={styles['subParam']}>
+                                <Input
+                                  aria-label={`Sub-parameter ${childIdx + 1} name under parameter ${idx + 1}`}
+                                  placeholder="Sub-parameter name"
+                                  value={child.name}
+                                  onChange={(event) => setSubParameter(idx, childIdx, 'name', event.target.value)}
+                                />
+                                <Input
+                                  aria-label={`Sub-parameter ${childIdx + 1} unit under parameter ${idx + 1}`}
+                                  placeholder="Unit"
+                                  value={child.unit}
+                                  onChange={(event) => setSubParameter(idx, childIdx, 'unit', event.target.value)}
+                                />
+                                <Input
+                                  aria-label={`Sub-parameter ${childIdx + 1} reference range under parameter ${idx + 1}`}
+                                  placeholder="Reference range"
+                                  value={child.range}
+                                  onChange={(event) => setSubParameter(idx, childIdx, 'range', event.target.value)}
+                                />
+                                <Button
+                                  size="sm"
+                                  intent="dangerQuiet"
+                                  aria-label={`Remove sub-parameter ${childIdx + 1} under ${p.name || `parameter ${idx + 1}`}`}
+                                  icon={<RiDeleteBin6Line size={14} />}
+                                  onClick={() => setFormParameters((parameters) => parameters.map((parameter, i) => i === idx ? {
+                                    ...parameter,
+                                    children: (parameter.children || []).filter((_, j) => j !== childIdx),
+                                  } : parameter))}
+                                />
+                              </div>
+                            ))}
                           </div>
                         ))}
                       </div>

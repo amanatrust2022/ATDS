@@ -9,6 +9,7 @@ import RequireRole from '@/components/RequireRole';
 import { useAuth } from '@/components/AuthProvider';
 import { useShellSlot } from '@/components/shell';
 import { Alert, Badge, Button, Card, CardBody, CardHeader, DescriptionList, Dialog, EmptyState, SkeletonRows, Stat, Table, TabPanel, Tabs } from '@/components/ui';
+import type { Tone } from '@/components/ui';
 import { StaffPerformance } from '@/components/features/reports/StaffPerformance';
 import { bearerHeaders } from '@/lib/authHeaders';
 import { orgName } from '@/lib/branding';
@@ -253,8 +254,8 @@ function Reports() {
   );
 }
 
-const toneFor = (b: AgeBucket, amount: number) =>
-  amount <= 0 ? 'neutral' : b === '0-30' ? 'info' : b === '31-60' ? 'warning' : 'critical';
+const toneFor = (b: AgeBucket, amount: number): Tone =>
+  amount <= 0 ? 'neutral' : 'neutral';
 
 const ageParam = (b: AgeBucket) => (b === '0-30' ? 0 : b === '31-60' ? 31 : b === '61-90' ? 61 : 91);
 

@@ -1,4 +1,4 @@
-import { Test, TestPrice } from '@/lib/store';
+import { isInvestigationPackage, Test, TestPrice, type PatientTest } from '@/lib/store';
 
 export type DiscountType = 'none' | 'flat' | 'percentage';
 export type CommissionType = NonNullable<TestPrice['commission_type']>;
@@ -11,6 +11,8 @@ export interface SelectedTestDetail {
   price: number;
   commissionType: CommissionType;
   commissionValue: number;
+  kind?: 'investigation' | 'package';
+  investigationIds?: string[];
 }
 
 /** Joins the chosen test ids against the catalogue and the org's price list. */
@@ -31,6 +33,8 @@ export const buildSelectedTestDetails = (
       price: catalog ? catalog.price : 0,
       commissionType: catalog?.commission_type ?? 'none',
       commissionValue: catalog?.commission_value ?? 0,
+      kind: isInvestigationPackage(test) ? 'package' : 'investigation',
+      investigationIds: test.investigationIds ?? [],
     }];
   });
 
@@ -58,6 +62,37 @@ export const commissionForTest = (detail: SelectedTestDetail, isReferral: boolea
 
 export const calculateTotalCommission = (details: SelectedTestDetail[], isReferral: boolean): number =>
   details.reduce((sum, t) => sum + commissionForTest(t, isReferral), 0);
+
+/** Expand package bill lines into independently routed clinical work items. */
+export const buildPatientTests = (
+  details: SelectedTestDetail[],
+  catalogue: Test[],
+  isReferral: boolean,
+): Omit<PatientTest, 'id' | 'patient_id'>[] => details.flatMap((detail) => {
+  if (detail.kind !== 'package') {
+    return [{
+      testId: detail.testId, testName: detail.testName, department: detail.department,
+      status: 'pending' as const, specimen: detail.specimen, price: detail.price,
+      commissionType: detail.commissionType, commissionValue: detail.commissionValue,
+      commissionAmount: commissionForTest(detail, isReferral),
+    }];
+  }
+
+  const members = (detail.investigationIds ?? []).flatMap((id) => {
+    const test = catalogue.find((candidate) => candidate.id === id && !isInvestigationPackage(candidate));
+    return test ? [test] : [];
+  });
+  return members.map((member, index) => ({
+    testId: member.id, testName: member.name, department: member.department,
+    status: 'pending' as const, specimen: member.specimen,
+    price: index === 0 ? detail.price : 0,
+    commissionType: index === 0 ? detail.commissionType : 'none',
+    commissionValue: index === 0 ? detail.commissionValue : 0,
+    commissionAmount: index === 0 ? commissionForTest(detail, isReferral) : 0,
+    packageId: detail.testId,
+    packageName: detail.testName,
+  }));
+});
 
 export const paymentStatusFor = (amountPaid: number, netBill: number): 'paid' | 'partial' | 'unpaid' => {
   if (amountPaid >= netBill) return 'paid';

@@ -29,6 +29,8 @@ const baseRow = (test: Omit<Test, 'is_active'> & { is_active?: boolean }, organi
   department: test.department,
   category: test.category,
   specimen: test.specimen,
+  kind: test.kind ?? 'investigation',
+  investigation_ids: test.investigationIds ?? [],
   updated_at: new Date().toISOString(),
 });
 
@@ -43,6 +45,7 @@ export const localCustomTestsRepository: CustomTestsRepository = {
     const payload = {
       ...baseRow(test, organizationId),
       parameters: JSON.stringify(test.parameters),
+      investigation_ids: JSON.stringify(test.investigationIds ?? []),
       is_active: test.is_active === false ? 0 : 1,
     };
     await postJson(ENDPOINT, { action: 'add', test: payload, organizationId }, 'Failed to add custom test locally');
@@ -55,6 +58,8 @@ export const localCustomTestsRepository: CustomTestsRepository = {
     if (updates.category !== undefined) payload.category = updates.category;
     if (updates.specimen !== undefined) payload.specimen = updates.specimen;
     if (updates.parameters !== undefined) payload.parameters = JSON.stringify(updates.parameters);
+    if (updates.kind !== undefined) payload.kind = updates.kind;
+    if (updates.investigationIds !== undefined) payload.investigation_ids = JSON.stringify(updates.investigationIds);
     if (updates.is_active !== undefined) payload.is_active = updates.is_active ? 1 : 0;
 
     await postJson(ENDPOINT, { action: 'update', id, updates: payload, organizationId }, 'Failed to update custom test locally');
@@ -84,6 +89,8 @@ export const cloudCustomTestsRepository: CustomTestsRepository = {
       category: t.category,
       specimen: t.specimen,
       parameters: typeof t.parameters === 'string' ? JSON.parse(t.parameters) : t.parameters,
+      kind: t.kind ?? 'investigation',
+      investigationIds: typeof t.investigation_ids === 'string' ? JSON.parse(t.investigation_ids) : (t.investigation_ids || []),
       is_active: t.is_active,
     }));
   },
@@ -95,6 +102,7 @@ export const cloudCustomTestsRepository: CustomTestsRepository = {
       .insert([{
         ...baseRow(test, organizationId),
         parameters: test.parameters,
+        investigation_ids: test.investigationIds ?? [],
         is_active: test.is_active !== false,
       }]);
     if (error) throw error;
@@ -108,6 +116,8 @@ export const cloudCustomTestsRepository: CustomTestsRepository = {
     if (updates.category !== undefined) payload.category = updates.category;
     if (updates.specimen !== undefined) payload.specimen = updates.specimen;
     if (updates.parameters !== undefined) payload.parameters = updates.parameters;
+    if (updates.kind !== undefined) payload.kind = updates.kind;
+    if (updates.investigationIds !== undefined) payload.investigation_ids = updates.investigationIds;
     if (updates.is_active !== undefined) payload.is_active = updates.is_active;
 
     // upsert, not update: an override row does not exist until the first edit

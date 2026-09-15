@@ -10,7 +10,8 @@
  * a change here as a change to what gets printed on a result.
  */
 
-export type Parameter = { name: string; unit: string; range: string };
+import type { TestParameter } from '@/lib/store';
+export type Parameter = TestParameter;
 
 export type ClinicalPreset = {
   name: string;
@@ -39,22 +40,25 @@ export const RAD_CATEGORIES = [
 
 export const CATEGORIES = [...LAB_CATEGORIES, ...RAD_CATEGORIES];
 
-export const CLINICAL_PRESETS: ClinicalPreset[] = [
+import { isQualitativeParameter } from '@/lib/store/labResults';
+
+const RAW_CLINICAL_PRESETS: ClinicalPreset[] = [
   {
     name: 'Full Blood Count (FBC)',
     specimen: 'Whole Blood',
     category: 'Hematology',
     parameters: [
       { name: 'WBC', unit: 'x10^9/L', range: '4.0-11.0' },
+      { name: 'LYM%', unit: '%', range: '20-40' },
+      { name: 'GRAN%', unit: '%', range: '50-70' },
+      { name: 'MID%', unit: '%', range: '3-9' },
       { name: 'RBC', unit: 'x10^12/L', range: '4.5-5.9' },
       { name: 'HGB', unit: 'g/dL', range: '13.5-17.5' },
       { name: 'HCT', unit: '%', range: '41-50' },
       { name: 'MCV', unit: 'fL', range: '80-100' },
       { name: 'MCH', unit: 'pg', range: '27-33' },
       { name: 'MCHC', unit: 'g/dL', range: '32-36' },
-      { name: 'Platelets', unit: 'x10^9/L', range: '150-400' },
-      { name: 'Lymphocytes', unit: '%', range: '20-40' },
-      { name: 'Granulocytes', unit: '%', range: '50-70' },
+      { name: 'PLT', unit: 'x10^9/L', range: '150-400' },
     ]
   },
   {
@@ -356,3 +360,14 @@ export const CLINICAL_PRESETS: ClinicalPreset[] = [
     ]
   }
 ];
+
+export const CLINICAL_PRESETS: ClinicalPreset[] = RAW_CLINICAL_PRESETS.map((preset) => ({
+  ...preset,
+  parameters: preset.parameters.map((parameter) =>
+    preset.name.toLowerCase().includes('urinalysis') ||
+    parameter.name.startsWith('MPs:') ||
+    isQualitativeParameter(parameter.name)
+      ? { ...parameter, unit: '', range: '' }
+      : parameter,
+  ),
+}));

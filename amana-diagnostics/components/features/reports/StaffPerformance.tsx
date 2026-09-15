@@ -138,21 +138,21 @@ export function StaffPerformance({
           value={String(totals.totalTestsCount)}
           note="Completed and released in this period"
           icon={<RiFileList3Line size={18} />}
-          tone="success"
+          tone="neutral"
         />
         <Stat
           label="Clinical revenue"
           value={naira(totals.totalClinicalRevenue)}
           note={`Commissions: ${naira(totals.totalCommissions)}`}
           icon={<RiCoinsLine size={18} />}
-          tone="info"
+          tone="neutral"
         />
         <Stat
           label="Turnaround"
           value={totals.avgTAT > 0 ? formatTAT(totals.avgTAT) : '—'}
           note="Average, arrival to signature"
           icon={<RiTimeLine size={18} />}
-          tone="accent"
+          tone="neutral"
         />
         <Stat
           label="Collected"

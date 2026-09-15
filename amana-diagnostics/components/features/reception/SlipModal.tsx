@@ -13,6 +13,7 @@ import {
   slipDestination,
   RECEIPT_COPY_TAG,
   RECEIPT_AND_SLIP_ORDER,
+  receiptLines,
   type OrgForTemplate,
 } from '@/lib/templates';
 import { patientDisplayName } from '@/lib/store/patientName';
@@ -135,6 +136,7 @@ function SlipPaper({ patient, org }: { patient: Patient; org?: OrgForTemplate | 
               <tr key={t.testId}>
                 <td>
                   {t.testName}
+                  {t.packageName && <span className={styles['spec']}> [{t.packageName}]</span>}
                   {spec && <span className={styles['spec']}> ({spec})</span>}
                 </td>
                 <td className={styles['right']}>{t.department === 'lab' ? 'Lab' : 'Radio'}</td>
@@ -197,9 +199,9 @@ function ReceiptPaper({ patient, org }: { patient: Patient; org?: OrgForTemplate
           </tr>
         </thead>
         <tbody>
-          {tests.map((t) => (
-            <tr key={t.testId}>
-              <td>{t.testName}</td>
+          {receiptLines(tests).map((t) => (
+            <tr key={t.key}>
+              <td>{t.name}</td>
               <td className={styles['right']}>{money(t.price || 0)}</td>
             </tr>
           ))}

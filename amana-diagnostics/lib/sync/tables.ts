@@ -132,7 +132,7 @@ export const SYNC_TABLES: readonly SyncTable[] = [
     versionColumn: 'updated_at',
     conflict: 'newer-wins',
     scope: 'organization_id',
-    json: ['parameters'],
+    json: ['parameters', 'investigation_ids'],
     booleans: ['is_active'],
   }),
   table({

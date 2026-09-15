@@ -11,6 +11,13 @@ import {
   type Sex,
 } from '@/lib/clinical/referenceRange';
 import styles from './ParameterTable.module.css';
+import {
+  isRvsParameter,
+  isUrinalysisTest,
+  RVS_RESULTS,
+  URINALYSIS_RESULTS,
+  usesSimpleResultTable,
+} from '@/lib/store/labResults';
 
 export interface EditableResult {
   parameter: string;
@@ -25,6 +32,8 @@ export interface EditableResult {
 interface Props {
   results: EditableResult[];
   onUpdate: (index: number, field: 'result' | 'flag', value: string) => void;
+  testId?: string;
+  testName?: string;
   /** Lets a sexed reference range resolve. Unknown means no flag is derived. */
   sex?: Sex;
 }
@@ -50,7 +59,9 @@ interface Props {
  *    to a colour-blind technologist and gone entirely on the monochrome
  *    printouts clinics hand to patients.
  */
-export default function ParameterTable({ results, onUpdate, sex = 'unknown' }: Props) {
+export default function ParameterTable({ results, onUpdate, testId = '', testName = '', sex = 'unknown' }: Props) {
+  const simple = usesSimpleResultTable(testId, testName, results);
+  const urinalysis = isUrinalysisTest(testId, testName);
   /* What the range says each row is, alongside what the technologist has
    * actually recorded. The two are separate on purpose: an override that
    * disagrees with the range is a legitimate clinical act, and the row says so
@@ -69,7 +80,7 @@ export default function ParameterTable({ results, onUpdate, sex = 'unknown' }: P
   const columns: TableColumn<EditableResult>[] = [
     {
       key: 'parameter',
-      header: 'Parameter',
+      header: simple ? 'Investigation' : 'Parameter',
       rowHeader: true,
       cellClassName: styles['parameter'],
       render: (row) => row.parameter,
@@ -87,16 +98,36 @@ export default function ParameterTable({ results, onUpdate, sex = 'unknown' }: P
           Number.isFinite(current) &&
           row.result.trim() !== '';
 
+        const rvs = isRvsParameter(row.parameter);
         return (
           <>
             <Field label={`${row.parameter} result`} labelHidden>
-              <Input
-                value={row.result}
-                onChange={(e) => onUpdate(i, 'result', e.target.value)}
-                placeholder="Enter result"
-                inputMode="decimal"
-                className={styles['resultInput']}
-              />
+              {urinalysis ? (
+                <Select
+                  value={row.result}
+                  onChange={(e) => onUpdate(i, 'result', e.target.value)}
+                  className={styles['resultInput']}
+                >
+                  <option value="">Choose result</option>
+                  {URINALYSIS_RESULTS.map((option) => <option key={option} value={option}>{option}</option>)}
+                </Select>
+              ) : (
+                <>
+                  <Input
+                    value={row.result}
+                    onChange={(e) => onUpdate(i, 'result', e.target.value)}
+                    placeholder={rvs ? 'Choose or type a custom RVS result' : 'Enter result'}
+                    inputMode={simple ? 'text' : 'decimal'}
+                    list={rvs ? `rvs-results-${i}` : undefined}
+                    className={styles['resultInput']}
+                  />
+                  {rvs && (
+                    <datalist id={`rvs-results-${i}`}>
+                      {RVS_RESULTS.map((option) => <option key={option} value={option} />)}
+                    </datalist>
+                  )}
+                </>
+              )}
             </Field>
             {showDelta && (
               <ResultDelta
@@ -110,6 +141,9 @@ export default function ParameterTable({ results, onUpdate, sex = 'unknown' }: P
         );
       },
     },
+  ];
+
+  if (!simple) columns.push(
     {
       key: 'unit',
       header: 'Unit',
@@ -176,11 +210,11 @@ export default function ParameterTable({ results, onUpdate, sex = 'unknown' }: P
         );
       },
     },
-  ];
+  );
 
   return (
     <Table
-      caption="Test parameters, with each result flagged against its reference range"
+      caption={simple ? 'Investigations and results' : 'Test parameters, with each result flagged against its reference range'}
       className={styles['table']}
       columns={columns}
       rows={results}
