@@ -20,6 +20,7 @@ export async function POST(request: Request) {
       // whether the call came straight from the browser or through a hub's
       // outbox — the hub wrote the same id first, and the upsert ignores it.
       auditId, previousRole, reversesId, actorName, roleLabel,
+      performanceCommissionType, performanceCommissionValue,
     } = await request.json();
 
     if (!staffId || !action) {
@@ -39,6 +40,47 @@ export async function POST(request: Request) {
     const supabaseAdmin = createSupabaseClient(url, key, {
       auth: { persistSession: false, autoRefreshToken: false }
     });
+
+    if (action === 'update_performance_commission') {
+      const validation = validatePerformanceCommission(performanceCommissionType, performanceCommissionValue);
+      if (validation.error) return NextResponse.json({ error: validation.error }, { status: 400 });
+
+      const { data: current, error: currentError } = await supabaseAdmin
+        .from('profiles')
+        .select('full_name, performance_commission_type, performance_commission_value')
+        .eq('id', staffId)
+        .maybeSingle();
+      if (currentError) throw currentError;
+      if (!current) return NextResponse.json({ error: 'Staff member not found' }, { status: 404 });
+
+      const { error: updateError } = await supabaseAdmin
+        .from('profiles')
+        .update({
+          performance_commission_type: validation.type,
+          performance_commission_value: validation.value,
+        })
+        .eq('id', staffId);
+      if (updateError) throw updateError;
+
+      await writeAudit(supabaseAdmin, {
+        id: auditId,
+        organization_id: caller.organizationId!,
+        actor_id: caller.id,
+        actor_name: actorName ?? caller.email,
+        action: 'staff.performance_commission_changed',
+        entity_type: 'profile',
+        entity_id: staffId,
+        entity_label: (current as any).full_name ?? null,
+        before: {
+          type: (current as any).performance_commission_type ?? 'none',
+          value: Number((current as any).performance_commission_value) || 0,
+        },
+        after: { type: validation.type, value: validation.value },
+        reverses_id: null,
+      });
+
+      return NextResponse.json({ success: true });
+    }
 
     if (action === 'update_role') {
       if (!role) return NextResponse.json({ error: 'Missing role' }, { status: 400 });
@@ -158,7 +200,7 @@ async function writeAudit(
     organization_id: string;
     actor_id: string;
     actor_name: string | null;
-    action: 'staff.role_changed' | 'staff.removed';
+    action: 'staff.role_changed' | 'staff.removed' | 'staff.performance_commission_changed';
     entity_type: 'profile';
     entity_id: string;
     entity_label: string | null;
@@ -172,4 +214,20 @@ async function writeAudit(
     { onConflict: 'id', ignoreDuplicates: true },
   );
   if (error) console.error('API /api/staff/update: audit row not written:', error.message);
+}
+
+function validatePerformanceCommission(type: unknown, value: unknown): {
+  type: 'none' | 'percentage' | 'flat'; value: number; error?: string;
+} {
+  if (type !== 'none' && type !== 'percentage' && type !== 'flat') {
+    return { type: 'none', value: 0, error: 'Unknown commission plan' };
+  }
+  const amount = type === 'none' ? 0 : Number(value);
+  if (!Number.isFinite(amount) || amount < 0) {
+    return { type, value: 0, error: 'Commission value must be zero or greater' };
+  }
+  if (type === 'percentage' && amount > 100) {
+    return { type, value: amount, error: 'Percentage commission cannot exceed 100%' };
+  }
+  return { type, value: amount };
 }

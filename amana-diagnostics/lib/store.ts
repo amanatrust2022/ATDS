@@ -57,6 +57,7 @@ export interface PatientTest {
   specimen?: string;
   results?: { parameter: string; result: string; unit: string; range: string; flag?: string }[];
   completedBy?: string;
+  completedByProfileId?: string;
   completedBySignatureUrl?: string;
   completedByTitle?: string;
   completedAt?: string;

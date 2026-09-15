@@ -21,6 +21,7 @@ export interface CompletedTest {
   test_name?: string | null;
   completed_at?: string | null;
   completed_by?: string | null;
+  completed_by_profile_id?: string | null;
   patient_created_at?: string | null;
   department?: string | null;
   price?: number | null;
@@ -66,6 +67,28 @@ export interface StaffMember {
   first_name?: string | null;
   surname?: string | null;
   role?: string | null;
+  performance_commission_type?: PerformanceCommissionType | null;
+  performance_commission_value?: number | null;
+}
+
+export type PerformanceCommissionType = 'none' | 'percentage' | 'flat';
+
+/**
+ * The staff-specific incentive earned when one investigation is completed.
+ * A configured staff plan overrides the catalogue default. With no staff plan,
+ * the already-snapshotted catalogue bonus remains in force.
+ */
+export function performanceCommissionForTest(
+  price: number,
+  type: PerformanceCommissionType | null | undefined,
+  value: number | null | undefined,
+  catalogueFallback = 0,
+): number {
+  const safePrice = Math.max(Number(price) || 0, 0);
+  const safeValue = Math.max(Number(value) || 0, 0);
+  if (type === 'percentage') return safePrice * Math.min(safeValue, 100) / 100;
+  if (type === 'flat') return safeValue;
+  return Math.max(Number(catalogueFallback) || 0, 0);
 }
 
 /** The empty shape, so a missing or partial API response cannot throw. */
@@ -165,7 +188,14 @@ export function averageTat(tests: CompletedTest[]): number {
  * credited with one test. That is a known limitation of the data, not of this
  * function.
  */
-export function matchesStaff(completedBy: string | null | undefined, member: StaffMember): boolean {
+export function matchesStaff(
+  completedBy: string | null | undefined,
+  member: StaffMember,
+  completedByProfileId?: string | null,
+): boolean {
+  // New records carry an immutable profile id. When present it is authoritative:
+  // two colleagues with the same first name must never both earn the same work.
+  if (completedByProfileId) return completedByProfileId === member.id;
   if (!completedBy) return false;
   const cb = completedBy.toLowerCase().trim();
   const fn = (member.full_name || '').toLowerCase().trim();
@@ -267,7 +297,7 @@ export interface StaffRow {
 
 export function staffRows(staff: StaffMember[], f: FilteredData): StaffRow[] {
   return staff.map((member) => {
-    const staffTests = f.tests.filter((t) => matchesStaff(t.completed_by, member));
+    const staffTests = f.tests.filter((t) => matchesStaff(t.completed_by, member, t.completed_by_profile_id));
     const ledgerTx = f.ledger.filter((t) => matchesStaff(t.created_by, member));
     const extTx = f.charges.filter((c) => matchesStaff(c.created_by, member));
     const deposits = ledgerTx.filter((t) => t.type === 'deposit');

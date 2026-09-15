@@ -32,19 +32,20 @@ export async function POST(request: Request) {
       // command carries the same id, so the cloud's route finds it already
       // there and does not write a second.
       auditId, previousRole, reversesId, actorId, actorName, entityLabel, roleLabel,
+      performanceCommissionType, performanceCommissionValue,
     } = await request.json();
     if (!staffId || !action) {
       return NextResponse.json({ error: 'Missing staffId or action' }, { status: 400 });
     }
 
     const db = getDb();
-    const existing = db.prepare('SELECT id, organization_id, role, full_name FROM profiles WHERE id = ?').get(staffId) as any;
+    const existing = db.prepare('SELECT id, organization_id, role, full_name, performance_commission_type, performance_commission_value FROM profiles WHERE id = ?').get(staffId) as any;
     if (!existing) {
       return NextResponse.json({ error: 'Staff member not found on this hub' }, { status: 404 });
     }
 
     const audit = (
-      auditAction: 'staff.role_changed' | 'staff.removed',
+      auditAction: 'staff.role_changed' | 'staff.removed' | 'staff.performance_commission_changed',
       before: Record<string, unknown>,
       after: Record<string, unknown>,
     ) => {
@@ -77,6 +78,32 @@ export async function POST(request: Request) {
       return row.id;
     };
 
+    if (action === 'update_performance_commission') {
+      const validation = validatePerformanceCommission(performanceCommissionType, performanceCommissionValue);
+      if (validation.error) return NextResponse.json({ error: validation.error }, { status: 400 });
+      db.prepare(`
+        UPDATE profiles
+        SET performance_commission_type = ?, performance_commission_value = ?
+        WHERE id = ?
+      `).run(validation.type, validation.value, staffId);
+      const id = audit(
+        'staff.performance_commission_changed',
+        {
+          type: existing.performance_commission_type ?? 'none',
+          value: Number(existing.performance_commission_value) || 0,
+        },
+        { type: validation.type, value: validation.value },
+      );
+      queueSync(db, `${COMMAND_PREFIX}api/staff/update`, 'INSERT', `${staffId}:performance-commission`, {
+        action, staffId,
+        performanceCommissionType: validation.type,
+        performanceCommissionValue: validation.value,
+        auditId: id,
+        actorName: actorName ?? null,
+      });
+      return NextResponse.json({ success: true, queued: true, auditId: id });
+    }
+
     if (action === 'update_role') {
       if (!role || !ASSIGNABLE_ROLES.includes(role)) {
         return NextResponse.json({ error: `Unknown role: ${role}` }, { status: 400 });
@@ -105,4 +132,20 @@ export async function POST(request: Request) {
     console.error('API POST /api/staff/hub error:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+}
+
+function validatePerformanceCommission(type: unknown, value: unknown): {
+  type: 'none' | 'percentage' | 'flat'; value: number; error?: string;
+} {
+  if (type !== 'none' && type !== 'percentage' && type !== 'flat') {
+    return { type: 'none', value: 0, error: 'Unknown commission plan' };
+  }
+  const amount = type === 'none' ? 0 : Number(value);
+  if (!Number.isFinite(amount) || amount < 0) {
+    return { type, value: 0, error: 'Commission value must be zero or greater' };
+  }
+  if (type === 'percentage' && amount > 100) {
+    return { type, value: amount, error: 'Percentage commission cannot exceed 100%' };
+  }
+  return { type, value: amount };
 }

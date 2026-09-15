@@ -696,11 +696,15 @@ export const cloudPatientsRepository: CloudPatientsRepository = {
         status: updates.status,
         results: updates.results,
         completed_by: updates.completedBy,
+        completed_by_profile_id: updates.completedByProfileId,
         completed_by_signature_url: updates.completedBySignatureUrl,
         completed_by_title: updates.completedByTitle,
         completed_at: updates.completedAt,
         notes: updates.notes,
         specimen: updates.specimen,
+        staff_bonus_type: updates.staffBonusType,
+        staff_bonus_value: updates.staffBonusValue,
+        staff_bonus_amount: updates.staffBonusAmount,
       })
       .eq('id', testId);
     if (error) throw error;

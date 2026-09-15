@@ -25,16 +25,21 @@ describe('partialTestUpdate', () => {
       status: 'completed',
       results: [{ parameter: 'Hb', value: '12' }],
       completedBy: 'Dr Musa',
+      completedByProfileId: 'staff-1',
       completedBySignatureUrl: 'https://example.test/sig.png',
       completedByTitle: 'Consultant',
       completedAt: NOW,
       notes: 'Repeat in a week',
       specimen: 'Whole blood',
+      staffBonusType: 'percentage',
+      staffBonusValue: 5,
+      staffBonusAmount: 500,
     }, NOW);
 
     expect(setClause).toBe(
-      'status = ?, results = ?, completed_by = ?, completed_by_signature_url = ?, ' +
-      'completed_by_title = ?, completed_at = ?, notes = ?, specimen = ?, updated_at = ?'
+      'status = ?, results = ?, completed_by = ?, completed_by_profile_id = ?, completed_by_signature_url = ?, ' +
+      'completed_by_title = ?, completed_at = ?, notes = ?, specimen = ?, staff_bonus_type = ?, ' +
+      'staff_bonus_value = ?, staff_bonus_amount = ?, updated_at = ?'
     );
     // Results are stored as text.
     expect(values[1]).toBe(JSON.stringify([{ parameter: 'Hb', value: '12' }]));

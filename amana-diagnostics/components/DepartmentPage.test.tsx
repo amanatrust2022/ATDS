@@ -54,6 +54,7 @@ const updateTestResult = vi.fn();
 const subscribeToPatients = vi.fn();
 const fetchCustomTemplates = vi.fn();
 const fetchCustomTests = vi.fn();
+const fetchStaff = vi.fn();
 const setCustomCatalogueCache = vi.fn();
 const getTestById = vi.fn();
 
@@ -63,6 +64,7 @@ vi.mock('@/lib/store', () => ({
   subscribeToPatients: (...a: any[]) => subscribeToPatients(...a),
   fetchCustomTemplates: (...a: any[]) => fetchCustomTemplates(...a),
   fetchCustomTests: (...a: any[]) => fetchCustomTests(...a),
+  fetchStaff: (...a: any[]) => fetchStaff(...a),
   setCustomCatalogueCache: (...a: any[]) => setCustomCatalogueCache(...a),
   getTestById: (...a: any[]) => getTestById(...a),
 }));
@@ -120,6 +122,7 @@ beforeEach(() => {
   fetchPatients.mockResolvedValue([patient()]);
   fetchCustomTests.mockResolvedValue([]);
   fetchCustomTemplates.mockResolvedValue([]);
+  fetchStaff.mockImplementation(async () => [authState.profile]);
   updateTestResult.mockResolvedValue(undefined);
   subscribeToPatients.mockReturnValue(() => {});
   getTestById.mockImplementation((id: string) => (id === 'fbc' ? testDef() : undefined));
@@ -353,6 +356,7 @@ describe('Submitting a result', () => {
     expect(id).toBe('pt-1');
     expect(payload.status).toBe('completed');
     expect(payload.completedBy).toBe('MLS Aisha Bello');
+    expect(payload.completedByProfileId).toBe('user-1');
     expect(payload.completedBySignatureUrl).toBe('sig.png');
     expect(payload.completedByTitle).toBe('MLS');
     expect(payload.notes).toBe('Repeat in 2 weeks');
@@ -367,6 +371,26 @@ describe('Submitting a result', () => {
 
     expect(await screen.findByText('"Full Blood Count" result sent to reception ✓')).toBeDefined();
     expect(screen.queryByText('Entering Results: Full Blood Count')).toBeNull();
+  });
+
+  it('snapshots the current staff commission when the investigation is completed', async () => {
+    authState.profile = {
+      ...authState.profile,
+      performance_commission_type: 'percentage',
+      performance_commission_value: 7.5,
+    };
+    fetchPatients.mockResolvedValue([patient({ tests: [patientTest({ price: 10_000 })] })]);
+    await openFbc();
+
+    fireEvent.click(screen.getByText(/Submit & Send to Reception/));
+
+    await waitFor(() => expect(updateTestResult).toHaveBeenCalledTimes(1));
+    expect(updateTestResult.mock.calls[0][1]).toMatchObject({
+      completedByProfileId: 'user-1',
+      staffBonusType: 'percentage',
+      staffBonusValue: 7.5,
+      staffBonusAmount: 750,
+    });
   });
 
   /**

@@ -8,6 +8,7 @@
 
 export type AuditAction =
   | 'staff.role_changed'
+  | 'staff.performance_commission_changed'
   | 'staff.removed'
   | 'price.changed'
   | 'catalogue.test_added'
@@ -92,6 +93,7 @@ const same = (x: unknown, y: unknown) =>
 
 const ACTION_LABEL: Record<AuditAction, string> = {
   'staff.role_changed': 'changed the role of',
+  'staff.performance_commission_changed': 'changed the performance commission for',
   'staff.removed': 'removed',
   'price.changed': 'changed the price of',
   'catalogue.test_added': 'added the investigation',
@@ -130,6 +132,8 @@ function describeChange(e: AuditEntry): string {
   switch (e.action) {
     case 'staff.role_changed':
       return `from ${String(before['role'] ?? '?')} to ${String(after['role'] ?? '?')}`;
+    case 'staff.performance_commission_changed':
+      return `from ${commissionPlan(before)} to ${commissionPlan(after)}`;
     case 'price.changed': {
       const parts: string[] = [];
       if ('price' in after) parts.push(`₦${fmt(before['price'])} → ₦${fmt(after['price'])}`);
@@ -147,6 +151,12 @@ function describeChange(e: AuditEntry): string {
       return changed.length ? `(${changed.join(', ')})` : '';
     }
   }
+}
+
+function commissionPlan(value: Record<string, unknown>): string {
+  if (value['type'] === 'percentage') return `${fmt(value['value'])}% of revenue`;
+  if (value['type'] === 'flat') return `₦${fmt(value['value'])} per investigation`;
+  return 'the test catalogue bonus';
 }
 
 const fmt = (v: unknown) => (typeof v === 'number' ? v.toLocaleString('en-NG') : String(v ?? 0));

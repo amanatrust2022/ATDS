@@ -41,6 +41,7 @@ export async function GET(request: Request) {
       const completedTests = db.prepare(`
         SELECT
           t.completed_by,
+          t.completed_by_profile_id,
           t.test_name,
           t.price,
           t.completed_at,
@@ -99,6 +100,7 @@ export async function GET(request: Request) {
           .from('patient_tests')
           .select(`
             completed_by,
+            completed_by_profile_id,
             test_name,
             price,
             completed_at,

@@ -250,6 +250,7 @@ export function initDb(db: any) {
       specimen TEXT,
       results TEXT, -- JSON string
       completed_by TEXT,
+      completed_by_profile_id TEXT,
       completed_by_signature_url TEXT,
       completed_by_title TEXT,
       completed_at TEXT,
@@ -348,6 +349,8 @@ export function initDb(db: any) {
       signature_url TEXT,
       role TEXT NOT NULL,
       role_label TEXT,
+      performance_commission_type TEXT NOT NULL DEFAULT 'none',
+      performance_commission_value REAL NOT NULL DEFAULT 0,
       organization_id TEXT,
       email TEXT
     );
@@ -411,7 +414,10 @@ export function initDb(db: any) {
     addColumn(db, 'patient_tests', 'staff_bonus_type', `staff_bonus_type TEXT DEFAULT 'none'`);
     addColumn(db, 'patient_tests', 'staff_bonus_value', `staff_bonus_value REAL DEFAULT 0.0`);
     addColumn(db, 'patient_tests', 'staff_bonus_amount', `staff_bonus_amount REAL DEFAULT 0.0`);
+    addColumn(db, 'patient_tests', 'completed_by_profile_id', `completed_by_profile_id TEXT`);
     addColumn(db, 'profiles', 'role_label', `role_label TEXT`);
+    addColumn(db, 'profiles', 'performance_commission_type', `performance_commission_type TEXT NOT NULL DEFAULT 'none'`);
+    addColumn(db, 'profiles', 'performance_commission_value', `performance_commission_value REAL NOT NULL DEFAULT 0`);
     addColumn(db, 'patient_tests', 'package_id', `package_id TEXT`);
     addColumn(db, 'patient_tests', 'package_name', `package_name TEXT`);
     addColumn(db, 'custom_tests', 'kind', `kind TEXT NOT NULL DEFAULT 'investigation'`);

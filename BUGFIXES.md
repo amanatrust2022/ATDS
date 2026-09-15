@@ -707,6 +707,24 @@ Alongside: five `setForm(prev => ...)` calls against a Zustand `Partial` setter
 **Rule learned:** AGENTS.md §5, "Extraction Hazard" — never type an extracted
 component's props as `any`; the props interface is what makes these fail loudly.
 
+### Staff performance had no assignable commission plan
+Released: no.
+
+The **Who did what** profile showed output and revenue, but an administrator
+could not turn that performance into a staff-specific incentive. The only
+available staff bonus belonged to the test catalogue, so it applied equally to
+whoever completed the investigation.
+
+The profile dialog now supports either a percentage of test revenue or a flat
+amount per completed investigation. The rule is validated server-side, audited,
+and synced through offline hubs. At result release the current rule is frozen
+onto that investigation; subsequent rate changes do not rewrite money already
+earned. An individual rule overrides the catalogue bonus, preventing double
+payment. New completions also store the staff profile ID, eliminating ambiguous
+name matching for colleagues with similar names.
+
+Cloud deployment requires `amana-diagnostics/supabase_profitability.sql`.
+
 ---
 
 ## Standing hazards

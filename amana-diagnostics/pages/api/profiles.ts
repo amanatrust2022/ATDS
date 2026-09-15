@@ -59,8 +59,8 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
       }
 
       db.prepare(`
-        INSERT INTO profiles (id, full_name, title, first_name, surname, last_name, signature_url, role, role_label, organization_id, email)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO profiles (id, full_name, title, first_name, surname, last_name, signature_url, role, role_label, performance_commission_type, performance_commission_value, organization_id, email)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
           full_name = excluded.full_name,
           title = excluded.title,
@@ -70,6 +70,8 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
           signature_url = excluded.signature_url,
           role = excluded.role,
           role_label = excluded.role_label,
+          performance_commission_type = excluded.performance_commission_type,
+          performance_commission_value = excluded.performance_commission_value,
           organization_id = excluded.organization_id,
           email = COALESCE(excluded.email, profiles.email)
       `).run(
@@ -82,6 +84,8 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
         profile.signature_url || null,
         profile.role,
         profile.role_label || null,
+        profile.performance_commission_type || 'none',
+        Math.max(Number(profile.performance_commission_value) || 0, 0),
         profile.organization_id || null,
         profile.email || null
       );

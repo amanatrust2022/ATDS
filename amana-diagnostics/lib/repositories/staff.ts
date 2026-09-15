@@ -16,6 +16,8 @@ export interface StaffMember {
   email: string | null;
   role: string | null;
   role_label?: string | null;
+  performance_commission_type?: 'none' | 'percentage' | 'flat' | null;
+  performance_commission_value?: number | null;
   title?: string | null;
   signature_url?: string | null;
   created_at?: string | null;

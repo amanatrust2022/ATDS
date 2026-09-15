@@ -3,11 +3,17 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 
 const org = { id: 'org-1', slug: 'kano', name: 'Kano Diagnostics' };
-vi.mock('@/components/AuthProvider', () => ({ useAuth: () => ({ organization: org }) }));
+const profile = { id: 'admin-1', full_name: 'Admin User', role: 'admin' };
+vi.mock('@/components/AuthProvider', () => ({ useAuth: () => ({ organization: org, profile }) }));
 vi.mock('@/components/RequireRole', () => ({ default: ({ children }: { children: React.ReactNode }) => children }));
 vi.mock('next/navigation', () => ({ useParams: () => ({ slug: 'kano' }) }));
 vi.mock('@/components/shell', () => ({ useShellSlot: vi.fn() }));
-vi.mock('@/lib/authHeaders', () => ({ bearerHeaders: async () => ({ Authorization: 'Bearer admin-token' }) }));
+vi.mock('@/lib/authHeaders', () => ({
+  bearerHeaders: async () => ({ Authorization: 'Bearer admin-token' }),
+  jsonAuthHeaders: async () => ({ 'Content-Type': 'application/json', Authorization: 'Bearer admin-token' }),
+}));
+vi.mock('@/lib/useRuntimeMode', () => ({ useRuntimeMode: () => 'cloud' }));
+vi.mock('@/lib/cloudOrigin', () => ({ apiBase: () => '' }));
 const fetchStaff = vi.fn(async () => [{ id: 's1', full_name: 'Amina Bello', role: 'lab', email: 'amina@clinic.test', signature_url: null }]);
 const fetchCommissionReport = vi.fn(async () => []);
 vi.mock('@/lib/store', () => ({ fetchStaff: (...args: []) => fetchStaff(...args), fetchCommissionReport: (...args: []) => fetchCommissionReport(...args) }));
@@ -64,5 +70,25 @@ describe('Reports', () => {
     fireEvent.click(await screen.findByText('Amina Bello'));
     expect(await screen.findByRole('dialog', { name: 'Amina Bello' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Manage people' })).toHaveAttribute('href', '/kano/admin/staff');
+  });
+
+  it('assigns a percentage commission from the staff performance profile', async () => {
+    render(<ReportsScreen />);
+    fireEvent.click(await screen.findByText('Amina Bello'));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Commission plan' }), { target: { value: 'percentage' } });
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Commission percentage' }), { target: { value: '7.5' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save commission plan' }));
+
+    await waitFor(() => expect(vi.mocked(fetch).mock.calls.length).toBeGreaterThan(1));
+    const [url, options] = vi.mocked(fetch).mock.calls.at(-1)!;
+    expect(url).toBe('/api/staff/update');
+    expect(options?.headers).toEqual({ 'Content-Type': 'application/json', Authorization: 'Bearer admin-token' });
+    expect(JSON.parse(String(options?.body))).toMatchObject({
+      action: 'update_performance_commission',
+      staffId: 's1',
+      performanceCommissionType: 'percentage',
+      performanceCommissionValue: 7.5,
+    });
+    expect(await screen.findByText('Commission plan saved.')).toBeInTheDocument();
   });
 });

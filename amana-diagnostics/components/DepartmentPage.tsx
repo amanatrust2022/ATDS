@@ -4,7 +4,7 @@ import dynamic from 'next/dynamic';
 import { Alert, Button, Dialog, Field, Input, LoadingPanel, Textarea } from '@/components/ui';
 import { useNotices } from '@/components/Notices';
 import styles from './DepartmentPage.module.css';
-import { Department, Patient, PatientTest, getTestById, fetchPatients, updateTestResult, subscribeToPatients, fetchCustomTemplates, RadiologyTemplate, fetchCustomTests, setCustomCatalogueCache } from '@/lib/store';
+import { Department, Patient, PatientTest, getTestById, fetchPatients, updateTestResult, subscribeToPatients, fetchCustomTemplates, RadiologyTemplate, fetchCustomTests, fetchStaff, setCustomCatalogueCache } from '@/lib/store';
 import { flattenTestParameters } from '@/lib/catalogue';
 import { patientDisplayName } from '@/lib/store/patientName';
 import { RiCheckLine, RiErrorWarningLine, RiSettings3Line } from '@remixicon/react';
@@ -19,6 +19,7 @@ import { normaliseSex } from '@/lib/clinical/referenceRange';
 import { buildAutoComment, mayReplace } from '@/lib/clinical/autoComment';
 import { useNewTestAlerts } from '@/components/features/department/useNewTestAlerts';
 import { loadDraft, saveDraft, clearDraft, draftTestIds } from '@/lib/store/resultDrafts';
+import { performanceCommissionForTest } from '@/lib/staffPerformance';
 const TemplateManager = dynamic(() => import('@/components/TemplateManager'), {
   loading: () => <LoadingPanel label="Opening templates…" />,
 });
@@ -354,14 +355,45 @@ export default function DepartmentPage({ department }: Props) {
           ].filter(Boolean).join(String.fromCharCode(10))
         : notes;
 
+      // Freeze the incentive with the completed investigation. A later change
+      // to this staff member's plan must never restate an already-earned payout.
+      // With no individual plan, retain the test catalogue's existing bonus.
+      // The administrator may have changed this plan while the bench stayed
+      // open. Read the current profile at release time so "future work" starts
+      // with the next completion, not the next login.
+      let staffPlanType = profile?.performance_commission_type ?? 'none';
+      let staffPlanValue = profile?.performance_commission_value ?? 0;
+      if (profile?.id && organization?.id) {
+        try {
+          const currentStaff = await fetchStaff(organization.id);
+          const currentProfile = currentStaff.find((person) => person.id === profile.id);
+          staffPlanType = currentProfile?.performance_commission_type ?? staffPlanType;
+          staffPlanValue = currentProfile?.performance_commission_value ?? staffPlanValue;
+        } catch {
+          // Result entry remains available during a temporary directory-read
+          // failure; the last authenticated profile is the safe fallback.
+        }
+      }
+      const hasStaffPlan = staffPlanType !== 'none';
+      const staffBonusAmount = performanceCommissionForTest(
+        selected.test.price ?? 0,
+        staffPlanType,
+        staffPlanValue,
+        selected.test.staffBonusAmount ?? 0,
+      );
+
       await updateTestResult(selected.test.id!, {
         status: 'completed',
         results: finalResults,
         completedBy: professional,
+        completedByProfileId: profile?.id || undefined,
         completedBySignatureUrl: profile?.signature_url || undefined,
         completedByTitle: profile?.title || undefined,
         completedAt: new Date().toISOString(),
         notes: notesToSave,
+        staffBonusType: hasStaffPlan ? staffPlanType : selected.test.staffBonusType,
+        staffBonusValue: hasStaffPlan ? staffPlanValue : selected.test.staffBonusValue,
+        staffBonusAmount,
       });
       // Refresh here rather than waiting to be told. The realtime channel is
       // the only other thing that moves this test out of the bench's queue, and

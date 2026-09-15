@@ -10,12 +10,26 @@ alter table public.test_prices
 
 alter table public.patient_tests
   add column if not exists average_cost numeric not null default 0,
+  add column if not exists completed_by_profile_id uuid references public.profiles(id) on delete set null,
   add column if not exists staff_bonus_type text not null default 'none',
   add column if not exists staff_bonus_value numeric not null default 0,
   add column if not exists staff_bonus_amount numeric not null default 0;
 
 alter table public.profiles
-  add column if not exists role_label text;
+  add column if not exists role_label text,
+  add column if not exists performance_commission_type text not null default 'none',
+  add column if not exists performance_commission_value numeric not null default 0;
+
+alter table public.profiles
+  drop constraint if exists profiles_performance_commission_type_valid,
+  add constraint profiles_performance_commission_type_valid check (
+    performance_commission_type in ('none', 'flat', 'percentage')
+  ),
+  drop constraint if exists profiles_performance_commission_value_valid,
+  add constraint profiles_performance_commission_value_valid check (
+    performance_commission_value >= 0 and
+    (performance_commission_type <> 'percentage' or performance_commission_value <= 100)
+  );
 
 alter table public.test_prices
   drop constraint if exists test_prices_average_cost_nonnegative,
@@ -35,12 +49,13 @@ alter table public.patient_tests
 
 commit;
 
--- Verification (expect four patient_tests columns and three test_prices columns):
+-- Verification (includes the financial snapshots, exact staff attribution and plan fields):
 select table_name, column_name
 from information_schema.columns
 where table_schema = 'public'
-  and table_name in ('test_prices', 'patient_tests')
+  and table_name in ('test_prices', 'patient_tests', 'profiles')
   and column_name in (
-    'average_cost', 'staff_bonus_type', 'staff_bonus_value', 'staff_bonus_amount'
+    'average_cost', 'staff_bonus_type', 'staff_bonus_value', 'staff_bonus_amount',
+    'completed_by_profile_id', 'performance_commission_type', 'performance_commission_value'
   )
 order by table_name, column_name;

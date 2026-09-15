@@ -28,7 +28,7 @@ import styles from './audit.module.css';
 const ACTION_GROUPS: { label: string; actions: AuditAction[] }[] = [
   {
     label: 'Staff',
-    actions: ['staff.role_changed', 'staff.removed'],
+    actions: ['staff.role_changed', 'staff.performance_commission_changed', 'staff.removed'],
   },
   {
     label: 'Catalogue & prices',

@@ -32,6 +32,7 @@ export const toPatientTest = (t: any): PatientTest => ({
   testId: t.test_id,
   testName: t.test_name,
   completedBy: t.completed_by,
+  completedByProfileId: t.completed_by_profile_id,
   completedBySignatureUrl: t.completed_by_signature_url,
   completedByTitle: t.completed_by_title,
   completedAt: t.completed_at,

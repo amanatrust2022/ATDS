@@ -192,6 +192,7 @@ export async function GET(request: Request) {
         // back empty and everyone else's work stays on screen.
         results: parseResults(t.results, t.id),
         completedBy: t.completed_by,
+        completedByProfileId: t.completed_by_profile_id,
         completedBySignatureUrl: t.completed_by_signature_url,
         completedByTitle: t.completed_by_title,
         completedAt: t.completed_at,

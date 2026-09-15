@@ -18,11 +18,15 @@ const COLUMNS: Array<{ field: string; column: string; toColumn: (v: any) => any 
   { field: 'status', column: 'status', toColumn: v => v },
   { field: 'results', column: 'results', toColumn: v => (v ? JSON.stringify(v) : null) },
   { field: 'completedBy', column: 'completed_by', toColumn: v => v ?? null },
+  { field: 'completedByProfileId', column: 'completed_by_profile_id', toColumn: v => v ?? null },
   { field: 'completedBySignatureUrl', column: 'completed_by_signature_url', toColumn: v => v ?? null },
   { field: 'completedByTitle', column: 'completed_by_title', toColumn: v => v ?? null },
   { field: 'completedAt', column: 'completed_at', toColumn: v => v ?? null },
   { field: 'notes', column: 'notes', toColumn: v => v ?? null },
   { field: 'specimen', column: 'specimen', toColumn: v => v ?? null },
+  { field: 'staffBonusType', column: 'staff_bonus_type', toColumn: v => v ?? 'none' },
+  { field: 'staffBonusValue', column: 'staff_bonus_value', toColumn: v => Math.max(Number(v) || 0, 0) },
+  { field: 'staffBonusAmount', column: 'staff_bonus_amount', toColumn: v => Math.max(Number(v) || 0, 0) },
 ];
 
 export interface PartialTestUpdate {

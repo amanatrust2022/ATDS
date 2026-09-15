@@ -16,6 +16,7 @@ import {
   trendSeries,
   chartGeometry,
   discountOf,
+  performanceCommissionForTest,
   type PerformanceData,
 } from './staffPerformance';
 
@@ -28,6 +29,34 @@ import {
 
 const NOW = new Date('2026-09-11T12:00:00.000Z');
 const iso = (d: string) => new Date(d).toISOString();
+
+describe('staff performance commission', () => {
+  it('calculates a percentage of the investigation revenue', () => {
+    expect(performanceCommissionForTest(8_000, 'percentage', 7.5)).toBe(600);
+  });
+
+  it('calculates a flat amount for each completed investigation', () => {
+    expect(performanceCommissionForTest(8_000, 'flat', 450)).toBe(450);
+  });
+
+  it('retains the catalogue bonus when no individual plan is assigned', () => {
+    expect(performanceCommissionForTest(8_000, 'none', 0, 300)).toBe(300);
+  });
+
+  it('never returns a negative payout and caps a defensive percentage at 100', () => {
+    expect(performanceCommissionForTest(8_000, 'percentage', 150)).toBe(8_000);
+    expect(performanceCommissionForTest(8_000, 'flat', -100)).toBe(0);
+  });
+});
+
+describe('exact performance attribution', () => {
+  it('uses the profile id when a completed investigation carries one', () => {
+    const amina = { id: 'staff-amina', full_name: 'Amina Bello', first_name: 'Amina' };
+    const otherAmina = { id: 'staff-other', full_name: 'Amina Yusuf', first_name: 'Amina' };
+    expect(matchesStaff('Amina Bello', amina, 'staff-amina')).toBe(true);
+    expect(matchesStaff('Amina Bello', otherAmina, 'staff-amina')).toBe(false);
+  });
+});
 
 describe('turnaround time', () => {
   it('reads as minutes under an hour and hours above it', () => {
