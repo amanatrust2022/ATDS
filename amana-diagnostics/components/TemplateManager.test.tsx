@@ -27,7 +27,7 @@ vi.mock('./RichTextEditor', () => ({
   ),
 }));
 
-const customTemplates = [
+let customTemplates = [
   { id: 'c1', organization_id: 'org-1', key: 'knee', name: 'Knee MRI', findings: 'Menisci intact.', impression: 'Normal knee.' },
 ];
 
@@ -44,9 +44,11 @@ vi.mock('@/lib/radiology-templates', () => ({
   },
   convertTextToFormattedHtml: (s: string) => s,
   splitTemplateContent: (s: string) => ({ findings: s, impression: '' }),
+  stripImpressionHeading: (s: string) => s,
 }));
 
 import TemplateManager from './TemplateManager';
+import { addCustomTemplate, updateCustomTemplate } from '@/lib/store';
 
 const onClose = vi.fn();
 
@@ -56,6 +58,10 @@ const open = () =>
   );
 
 beforeEach(() => {
+  vi.clearAllMocks();
+  customTemplates = [
+    { id: 'c1', organization_id: 'org-1', key: 'knee', name: 'Knee MRI', findings: 'Menisci intact.', impression: 'Normal knee.' },
+  ];
   onClose.mockClear();
 });
 
@@ -146,6 +152,53 @@ describe('Radiology template manager', () => {
 
     expect(await screen.findByText(/knee mri/i)).toBeInTheDocument();
     expect(screen.getByText(/normal pelvis/i)).toBeInTheDocument();
+  });
+
+  it('edits a system default by saving an organisation override with the same key', async () => {
+    open();
+    await screen.findByText('Normal Pelvis');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Normal Pelvis' }));
+    fireEvent.change(screen.getByRole('textbox', { name: /findings/i }), {
+      target: { value: 'Organisation-specific pelvic findings.' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /save template/i }));
+
+    await waitFor(() => expect(addCustomTemplate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organization_id: 'org-1',
+        key: 'pelvis',
+        name: 'Normal Pelvis',
+        findings: 'Organisation-specific pelvic findings.',
+      }),
+      'u-1',
+    ));
+  });
+
+  it('shows an existing system override once and edits its stored row', async () => {
+    customTemplates = [
+      ...customTemplates,
+      { id: 'override-1', organization_id: 'org-1', key: 'pelvis', name: 'Our Pelvis', findings: 'Local findings.', impression: 'Local impression.' },
+    ];
+    open();
+
+    expect(await screen.findByText('Our Pelvis')).toBeInTheDocument();
+    expect(screen.queryByText('Normal Pelvis')).not.toBeInTheDocument();
+    expect(screen.getByText('Customized Default')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Our Pelvis' }));
+    fireEvent.change(screen.getByRole('textbox', { name: /findings/i }), {
+      target: { value: 'Revised local findings.' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /save template/i }));
+
+    await waitFor(() => expect(updateCustomTemplate).toHaveBeenCalledWith(
+      'override-1',
+      expect.objectContaining({
+        key: 'pelvis',
+        findings: 'Revised local findings.',
+      }),
+    ));
   });
 
   it('narrows the list to what was searched for', async () => {

@@ -118,8 +118,14 @@ describe('where the signature sits', () => {
   });
 
   it('prints the title of whoever released the result, when there is one', () => {
-    const html = getResultTemplate(patient(), [test({ completedByTitle: 'MLS, AMLSCN' })]);
-    expect(html).toContain('MLS, AMLSCN');
+    const html = getResultTemplate(patient(), [test({
+      completedBy: 'Dr. Aisha Bello',
+      completedByTitle: 'Medical Director',
+      completedBySignatureUrl: 'data:image/png;base64,c2ln',
+    })]);
+    expect(html).toContain('Dr. Aisha Bello');
+    expect(html).toContain('data:image/png;base64,c2ln');
+    expect(html).toContain('Medical Director');
   });
 });
 
@@ -144,10 +150,30 @@ describe('the heading of each investigation', () => {
     expect(html.indexOf('class="patient-info"')).toBeLessThan(html.indexOf('RADIOLOGY RESULT REPORT'));
   });
 
-  it('shows the package each investigation originated from', () => {
-    const html = getResultTemplate(patient(), [test({ packageName: 'Executive Plan' })]);
-    expect(html).toContain('Originating package: Executive Plan');
-    expect(html).toContain('Full Blood Count (from Executive Plan)');
+  it('names a package once after all investigations belonging to it', () => {
+    const html = getResultTemplate(patient(), [
+      test({ id: 'mps', testName: 'MPS', packageName: 'Antenatal' }),
+      test({ id: 'fbc', testName: 'Full Blood Count', packageName: 'Antenatal' }),
+      test({ id: 'rft', testName: 'Renal Function Test' }),
+    ]);
+    expect(html).toContain('MPS, Full Blood Count (Antenatal); Renal Function Test');
+    expect(html.match(/Antenatal/g)).toHaveLength(1);
+    expect(html).not.toContain('from Antenatal');
+    expect(html).not.toContain('Originating package');
+  });
+
+  it('renders radiology images without an Attached Imagery title', () => {
+    const html = getResultTemplate(patient(), [test({
+      testId: 'us_abd',
+      testName: 'Abdominal Ultrasound',
+      department: 'radiology',
+      results: [
+        { parameter: 'Radiology: Findings', result: 'Normal.', unit: '', range: '' },
+        { parameter: 'Radiology: Images', result: '["https://images.test/scan_one.png"]', unit: '', range: '' },
+      ] as any,
+    })]);
+    expect(html).toContain('scan one.png');
+    expect(html).not.toContain('Attached Imagery');
   });
 });
 

@@ -392,6 +392,27 @@ describe('Submitting a result', () => {
     });
   });
 
+  it('builds the signatory name from profile name parts when full_name is empty', async () => {
+    authState.profile = {
+      ...authState.profile,
+      full_name: '',
+      first_name: 'Aisha',
+      surname: 'Bello',
+      title: 'Medical Director',
+    };
+    fetchStaff.mockResolvedValueOnce([authState.profile]);
+    await openFbc();
+
+    fireEvent.click(screen.getByText(/Submit & Send to Reception/));
+
+    await waitFor(() => expect(updateTestResult).toHaveBeenCalledTimes(1));
+    expect(updateTestResult.mock.calls[0][1]).toMatchObject({
+      completedBy: 'Aisha Bello',
+      completedByTitle: 'Medical Director',
+      completedBySignatureUrl: 'sig.png',
+    });
+  });
+
   it('snapshots the current staff commission when the investigation is completed', async () => {
     authState.profile = {
       ...authState.profile,
@@ -689,6 +710,36 @@ describe('Specialised entry forms', () => {
     expect((search as HTMLInputElement).value).toBe('');
     expect((screen.getByPlaceholderText('Describe the findings for each organ in detail...') as HTMLTextAreaElement).value)
       .not.toBe('');
+  });
+
+  it('uses an organisation override instead of the built-in default template', async () => {
+    fetchCustomTemplates.mockResolvedValue([{
+      id: 'override-1',
+      organization_id: 'org-1',
+      key: 'normal_pelvic',
+      name: 'Our Pelvic Default',
+      findings: 'Organisation pelvic findings.',
+      impression: 'Organisation pelvic impression.',
+    }]);
+    getTestById.mockReturnValue(undefined);
+    fetchPatients.mockResolvedValue([patient({ tests: [patientTest({
+      testId: 'us_pelvis', testName: 'Pelvic Ultrasound', department: 'radiology', specimen: '',
+    })] })]);
+
+    await renderPage('radiology');
+    await waitFor(() => expect(fetchCustomTemplates).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole('button', { name: /^Enter results for / }));
+    await screen.findByText('Entering Results: Pelvic Ultrasound');
+
+    expect((screen.getByPlaceholderText('Describe the findings for each organ in detail...') as HTMLTextAreaElement).value)
+      .toContain('Organisation pelvic findings.');
+
+    const search = screen.getByRole('combobox', { name: /report template/i });
+    fireEvent.change(search, { target: { value: 'pelvic' } });
+    expect(screen.getByRole('option', { name: /our pelvic default/i })).toBeInTheDocument();
+    expect(screen.queryByRole('option', {
+      name: /^normal pelvic \(ad\)\(f\) normal pelvic$/i,
+    })).not.toBeInTheDocument();
   });
 
   it('saves free text as the Findings and Impression rows', async () => {

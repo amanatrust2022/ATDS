@@ -152,7 +152,11 @@ export default function DepartmentPage({ department }: Props) {
   // the signed-in profile — so a report could carry one person's name over
   // another person's signature. On a clinical document that is a record, not a
   // label. It stays typeable only where the account has no name to use.
-  const signedBy = profile?.full_name || '';
+  const signedBy = profile?.full_name?.trim()
+    || [profile?.first_name, profile?.surname || profile?.last_name]
+      .map(part => part?.trim())
+      .filter(Boolean)
+      .join(' ');
   const canEditProfessional = !signedBy;
 
   useEffect(() => {
@@ -231,12 +235,14 @@ export default function DepartmentPage({ department }: Props) {
           defaultTemplate = 'normal_abdominopelvic';
         }
         
-        if (defaultTemplate && RADIOLOGY_TEMPLATES[defaultTemplate]) {
-          deserialized.findings = convertTextToFormattedHtml(RADIOLOGY_TEMPLATES[defaultTemplate].findings);
+        const configuredTemplate = customTemplates.find(template => template.key === defaultTemplate)
+          ?? RADIOLOGY_TEMPLATES[defaultTemplate];
+        if (defaultTemplate && configuredTemplate) {
+          deserialized.findings = convertTextToFormattedHtml(configuredTemplate.findings);
           // Same reason as RadiologyEntryForm.applyTemplate: the section has
           // its own heading, so the template's own copy of the word comes off.
           deserialized.impression = convertTextToFormattedHtml(
-            stripImpressionHeading(RADIOLOGY_TEMPLATES[defaultTemplate].impression),
+            stripImpressionHeading(configuredTemplate.impression),
           );
         }
       }
@@ -382,11 +388,21 @@ export default function DepartmentPage({ department }: Props) {
         staffPlanValue,
         selected.test.staffBonusAmount ?? 0,
       );
+      const currentStaffName = currentProfile?.full_name?.trim()
+        || [currentProfile?.first_name, currentProfile?.surname || currentProfile?.last_name]
+          .map(part => part?.trim())
+          .filter(Boolean)
+          .join(' ');
+      const authenticatedName = profile?.full_name?.trim()
+        || [profile?.first_name, profile?.surname || profile?.last_name]
+          .map(part => part?.trim())
+          .filter(Boolean)
+          .join(' ');
 
       await updateTestResult(selected.test.id!, {
         status: 'completed',
         results: finalResults,
-        completedBy: currentProfile?.full_name?.trim() || profile?.full_name?.trim() || professional.trim(),
+        completedBy: currentStaffName || authenticatedName || professional.trim(),
         completedByProfileId: profile?.id || undefined,
         completedBySignatureUrl: currentProfile?.signature_url || profile?.signature_url || undefined,
         completedByTitle: currentProfile?.title || profile?.title || undefined,

@@ -4,7 +4,7 @@
  */
 
 import type { Patient, PatientTest } from './store';
-import { flagColour, type OrgForTemplate } from './templates';
+import { flagColour, formatInvestigationList, type OrgForTemplate } from './templates';
 import { deserializeRadiologyResults, stripImpressionHeading } from './radiology-templates';
 import { SUPPORT_EMAIL, FALLBACK_ORG_NAME } from '@/lib/branding';
 import { letterheadFor } from './letterhead';
@@ -97,9 +97,7 @@ export function buildReportPdfDefinition(
     ? new Date(completedTests[0].completedAt).toLocaleDateString('en-NG')
     : '—';
   const specimens = Array.from(new Set(completedTests.map(t => t.specimen))).filter(Boolean).join(', ') || '—';
-  const investigationList = completedTests
-    .map(t => t.packageName ? `${t.testName} (from ${t.packageName})` : t.testName)
-    .join(', ');
+  const investigationList = formatInvestigationList(completedTests);
 
   // See lib/letterhead.ts: an unfilled field prints as nothing, never as
   // another clinic's address.
@@ -133,7 +131,6 @@ export function buildReportPdfDefinition(
           [{
             stack: [
               { text: t.testName, style: compactFbc ? 'compactTestHeader' : 'testHeader' },
-              ...(t.packageName ? [{ text: `Originating package: ${t.packageName}`, fontSize: 8, margin: [0, 2, 0, 0] }] : []),
             ],
             fillColor: blue, color: 'white', bold: true,
           }],
@@ -413,7 +410,6 @@ export function buildReportPdfDefinition(
         }
         
         if (imagesRow.length > 0) {
-          testContent.push({ text: 'ATTACHED IMAGERY', bold: true, fontSize: 10, color: blue, margin: [0, 12, 0, 6] });
           const columnsGroup: any[] = [];
           for (let i = 0; i < imagesRow.length; i += 2) {
             const cols = [imagesRow[i]];

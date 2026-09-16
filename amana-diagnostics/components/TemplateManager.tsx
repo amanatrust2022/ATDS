@@ -80,18 +80,29 @@ export default function TemplateManager({
 
   if (!isOpen) return null;
 
-  // Combine default system templates with custom ones
+  // An organisation can customise a built-in template without mutating the
+  // application-wide default. The custom row uses the same stable key and
+  // replaces the system row everywhere in this organisation.
+  const systemKeys = new Set(Object.keys(RADIOLOGY_TEMPLATES));
+  const overriddenSystemKeys = new Set(customTemplates.map(t => t.key));
   const allTemplates = [
-    ...Object.entries(RADIOLOGY_TEMPLATES).map(([key, val]) => ({
+    ...Object.entries(RADIOLOGY_TEMPLATES)
+      .filter(([key]) => !overriddenSystemKeys.has(key))
+      .map(([key, val]) => ({
       id: `system_${key}`,
       organization_id: 'system',
       key,
-      name: `${val.name} (System)`,
+      name: val.name,
       findings: val.findings,
       impression: val.impression,
-      isSystem: true
+      isSystem: true,
+      overridesSystem: false,
     })),
-    ...customTemplates.map(t => ({ ...t, isSystem: false }))
+    ...customTemplates.map(t => ({
+      ...t,
+      isSystem: false,
+      overridesSystem: systemKeys.has(t.key),
+    }))
   ];
 
   const filteredTemplates = allTemplates.filter(t => 
@@ -415,6 +426,8 @@ export default function TemplateManager({
                       <h4 className={styles.cardName}>{t.name}</h4>
                       {t.isSystem ? (
                         <Badge tone="neutral">System Default</Badge>
+                      ) : t.overridesSystem ? (
+                        <Badge tone="accent">Customized Default</Badge>
                       ) : (
                         <Badge tone="accent">Custom Template</Badge>
                       )}
@@ -423,14 +436,14 @@ export default function TemplateManager({
                   </div>
 
                   {/* Action buttons */}
-                  {!t.isSystem && (
-                    <div className={styles.cardActions}>
-                      <Button
-                        size="sm"
-                        icon={<RiEdit2Line size={14} />}
-                        aria-label={`Edit ${t.name}`}
-                        onClick={() => startEditTemplate(t as RadiologyTemplate)}
-                      />
+                  <div className={styles.cardActions}>
+                    <Button
+                      size="sm"
+                      icon={<RiEdit2Line size={14} />}
+                      aria-label={`Edit ${t.name}`}
+                      onClick={() => startEditTemplate(t as RadiologyTemplate)}
+                    />
+                    {!t.isSystem && (
                       <Button
                         size="sm"
                         intent="dangerQuiet"
@@ -438,8 +451,8 @@ export default function TemplateManager({
                         aria-label={`Delete ${t.name}`}
                         onClick={() => handleDelete(t.id)}
                       />
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               ))
             )}

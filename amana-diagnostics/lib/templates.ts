@@ -95,15 +95,43 @@ export const esc = (value: unknown): string =>
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
 
+/**
+ * Summarise report investigations without repeating a package after every
+ * member. Tests from the same package stay together and the package is named
+ * once, in parentheses: "MPS, FBC (Antenatal)".
+ */
+export const formatInvestigationList = (tests: PatientTest[]): string => {
+  const groups: Array<{ packageName?: string; names: string[] }> = [];
+  const packageGroups = new Map<string, { packageName: string; names: string[] }>();
+
+  for (const test of tests) {
+    const packageName = test.packageName?.trim();
+    if (!packageName) {
+      groups.push({ names: [test.testName] });
+      continue;
+    }
+
+    let group = packageGroups.get(packageName);
+    if (!group) {
+      group = { packageName, names: [] };
+      packageGroups.set(packageName, group);
+      groups.push(group);
+    }
+    group.names.push(test.testName);
+  }
+
+  return groups
+    .map(group => `${group.names.join(', ')}${group.packageName ? ` (${group.packageName})` : ''}`)
+    .join('; ');
+};
+
 /** Escapes like `esc`, and renders "x10^9/L", "mm3", "CO2", "Ca2+" with real sub- and superscripts. */
 const sci = (v: unknown): string => scriptsToHtml(v == null ? '' : String(v));
 export const getResultTemplate = (patient: Patient, completedTests: PatientTest[], org?: OrgForTemplate) => {
   const regDate = new Date(patient.registeredAt).toLocaleDateString('en-NG');
   const reportingDate = completedTests[0]?.completedAt ? new Date(completedTests[0].completedAt).toLocaleDateString('en-NG') : '—';
   const specimens = Array.from(new Set(completedTests.map(specimenOf))).filter(Boolean).join(', ') || '—';
-  const investigationList = completedTests
-    .map(t => t.packageName ? `${t.testName} (from ${t.packageName})` : t.testName)
-    .join(', ');
+  const investigationList = formatInvestigationList(completedTests);
 
   // Letterhead values. A field the clinic has not filled in prints as
   // nothing — see lib/letterhead.ts for why that matters.
@@ -145,9 +173,6 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
   const footerReserve = cleanFooterHtml ? Math.round(footerH + FOOTER_GAP) : 0;
 
   const testSections = completedTests.map(t => {
-    const packageOrigin = t.packageName
-      ? `<div class="package-origin">Originating package: ${esc(t.packageName)}</div>`
-      : '';
     const reportResults = normaliseLabRows(t.testId, t.testName, t.results || []);
     const simpleResults = usesSimpleResultTable(t.testId, t.testName, reportResults);
     const isMcs = t.testId.toLowerCase().endsWith('_mcs') || t.testId.toLowerCase().includes('mcs') || t.testId.toLowerCase() === 'sfmcs' || t.testName.toLowerCase().includes('mcs') || t.testName.toLowerCase().includes('culture & sensitivity') || t.testName.toLowerCase().includes('culture and sensitivity');
@@ -313,7 +338,6 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
           <div class="test-header" style="background: #52779b; color: white; padding: 6px 10px; font-weight: bold; font-size: 11pt; text-align: center;">
             ${esc(t.testName)}
           </div>
-          ${packageOrigin}
           ${mpsHtml}
           ${widalHtml}
           ${extraHtml}
@@ -325,8 +349,7 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
     if (isFreeText) {
       const radData = deserializeRadiologyResults(t.results || []);
       const imageSection = radData.images && radData.images.length > 0 
-        ? `<div style="margin-top:20px; font-weight:bold; font-size:10pt; color:#52779b; text-transform:uppercase; border-bottom:1px solid #52779b; padding-bottom:4px; margin-bottom:10px;">Attached Imagery</div>
-           <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:15px; page-break-inside:avoid;">
+        ? `<div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:15px; margin-top:20px; page-break-inside:avoid;">
              ${radData.images.map(img => `
                <div style="border:1px solid #ddd; padding:8px; background:white; text-align:center; page-break-inside:avoid;">
                  <img src="${esc(img)}" style="max-width:100%; max-height:220px; object-fit:contain;" alt="Attached Scan" />
@@ -341,7 +364,6 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
           <div style="font-weight: bold; border-bottom: 2px solid #52779b; margin-bottom: 12px; font-size: 12pt; color: #52779b; text-transform: uppercase; padding-bottom: 4px; text-align: center;">
             ${esc(t.testName)}
           </div>
-          ${packageOrigin}
           <div style="font-size: 11pt; line-height: 1.6; color: #000; text-align: justify; margin-bottom: 18px; font-family: 'Times New Roman', Times, serif;">
             ${markScriptsInHtml(convertTextToFormattedHtml(radData.findings))}
           </div>
@@ -426,8 +448,6 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
           <div class="test-header" style="background: #52779b; color: white; padding: 6px 10px; font-weight: bold; font-size: 11pt; text-align: center;">
             ${esc(t.testName)}
           </div>
-          ${packageOrigin}
-          
           <div class="mcs-flex" style="display: flex; border-bottom: 1px solid #ddd;">
             <div class="mcs-border-right" style="flex: 1; padding: 8px; border-right: 1px solid #ddd;">
               <div style="font-weight: bold; border-bottom: 1px solid #ddd; margin-bottom: 5px; font-size: 10pt; color: #52779b; text-transform: uppercase;">Macroscopy</div>
@@ -504,7 +524,6 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
     return `
       <div class="test-block${isFbcTest(t.testId, t.testName) ? ' fbc-block' : ''}" style="page-break-inside: avoid;">
         <div class="test-header">${esc(t.testName)}</div>
-        ${packageOrigin}
         ${reportResults.length > 0 ? `
         <table>
           <thead><tr><th>${simpleResults ? 'Investigation' : 'Parameter'}</th><th>Result</th>${simpleResults ? '' : '<th>Unit</th><th>Reference Range</th>'}</tr></thead>
@@ -676,7 +695,6 @@ export const getResultTemplate = (patient: Patient, completedTests: PatientTest[
          corner of the blue bar. Every investigation block uses this, including
          the culture and Widal/MPs blocks that carry their own inline copy. */
       .test-header { background: #52779b; color: white; padding: 7px 12px; font-size: 11pt; font-weight: bold; text-align: center; }
-      .package-origin { padding: 3px 8px; background: rgba(82, 119, 155, 0.07); color: #333; font-size: 9pt; font-weight: bold; text-align: center; }
       table { width: 100%; border-collapse: collapse; margin-top: 16px; }
       th { background: #52779b; color: white; padding: 6px 8px; text-align: left; font-size: 11pt; }
       td { padding: 5px 8px; border-bottom: 1px solid #eee; font-size: 11pt; }

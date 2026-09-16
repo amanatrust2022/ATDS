@@ -34,8 +34,11 @@ export default function RadiologyEntryForm({
   const isRadiology = department === 'radiology';
   const isObs = testId === 'us_obs';
 
+  const overriddenSystemKeys = new Set(customTemplates.map(t => t.key));
   const templates: PickableTemplate[] = [
-    ...Object.entries(RADIOLOGY_TEMPLATES).map(([key, val]) => ({
+    ...Object.entries(RADIOLOGY_TEMPLATES)
+      .filter(([key]) => !overriddenSystemKeys.has(key))
+      .map(([key, val]) => ({
       key, name: val.name, findings: val.findings, impression: val.impression, isSystem: true,
     })),
     ...customTemplates.map(t => ({

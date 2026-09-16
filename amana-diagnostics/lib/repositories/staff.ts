@@ -13,6 +13,9 @@ import { getJson } from './localHttp';
 export interface StaffMember {
   id: string;
   full_name: string | null;
+  first_name?: string | null;
+  surname?: string | null;
+  last_name?: string | null;
   email: string | null;
   role: string | null;
   role_label?: string | null;
